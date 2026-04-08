@@ -32,13 +32,23 @@ export default function Hero() {
       </header>
 
       {/* Hero Section */}
-      <section className="relative bg-white overflow-hidden border-b border-border">
+      <section className="relative overflow-hidden border-b border-border">
+        {/* Background image */}
+        <div className="absolute inset-0 z-0">
+          <img
+            src="/hero-bg.png"
+            alt=""
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-white/60" />
+        </div>
+
         {/* Subtle top banner */}
-        <div className="bg-primary text-primary-foreground text-center py-2 text-sm font-medium">
+        <div className="relative z-10 bg-primary text-primary-foreground text-center py-2 text-sm font-medium">
           Envios a todo el pais — Personalizacion 100% a tu gusto
         </div>
 
-        <div className="max-w-7xl mx-auto px-6 py-16 md:py-24 flex flex-col md:flex-row items-center gap-12">
+        <div className="relative z-10 max-w-7xl mx-auto px-6 py-16 md:py-24 flex flex-col md:flex-row items-center gap-12">
           {/* Left content */}
           <motion.div
             className="flex-1 text-left"
