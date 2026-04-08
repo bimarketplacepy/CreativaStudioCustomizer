@@ -1,41 +1,49 @@
 import React from "react";
 import { motion } from "framer-motion";
+import { Thermometer, Shield, Paintbrush2, Package } from "lucide-react";
 
 const features = [
   {
-    title: "Double Wall Vacuum",
-    desc: "Keeps your vibe icy cold for 24h or blazing hot for 12h. No sweat, literally.",
-    color: "bg-secondary"
+    icon: <Thermometer className="w-6 h-6" />,
+    title: "Doble pared al vacio",
+    desc: "Mantiene tu bebida fria 24h o caliente 12h. Tecnologia de aislamiento profesional.",
   },
   {
-    title: "Pro-Grade Steel",
-    desc: "18/8 stainless steel that survives drops, kicks, and your daily commute.",
-    color: "bg-accent"
+    icon: <Shield className="w-6 h-6" />,
+    title: "Acero 18/8 Premium",
+    desc: "Material de grado alimentario. Resistente a golpes y al uso diario intensivo.",
   },
   {
-    title: "High-Def Printing",
-    desc: "Your design baked into the surface. Won't scratch, fade, or peel off.",
-    color: "bg-primary"
-  }
+    icon: <Paintbrush2 className="w-6 h-6" />,
+    title: "Impresion de alta definicion",
+    desc: "Tu diseno fusionado con el acero. No se raya, no se desvanece, no se pela.",
+  },
+  {
+    icon: <Package className="w-6 h-6" />,
+    title: "Envio rapido y seguro",
+    desc: "Empaquetado con cuidado y entregado en todo el pais en tiempo record.",
+  },
 ];
 
 export default function Features() {
   return (
-    <section className="py-32 px-6 bg-zinc-950 relative border-b border-border/50">
-      <div className="max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+    <section className="py-16 bg-secondary/50 border-b border-border">
+      <div className="max-w-7xl mx-auto px-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {features.map((feature, idx) => (
             <motion.div
               key={idx}
-              initial={{ opacity: 0, y: 50 }}
+              initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-100px" }}
-              transition={{ duration: 0.5, delay: idx * 0.1 }}
-              className="group relative p-8 bg-card border border-border hover:border-foreground/20 transition-colors overflow-hidden"
+              viewport={{ once: true }}
+              transition={{ duration: 0.4, delay: idx * 0.08 }}
+              className="bg-white rounded-xl p-6 border border-border shadow-xs hover:shadow-sm transition-shadow"
             >
-              <div className={`absolute top-0 left-0 w-2 h-full ${feature.color} transform origin-left transition-transform duration-300 group-hover:scale-x-[15] opacity-20`} />
-              <h3 className="text-2xl font-black mb-4 uppercase tracking-tight relative z-10">{feature.title}</h3>
-              <p className="text-muted-foreground font-mono text-sm leading-relaxed relative z-10">{feature.desc}</p>
+              <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center text-primary mb-4">
+                {feature.icon}
+              </div>
+              <h3 className="font-semibold text-foreground mb-2">{feature.title}</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">{feature.desc}</p>
             </motion.div>
           ))}
         </div>

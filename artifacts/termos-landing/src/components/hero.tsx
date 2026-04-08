@@ -1,6 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { ShoppingCart, Star, Truck } from "lucide-react";
 
 export default function Hero() {
   const scrollToCustomizer = () => {
@@ -8,105 +9,150 @@ export default function Hero() {
   };
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center pt-20 pb-32 px-6 overflow-hidden border-b border-border/50">
-      {/* Background with image and overlay */}
-      <div className="absolute inset-0 z-0">
-        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-10" />
-        <img 
-          src="/hero-bg.png" 
-          alt="Abstract street art background" 
-          className="w-full h-full object-cover opacity-50"
-        />
-        <div className="absolute inset-0 pattern-grid z-10 opacity-30" />
-      </div>
+    <>
+      {/* Navbar */}
+      <header className="w-full border-b border-border bg-white sticky top-0 z-50 shadow-xs">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          <img
+            src="/marketplace-logo.png"
+            alt="MarketPlace"
+            className="h-8 object-contain"
+          />
+          <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
+            <a href="#" className="hover:text-foreground transition-colors">Inicio</a>
+            <a href="#customizer" onClick={e => { e.preventDefault(); scrollToCustomizer(); }} className="hover:text-foreground transition-colors">Personalizar</a>
+            <a href="#gallery" className="hover:text-foreground transition-colors">Galeria</a>
+            <a href="#" className="hover:text-foreground transition-colors">Contacto</a>
+          </nav>
+          <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+            <ShoppingCart className="w-4 h-4" />
+            Pedir Ahora
+          </Button>
+        </div>
+      </header>
 
-      <div className="relative z-20 max-w-7xl mx-auto w-full flex flex-col md:flex-row items-center justify-between gap-12">
-        <motion.div 
-          className="flex-1 text-left"
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2, duration: 0.5 }}
-            className="inline-block px-4 py-1.5 mb-6 rounded-full bg-accent/20 text-accent font-mono text-sm font-bold tracking-wider uppercase border border-accent/30"
+      {/* Hero Section */}
+      <section className="relative bg-white overflow-hidden border-b border-border">
+        {/* Subtle top banner */}
+        <div className="bg-primary text-primary-foreground text-center py-2 text-sm font-medium">
+          Envios a todo el pais — Personalizacion 100% a tu gusto
+        </div>
+
+        <div className="max-w-7xl mx-auto px-6 py-16 md:py-24 flex flex-col md:flex-row items-center gap-12">
+          {/* Left content */}
+          <motion.div
+            className="flex-1 text-left"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
           >
-            ThermoArt Studio
-          </motion.div>
-          <h1 className="text-6xl md:text-8xl lg:text-9xl font-black tracking-tighter leading-[0.9] mb-6">
-            YOUR <br/>
-            <span className="text-stroke-2 text-foreground">VIBE.</span> <br/>
-            <span className="text-primary drop-shadow-[0_0_30px_rgba(204,255,0,0.5)]">YOUR</span> <br/>
-            TERMO.
-          </h1>
-          <p className="text-xl md:text-2xl text-muted-foreground max-w-lg mb-10 font-mono">
-            Unapologetically bold. 100% you. Design a custom thermos that speaks louder than words.
-          </p>
-          <div className="flex flex-wrap gap-4">
-            <Button 
-              size="lg" 
-              className="bg-primary text-primary-foreground hover:bg-primary/90 text-lg h-14 px-8 rounded-none font-bold uppercase tracking-wider skew-x-[-10deg] transition-transform hover:scale-105 active:scale-95"
-              onClick={scrollToCustomizer}
-            >
-              <div className="skew-x-[10deg]">Start Creating</div>
-            </Button>
-            <Button 
-              size="lg" 
-              variant="outline" 
-              className="text-lg h-14 px-8 rounded-none font-bold uppercase tracking-wider skew-x-[10deg] border-2 transition-transform hover:scale-105 active:scale-95"
-            >
-              <div className="skew-x-[-10deg]">View Gallery</div>
-            </Button>
-          </div>
-        </motion.div>
+            <div className="inline-flex items-center gap-2 bg-red-50 text-primary border border-red-200 rounded-full px-3 py-1 text-sm font-medium mb-6">
+              <Star className="w-3.5 h-3.5 fill-current" />
+              Termos Personalizados Premium
+            </div>
 
-        <motion.div 
-          className="flex-1 relative hidden md:block"
-          initial={{ opacity: 0, x: 100, rotate: 10 }}
-          animate={{ opacity: 1, x: 0, rotate: 0 }}
-          transition={{ duration: 1, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
-        >
-          {/* Abstract graphic elements behind the hero thermos */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-gradient-to-tr from-accent/30 via-secondary/20 to-primary/30 blur-3xl rounded-full z-0" />
-          
-          <div className="relative z-10 w-full aspect-[3/4] flex items-center justify-center">
-            {/* We'll use a CSS-drawn expressive thermos for the hero to avoid needing an external image */}
-            <div className="w-48 h-96 relative group perspective-1000">
-              <motion.div 
-                className="w-full h-full relative preserve-3d"
-                animate={{ 
-                  rotateY: [0, 10, -10, 0],
-                  rotateX: [0, 5, -5, 0],
-                  y: [0, -15, 0]
-                }}
-                transition={{ 
-                  duration: 6, 
-                  repeat: Infinity,
-                  ease: "easeInOut" 
-                }}
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight mb-4">
+              Diseña tu proprio<br />
+              <span className="text-primary">Termo Unico</span>
+            </h1>
+
+            <p className="text-lg text-muted-foreground max-w-lg mb-8 leading-relaxed">
+              Elige el color, el texto, el acabado y los detalles. Tu termo, tu estilo, 100% personalizado. Entrega a todo el pais.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 mb-10">
+              <Button
+                size="lg"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 text-base px-8 h-12 font-semibold shadow-sm"
+                onClick={scrollToCustomizer}
+              >
+                Personalizar Ahora
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="text-base px-8 h-12 font-semibold border-border"
+              >
+                Ver Catalogo
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
+                  <Truck className="w-4 h-4 text-primary" />
+                </div>
+                <span>Envio gratis +100k</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
+                  <Star className="w-4 h-4 text-primary fill-current" />
+                </div>
+                <span>+500 clientes felices</span>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Right — Thermos showcase */}
+          <motion.div
+            className="flex-1 flex items-center justify-center relative"
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.8, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <div className="relative w-72 h-96">
+              {/* Background circle decoration */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-64 h-64 rounded-full bg-red-50 border-2 border-red-100" />
+              </div>
+
+              {/* Floating thermos display */}
+              <motion.div
+                className="absolute inset-0 flex flex-col items-center justify-center"
+                animate={{ y: [0, -10, 0] }}
+                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
               >
                 {/* Cap */}
-                <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-32 h-16 bg-zinc-900 rounded-t-xl border-t-4 border-l-4 border-r-4 border-zinc-700 z-20 shadow-[inset_0_-10px_20px_rgba(0,0,0,0.8)]" />
-                
+                <div className="w-24 h-10 bg-zinc-800 rounded-t-xl border-b-2 border-zinc-900 shadow-md z-20" />
                 {/* Body */}
-                <div className="absolute inset-0 bg-accent rounded-3xl overflow-hidden border-2 border-accent-foreground/20 shadow-[inset_-20px_0_40px_rgba(0,0,0,0.5),inset_10px_0_20px_rgba(255,255,255,0.4),0_20px_50px_rgba(0,0,0,0.5)]">
-                  {/* Pattern on the thermos */}
-                  <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent bg-[size:20px_20px]" />
-                  <div className="absolute bottom-10 -left-10 w-40 h-40 bg-primary rounded-full mix-blend-overlay blur-xl" />
-                  <div className="absolute top-20 -right-10 w-32 h-32 bg-secondary rounded-full mix-blend-overlay blur-xl" />
-                  
-                  {/* Text on thermos */}
-                  <div className="absolute inset-0 flex items-center justify-center -rotate-90">
-                    <span className="text-white/90 font-black text-6xl tracking-tighter mix-blend-overlay">WILD.</span>
+                <div
+                  className="relative w-32 h-64 rounded-b-3xl shadow-xl overflow-hidden z-10"
+                  style={{
+                    background: "linear-gradient(135deg, #e63946 0%, #c1121f 50%, #9d0208 100%)",
+                    boxShadow: "inset -12px 0 24px rgba(0,0,0,0.35), inset 8px 0 16px rgba(255,255,255,0.25), 0 20px 40px rgba(0,0,0,0.2)"
+                  }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-l from-transparent via-white/15 to-transparent w-1/2 ml-4" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="flex flex-col items-center text-white/80 -rotate-90 whitespace-nowrap">
+                      <span className="text-xs font-medium tracking-[0.3em] uppercase opacity-60">Marketplace</span>
+                      <span className="text-2xl font-bold tracking-wider">MI TERMO</span>
+                    </div>
                   </div>
                 </div>
+                {/* Shadow */}
+                <div className="w-28 h-4 bg-black/15 blur-md rounded-full mt-2" />
+              </motion.div>
+
+              {/* Floating badges */}
+              <motion.div
+                className="absolute top-4 -left-4 bg-white border border-border rounded-xl px-3 py-2 shadow-md text-xs font-semibold text-foreground"
+                animate={{ y: [0, -5, 0] }}
+                transition={{ duration: 3, repeat: Infinity, delay: 0.5, ease: "easeInOut" }}
+              >
+                12 colores disponibles
+              </motion.div>
+              <motion.div
+                className="absolute bottom-8 -right-4 bg-primary text-primary-foreground rounded-xl px-3 py-2 shadow-md text-xs font-semibold"
+                animate={{ y: [0, -5, 0] }}
+                transition={{ duration: 3, repeat: Infinity, delay: 1, ease: "easeInOut" }}
+              >
+                Personalizado al 100%
               </motion.div>
             </div>
-          </div>
-        </motion.div>
-      </div>
-    </section>
+          </motion.div>
+        </div>
+      </section>
+    </>
   );
 }
