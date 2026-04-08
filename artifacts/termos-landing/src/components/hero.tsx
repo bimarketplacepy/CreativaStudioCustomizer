@@ -40,7 +40,7 @@ export default function Hero() {
             alt=""
             className="w-full h-full object-cover"
           />
-          <div className="absolute inset-0 bg-white/60" />
+          <div className="absolute inset-0 bg-white/75" />
         </div>
 
         {/* Subtle top banner */}

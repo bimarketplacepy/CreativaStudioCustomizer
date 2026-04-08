@@ -5,7 +5,7 @@ outputs = []
 id = "__IpgrIQgU7OLHpXBjKqT"
 uri = "file://artifacts/termos-landing/public/hero-bg.png"
 type = "image"
-title = "hero background"
+title = "thermos hero background"
 
 [[generated]]
 id = "hg2ujMiMdE9v_Kdm_-FAn"
