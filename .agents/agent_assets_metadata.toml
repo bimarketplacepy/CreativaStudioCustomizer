@@ -1,0 +1,20 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "__IpgrIQgU7OLHpXBjKqT"
+uri = "file://artifacts/termos-landing/public/hero-bg.png"
+type = "image"
+title = "Street art background"
+
+[[generated]]
+id = "hg2ujMiMdE9v_Kdm_-FAn"
+uri = "file://artifacts/termos-landing/public/lifestyle-1.png"
+type = "image"
+title = "Person holding thermos"
+
+[[generated]]
+id = "UHO1pUDSf7Z3C9ZZh-_YM"
+uri = "file://artifacts/termos-landing/public/lifestyle-2.png"
+type = "image"
+title = "Thermos on creative desk"
