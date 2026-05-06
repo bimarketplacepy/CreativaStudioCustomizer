@@ -14,9 +14,9 @@ export default function Hero() {
       <header className="w-full border-b border-border bg-white sticky top-0 z-50 shadow-xs">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <img
-            src="/marketplace-logo.png"
-            alt="MarketPlace"
-            className="h-8 object-contain"
+            src="/la-creativa-logo.png"
+            alt="La Creativa"
+            className="h-10 object-contain"
           />
           <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
             <a href="#" className="hover:text-foreground transition-colors">Inicio</a>
@@ -103,57 +103,36 @@ export default function Hero() {
             </div>
           </motion.div>
 
-          {/* Right — Thermos showcase */}
+          {/* Right — Logo showcase */}
           <motion.div
             className="flex-1 flex items-center justify-center relative"
             initial={{ opacity: 0, x: 40 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div className="relative w-72 h-96">
-              {/* Background circle decoration */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-64 h-64 rounded-full bg-red-50 border-2 border-red-100" />
-              </div>
+            <div className="relative w-80 h-80 flex items-center justify-center">
+              {/* Subtle glow circle behind logo */}
+              <div className="absolute w-72 h-72 rounded-full bg-gradient-to-br from-red-50 via-white to-red-50 border border-red-100 shadow-inner" />
 
-              {/* Floating thermos display */}
-              <motion.div
-                className="absolute inset-0 flex flex-col items-center justify-center"
-                animate={{ y: [0, -10, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-              >
-                {/* Cap */}
-                <div className="w-24 h-10 bg-zinc-800 rounded-t-xl border-b-2 border-zinc-900 shadow-md z-20" />
-                {/* Body */}
-                <div
-                  className="relative w-32 h-64 rounded-b-3xl shadow-xl overflow-hidden z-10"
-                  style={{
-                    background: "linear-gradient(135deg, #e63946 0%, #c1121f 50%, #9d0208 100%)",
-                    boxShadow: "inset -12px 0 24px rgba(0,0,0,0.35), inset 8px 0 16px rgba(255,255,255,0.25), 0 20px 40px rgba(0,0,0,0.2)"
-                  }}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-l from-transparent via-white/15 to-transparent w-1/2 ml-4" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="flex flex-col items-center text-white/80 -rotate-90 whitespace-nowrap">
-                      <span className="text-xs font-medium tracking-[0.3em] uppercase opacity-60">Marketplace</span>
-                      <span className="text-2xl font-bold tracking-wider">MI TERMO</span>
-                    </div>
-                  </div>
-                </div>
-                {/* Shadow */}
-                <div className="w-28 h-4 bg-black/15 blur-md rounded-full mt-2" />
-              </motion.div>
+              {/* Logo */}
+              <motion.img
+                src="/la-creativa-logo.png"
+                alt="La Creativa"
+                className="relative z-10 w-72 object-contain drop-shadow-md"
+                animate={{ y: [0, -8, 0] }}
+                transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+              />
 
               {/* Floating badges */}
               <motion.div
-                className="absolute top-4 -left-4 bg-white border border-border rounded-xl px-3 py-2 shadow-md text-xs font-semibold text-foreground"
+                className="absolute top-2 -left-6 bg-white border border-border rounded-xl px-3 py-2 shadow-md text-xs font-semibold text-foreground"
                 animate={{ y: [0, -5, 0] }}
                 transition={{ duration: 3, repeat: Infinity, delay: 0.5, ease: "easeInOut" }}
               >
                 12 colores disponibles
               </motion.div>
               <motion.div
-                className="absolute bottom-8 -right-4 bg-primary text-primary-foreground rounded-xl px-3 py-2 shadow-md text-xs font-semibold"
+                className="absolute bottom-6 -right-6 bg-primary text-primary-foreground rounded-xl px-3 py-2 shadow-md text-xs font-semibold"
                 animate={{ y: [0, -5, 0] }}
                 transition={{ duration: 3, repeat: Infinity, delay: 1, ease: "easeInOut" }}
               >
