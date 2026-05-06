@@ -103,8 +103,8 @@ export default function Customizer() {
               />
 
               <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
-                {/* 3D Thermos Canvas */}
-                <div className="w-full" style={{ height: 420 }}>
+                {/* 3D Thermos Canvas — taller for bigger sizes */}
+                <div className="w-full" style={{ height: size === "xl" ? 560 : size === "lg" ? 500 : size === "sm" ? 400 : 450 }}>
                   <Thermos3D
                     colorHex={activeColorHex}
                     finish={finish}

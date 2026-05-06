@@ -123,11 +123,13 @@ function ThermosMesh({
   iconName: string | null; size: string;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
-  const velRef = useRef(0);
+  const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
+  const velPitch = useRef(0); // X-axis (vertical drag) velocity
   const isDragging = useRef(false);
   const lastX = useRef(0);
+  const lastY = useRef(0);
   const lastTime = useRef(0);
-  const { gl, camera } = useThree();
+  const { gl } = useThree();
 
   // Build points and geometry
   const points = useMemo(() => buildThermosPoints(size), [size]);
@@ -159,26 +161,36 @@ function ThermosMesh({
     return base;
   }, [finish]);
 
-  // Pointer drag handlers
+  // Pointer drag handlers — both axes
   useEffect(() => {
     const canvas = gl.domElement;
 
     const onDown = (e: PointerEvent) => {
       isDragging.current = true;
-      velRef.current = 0;
+      velYaw.current = 0;
+      velPitch.current = 0;
       lastX.current = e.clientX;
+      lastY.current = e.clientY;
       lastTime.current = performance.now();
       canvas.setPointerCapture(e.pointerId);
     };
     const onMove = (e: PointerEvent) => {
       if (!isDragging.current) return;
       const now = performance.now();
-      const dt = now - lastTime.current;
+      const dt = Math.max(1, now - lastTime.current);
       const dx = e.clientX - lastX.current;
-      if (dt > 0) velRef.current = dx / dt * 16;
+      const dy = e.clientY - lastY.current;
+      velYaw.current   = dx / dt * 16;
+      velPitch.current = dy / dt * 16;
       lastX.current = e.clientX;
+      lastY.current = e.clientY;
       lastTime.current = now;
-      if (groupRef.current) groupRef.current.rotation.y += dx * 0.008;
+      if (groupRef.current) {
+        groupRef.current.rotation.y += dx * 0.008;
+        // Clamp pitch so it doesn't flip upside-down
+        const newPitch = groupRef.current.rotation.x + dy * 0.008;
+        groupRef.current.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, newPitch));
+      }
     };
     const onUp = () => { isDragging.current = false; };
 
@@ -198,14 +210,25 @@ function ThermosMesh({
     if (!groupRef.current) return;
     if (isDragging.current) return;
 
-    // Apply inertia after drag
-    if (Math.abs(velRef.current) > 0.001) {
-      groupRef.current.rotation.y += velRef.current * delta;
-      velRef.current *= 0.92; // friction
+    const hasYawInertia   = Math.abs(velYaw.current) > 0.001;
+    const hasPitchInertia = Math.abs(velPitch.current) > 0.001;
+
+    if (hasYawInertia) {
+      groupRef.current.rotation.y += velYaw.current * delta;
+      velYaw.current *= 0.90;
     } else {
-      // Slow auto-rotate
-      velRef.current = 0;
+      velYaw.current = 0;
       groupRef.current.rotation.y += delta * 0.55;
+    }
+
+    if (hasPitchInertia) {
+      const newPitch = groupRef.current.rotation.x + velPitch.current * delta;
+      groupRef.current.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, newPitch));
+      velPitch.current *= 0.90;
+    } else {
+      velPitch.current = 0;
+      // Gently return to upright
+      groupRef.current.rotation.x *= 0.97;
     }
   });
 
@@ -248,9 +271,10 @@ function ThermosMesh({
 }
 
 function Rig({ size }: { size: string }) {
-  const scale = size === "sm" ? 0.78 : size === "md" ? 1.0 : size === "lg" ? 1.22 : 1.4;
-  const camZ = 5.5 + scale * 0.5;
-  return <PerspectiveCamera makeDefault fov={36} position={[0, 0.3 * scale, camZ]} />;
+  const fov  = size === "sm" ? 34 : size === "md" ? 36 : size === "lg" ? 38 : 42;
+  const camZ = size === "sm" ? 5.0 : size === "md" ? 6.2 : size === "lg" ? 8.0 : 9.8;
+  const camY = size === "sm" ? 0.2 : size === "md" ? 0.3 : size === "lg" ? 0.4 : 0.5;
+  return <PerspectiveCamera makeDefault fov={fov} position={[0, camY, camZ]} />;
 }
 
 // Detect WebGL support
@@ -271,10 +295,13 @@ function isWebGLAvailable(): boolean {
 function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps, "finish" | "fontClass">) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const angleRef = useRef(0);
+  const angleXRef = useRef(0); // pitch (up/down tilt)
   const rafRef = useRef<number>(0);
   const isDragging = useRef(false);
   const lastX = useRef(0);
+  const lastY = useRef(0);
   const velRef = useRef(0);
+  const velXRef = useRef(0);
   const propsRef = useRef({ colorHex, text, iconName, size });
   propsRef.current = { colorHex, text, iconName, size };
 
@@ -291,14 +318,25 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
     const draw = () => {
       const { colorHex, text, iconName, size } = propsRef.current;
       ctx.clearRect(0, 0, W, H);
-      const bH = size === "sm" ? 200 : size === "md" ? 255 : size === "lg" ? 310 : 350;
-      const bW = size === "xl" ? 112 : size === "lg" ? 102 : size === "sm" ? 84 : 94;
-      const cx = W/2, cy = H/2+15;
-      const a = angleRef.current;
+      const bH = size === "sm" ? 190 : size === "md" ? 240 : size === "lg" ? 290 : 330;
+      const bW = size === "xl" ? 108 : size === "lg" ? 98 : size === "sm" ? 82 : 92;
+      const a  = angleRef.current;
+      const ax = Math.max(-1.1, Math.min(1.1, angleXRef.current)); // pitch clamp
       const [r,g,b] = hexToRgb(colorHex);
 
+      // Tilt: offset the visual center based on pitch
+      const tiltOffset = ax * bH * 0.18;
+      const cx = W / 2;
+      const cy = H / 2 + 10 - tiltOffset * 0.5;
+
+      // Foreshortening: the body appears shorter when tilted
+      const foreshorten = Math.cos(ax * 0.7);
+      const visH = bH * foreshorten;
+
       const hlPos = 0.5 + 0.44 * Math.sin(a);
-      const left = cx - bW/2, right = cx + bW/2, top = cy - bH/2, bottom = cy + bH/2;
+      const left = cx - bW/2, right = cx + bW/2;
+      const top = cy - visH/2, bottom = cy + visH/2;
+
       const grad = ctx.createLinearGradient(left, 0, right, 0);
       grad.addColorStop(0, `rgb(${mix(r,0,0.55)},${mix(g,0,0.55)},${mix(b,0,0.55)})`);
       grad.addColorStop(Math.max(0, hlPos-0.22), `rgb(${mix(r,0,0.12)},${mix(g,0,0.12)},${mix(b,0,0.12)})`);
@@ -306,7 +344,7 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
       grad.addColorStop(Math.min(1, hlPos+0.20), `rgb(${mix(r,0,0.10)},${mix(g,0,0.10)},${mix(b,0,0.10)})`);
       grad.addColorStop(1, `rgb(${mix(r,0,0.58)},${mix(g,0,0.58)},${mix(b,0,0.58)})`);
 
-      const rnd = 16;
+      const rnd = 14;
       ctx.beginPath();
       ctx.moveTo(left+rnd, top); ctx.lineTo(right-rnd, top);
       ctx.quadraticCurveTo(right,top,right,top+rnd);
@@ -319,40 +357,48 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
       ctx.closePath();
       ctx.fillStyle = grad; ctx.fill();
 
-      // Top ellipse
-      const eRY = Math.max(4, (bW/2)*0.32*Math.abs(Math.cos(a)));
-      ctx.beginPath(); ctx.ellipse(cx, top, bW/2, eRY, 0, 0, Math.PI*2);
+      // Ellipses: depth changes with yaw; size changes with pitch (top bigger when tilted back)
+      const eRY = Math.max(3, (bW/2)*0.30*Math.abs(Math.cos(a)));
+      const topEllipseExtra   = Math.max(0,  ax) * 10; // tilted back → bigger top
+      const botEllipseExtra   = Math.max(0, -ax) * 10; // tilted fwd  → bigger bottom
+
+      ctx.beginPath(); ctx.ellipse(cx, top, bW/2, eRY + topEllipseExtra, 0, 0, Math.PI*2);
       ctx.fillStyle = `rgb(${mix(r,0,0.32)},${mix(g,0,0.32)},${mix(b,0,0.32)})`; ctx.fill();
 
+      ctx.beginPath(); ctx.ellipse(cx, bottom, bW/2, eRY + botEllipseExtra, 0, 0, Math.PI*2);
+      ctx.fillStyle = "#1a1a1a"; ctx.fill();
+
       // Cap
-      const cW = bW*0.76, capTop = top - 38;
+      const cW = bW*0.76;
+      const capH = 36 * foreshorten;
+      const capTop = top - capH;
       const cGrad = ctx.createLinearGradient(cx-cW/2,0,cx+cW/2,0);
       cGrad.addColorStop(0,"#111"); cGrad.addColorStop(0.5+0.4*Math.sin(a),"#555"); cGrad.addColorStop(1,"#111");
       ctx.beginPath();
       ctx.moveTo(cx-cW/2, top); ctx.lineTo(cx+cW/2, top);
-      ctx.lineTo(cx+cW/2-3, capTop+6); ctx.quadraticCurveTo(cx+cW/2, capTop, cx+cW/2-8, capTop);
-      ctx.lineTo(cx-cW/2+8, capTop); ctx.quadraticCurveTo(cx-cW/2, capTop, cx-cW/2+3, capTop+6);
+      ctx.lineTo(cx+cW/2-3, capTop+5); ctx.quadraticCurveTo(cx+cW/2, capTop, cx+cW/2-8, capTop);
+      ctx.lineTo(cx-cW/2+8, capTop); ctx.quadraticCurveTo(cx-cW/2, capTop, cx-cW/2+3, capTop+5);
       ctx.closePath(); ctx.fillStyle = cGrad; ctx.fill();
-      ctx.beginPath(); ctx.ellipse(cx, capTop, cW/2, Math.max(2,eRY*0.7), 0, 0, Math.PI*2);
+      ctx.beginPath(); ctx.ellipse(cx, capTop, cW/2, Math.max(2, eRY*0.7 + topEllipseExtra*0.5), 0, 0, Math.PI*2);
       ctx.fillStyle="#333"; ctx.fill();
 
       // Icon
       const iChar = iconName ? ICON_CHARS[iconName] : null;
       if (iChar && Math.cos(a) > 0) {
-        ctx.save(); ctx.font = `${Math.floor(bW*0.52)}px serif`;
+        ctx.save(); ctx.font = `${Math.floor(bW*0.50)}px serif`;
         ctx.textAlign="center"; ctx.textBaseline="middle";
         ctx.globalAlpha = Math.min(1, Math.cos(a)*1.2);
-        ctx.fillText(iChar, cx, cy - bH*0.10); ctx.restore();
+        ctx.fillText(iChar, cx, cy - visH*0.10); ctx.restore();
       }
       // Text
       if (text) {
         const facing = Math.cos(a - Math.PI*0.5);
         if (facing > -0.15) {
           ctx.save();
-          ctx.beginPath(); ctx.rect(left, top, bW, bH); ctx.clip();
-          ctx.translate(cx, cy + (iChar ? bH*0.18 : 0));
+          ctx.beginPath(); ctx.rect(left, top, bW, visH); ctx.clip();
+          ctx.translate(cx, cy + (iChar ? visH*0.18 : 0));
           ctx.rotate(-Math.PI/2);
-          ctx.font = `900 ${Math.max(13, Math.floor(bW*0.26))}px Inter, sans-serif`;
+          ctx.font = `900 ${Math.max(12, Math.floor(bW*0.25))}px Inter, sans-serif`;
           ctx.textAlign="center"; ctx.textBaseline="middle";
           ctx.globalAlpha = Math.max(0, Math.min(1, facing+0.25));
           ctx.fillStyle="rgba(255,255,255,0.93)";
@@ -361,18 +407,28 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
         }
       }
       // Shadow
-      const sGrad = ctx.createRadialGradient(cx, bottom+14, 4, cx, bottom+14, bW*0.85);
-      sGrad.addColorStop(0,"rgba(0,0,0,0.20)"); sGrad.addColorStop(1,"rgba(0,0,0,0)");
-      ctx.beginPath(); ctx.ellipse(cx, bottom+14, bW*0.72, 11, 0, 0, Math.PI*2);
+      const sGrad = ctx.createRadialGradient(cx, bottom+12, 4, cx, bottom+12, bW*0.85);
+      sGrad.addColorStop(0,"rgba(0,0,0,0.18)"); sGrad.addColorStop(1,"rgba(0,0,0,0)");
+      ctx.beginPath(); ctx.ellipse(cx, bottom+12, bW*0.70, 10, 0, 0, Math.PI*2);
       ctx.fillStyle=sGrad; ctx.fill();
 
+      // Advance angles
       if (!isDragging.current) {
         if (Math.abs(velRef.current) > 0.0005) {
           angleRef.current += velRef.current;
-          velRef.current *= 0.94;
+          velRef.current *= 0.93;
         } else {
           velRef.current = 0;
           angleRef.current += 0.013;
+        }
+        if (Math.abs(velXRef.current) > 0.0005) {
+          const np = angleXRef.current + velXRef.current;
+          angleXRef.current = Math.max(-1.1, Math.min(1.1, np));
+          velXRef.current *= 0.93;
+        } else {
+          velXRef.current = 0;
+          // Gently return to upright
+          angleXRef.current *= 0.97;
         }
       }
       rafRef.current = requestAnimationFrame(draw);
@@ -382,15 +438,21 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
   }, []);
 
   const onPDown = (e: React.PointerEvent) => {
-    isDragging.current = true; velRef.current = 0;
-    lastX.current = e.clientX; (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    isDragging.current = true;
+    velRef.current = 0; velXRef.current = 0;
+    lastX.current = e.clientX; lastY.current = e.clientY;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
   const onPMove = (e: React.PointerEvent) => {
     if (!isDragging.current) return;
     const dx = e.clientX - lastX.current;
-    velRef.current = dx * 0.01;
-    angleRef.current += dx * 0.009;
-    lastX.current = e.clientX;
+    const dy = e.clientY - lastY.current;
+    velRef.current  = dx * 0.010;
+    velXRef.current = dy * 0.010;
+    angleRef.current  += dx * 0.009;
+    const np = angleXRef.current + dy * 0.009;
+    angleXRef.current = Math.max(-1.1, Math.min(1.1, np));
+    lastX.current = e.clientX; lastY.current = e.clientY;
   };
   const onPUp = () => { isDragging.current = false; };
 
