@@ -14,9 +14,9 @@ export default function Hero() {
       <header className="w-full border-b border-border bg-white sticky top-0 z-50 shadow-xs">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <img
-            src="/la-creativa-logo.png"
-            alt="La Creativa"
-            className="h-10 object-contain"
+            src="/navbar-logo.png"
+            alt="MarketPlace"
+            className="h-8 object-contain"
           />
           <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
             <a href="#" className="hover:text-foreground transition-colors">Inicio</a>
