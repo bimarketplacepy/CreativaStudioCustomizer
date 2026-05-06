@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Check, Palette, Sparkles, Type, Box, Flame, Star, Zap, Heart, Mountain, Waves, Leaf } from "lucide-react";
-import ThermosPreview from "./thermos-preview";
+import Thermos3D from "./thermos-3d";
 
 const SIZES = [
   { id: "sm", name: "12oz Mug", label: "Mug" },
@@ -53,6 +53,17 @@ const ICONS = [
   { id: "leaf", name: "Hoja", render: <Leaf className="w-14 h-14" /> },
 ];
 
+const ICON_IDS: Record<string, string | null> = {
+  none: null,
+  flames: "flames",
+  star: "star",
+  lightning: "lightning",
+  heart: "heart",
+  mountain: "mountain",
+  waves: "waves",
+  leaf: "leaf",
+};
+
 export default function Customizer() {
   const [size, setSize] = useState(SIZES[1].id);
   const [color, setColor] = useState(COLORS[0].id);
@@ -85,24 +96,29 @@ export default function Customizer() {
 
           {/* PREVIEW AREA */}
           <div className="lg:col-span-4 relative">
-            <div className="sticky top-24 bg-secondary/30 rounded-2xl border border-border p-8 flex flex-col items-center gap-6 overflow-hidden min-h-[480px]">
+            <div className="sticky top-24 bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[520px]">
               <div
                 className="absolute inset-0 opacity-[0.07] transition-colors duration-500 rounded-2xl"
                 style={{ backgroundColor: activeColorHex }}
               />
 
-              <div className="relative z-10 flex flex-col items-center gap-3 w-full">
-                <ThermosPreview
-                  size={size}
-                  colorHex={activeColorHex}
-                  finish={finish}
-                  text={text}
-                  fontClass={FONTS.find(f => f.id === font)?.css || FONTS[0].css}
-                  iconRender={ICONS.find(i => i.id === icon)?.render}
-                />
+              <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
+                {/* 3D Thermos Canvas */}
+                <div className="w-full" style={{ height: 420 }}>
+                  <Thermos3D
+                    colorHex={activeColorHex}
+                    finish={finish}
+                    text={text}
+                    fontClass={FONTS.find(f => f.id === font)?.css || FONTS[0].css}
+                    iconName={ICON_IDS[icon] ?? null}
+                    size={size}
+                  />
+                </div>
+
+                <p className="text-xs text-muted-foreground -mt-1 mb-1">Arrastra para girar</p>
 
                 {/* Summary badges */}
-                <div className="flex flex-wrap gap-2 justify-center mt-4">
+                <div className="flex flex-wrap gap-2 justify-center px-4 pb-4">
                   <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground">
                     {SIZES.find(s => s.id === size)?.name}
                   </span>
