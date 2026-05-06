@@ -270,10 +270,17 @@ function ThermosMesh({
   );
 }
 
+// Thermos center Y and half-height per size (scale: sm=0.78, md=1.0, lg=1.22, xl=1.4)
+// Body spans y: -1.80*s to (2.22+0.10+0.10)*s (cap top). Center and padding computed below.
+const RIG_PARAMS: Record<string, { fov: number; camZ: number; camY: number; shadowY: number }> = {
+  sm:  { fov: 28, camZ: 7.8, camY: 0.24, shadowY: -1.42 },
+  md:  { fov: 30, camZ: 9.0, camY: 0.30, shadowY: -1.82 },
+  lg:  { fov: 32, camZ: 10.5, camY: 0.38, shadowY: -2.22 },
+  xl:  { fov: 34, camZ: 12.0, camY: 0.44, shadowY: -2.55 },
+};
+
 function Rig({ size }: { size: string }) {
-  const fov  = size === "sm" ? 34 : size === "md" ? 36 : size === "lg" ? 38 : 42;
-  const camZ = size === "sm" ? 5.0 : size === "md" ? 6.2 : size === "lg" ? 8.0 : 9.8;
-  const camY = size === "sm" ? 0.2 : size === "md" ? 0.3 : size === "lg" ? 0.4 : 0.5;
+  const { fov, camZ, camY } = RIG_PARAMS[size] ?? RIG_PARAMS.md;
   return <PerspectiveCamera makeDefault fov={fov} position={[0, camY, camZ]} />;
 }
 
@@ -465,6 +472,7 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
 }
 
 function ThreeCanvas(props: Thermos3DProps) {
+  const { shadowY } = RIG_PARAMS[props.size] ?? RIG_PARAMS.md;
   return (
     <Canvas
       shadows
@@ -485,7 +493,7 @@ function ThreeCanvas(props: Thermos3DProps) {
         />
 
         <ContactShadows
-          position={[0, -1.85, 0]}
+          position={[0, shadowY, 0]}
           opacity={0.45}
           scale={5}
           blur={2.5}
