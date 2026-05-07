@@ -115,21 +115,6 @@ export default function Hero() {
                 transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
               />
 
-              {/* Floating badges */}
-              <motion.div
-                className="absolute top-2 -left-6 bg-white border border-border rounded-xl px-3 py-2 shadow-md text-xs font-semibold text-foreground"
-                animate={{ y: [0, -5, 0] }}
-                transition={{ duration: 3, repeat: Infinity, delay: 0.5, ease: "easeInOut" }}
-              >
-                12 colores disponibles
-              </motion.div>
-              <motion.div
-                className="absolute bottom-6 -right-6 bg-primary text-primary-foreground rounded-xl px-3 py-2 shadow-md text-xs font-semibold"
-                animate={{ y: [0, -5, 0] }}
-                transition={{ duration: 3, repeat: Infinity, delay: 1, ease: "easeInOut" }}
-              >
-                Personalizado al 100%
-              </motion.div>
             </div>
           </motion.div>
         </div>
