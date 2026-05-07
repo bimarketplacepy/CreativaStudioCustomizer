@@ -31,23 +31,23 @@ const ICON_CHARS: Record<string, string> = {
 function buildThermosPoints(size: string): THREE.Vector2[] {
   const scale = size === "sm" ? 0.78 : size === "md" ? 1.0 : size === "lg" ? 1.22 : 1.4;
   const s = (x: number, y: number) => new THREE.Vector2(x * scale, y * scale);
-  // Slim modern bottle — fully rounded bottom, no base ring
+  // Wide vacuum bottle (reference: blue wide-body bottle with flat screw cap)
+  // Rounded base → wide straight cylinder → shoulder taper → collar → cap seat
   return [
-    s(0.00, -1.85),   // bottom tip
-    s(0.14, -1.83),   // rounded base curve
-    s(0.30, -1.78),
-    s(0.46, -1.66),   // base flare
-    s(0.54, -1.48),   // lower body transition
-    s(0.57,  -1.20),
-    s(0.58,   0.80),  // main body (straight)
-    s(0.56,   1.12),  // upper body
-    s(0.50,   1.40),  // shoulder
-    s(0.40,   1.60),  // shoulder taper
-    s(0.32,   1.74),  // neck
-    s(0.28,   1.92),  // cap base
-    s(0.24,   2.06),
-    s(0.20,   2.16),
-    s(0.17,   2.22),  // cap tip
+    s(0.00, -1.85),   // bottom centre
+    s(0.10, -1.84),   // rounded base curve
+    s(0.28, -1.80),
+    s(0.48, -1.70),   // base flare
+    s(0.59, -1.52),   // body start
+    s(0.62, -1.25),   // lower body (widest)
+    s(0.62,  0.65),   // main body – wide & straight
+    s(0.60,  0.90),   // upper body
+    s(0.56,  1.10),   // shoulder start
+    s(0.50,  1.30),   // shoulder
+    s(0.47,  1.48),   // neck
+    s(0.48,  1.58),   // collar ring (slight bulge)
+    s(0.46,  1.68),   // collar top
+    s(0.44,  1.76),   // cap seat
   ];
 }
 
@@ -113,7 +113,7 @@ function makeBodyTexture(
   ctx.textBaseline = "middle";
   ctx.fillStyle = "rgba(255,255,255,0.30)";
   ctx.letterSpacing = "0.15em";
-  ctx.fillText("MARKETPLACE", W / 2, H * 0.82);
+  ctx.fillText("LA CREATIVA", W / 2, H * 0.82);
   ctx.restore();
 
   return new THREE.CanvasTexture(canvas);
@@ -143,10 +143,21 @@ function ThermosMesh({
     return geo;
   }, [points]);
 
+  const capScale = size === "sm" ? 0.78 : size === "md" ? 1.0 : size === "lg" ? 1.22 : 1.4;
+
+  // Wide flat screw cap — matches reference image
   const capGeo = useMemo(() => {
-    const capScale = size === "sm" ? 0.78 : size === "md" ? 1.0 : size === "lg" ? 1.22 : 1.4;
-    const geo = new THREE.CylinderGeometry(0.20 * capScale, 0.32 * capScale, 0.20 * capScale, 64);
-    return geo;
+    return new THREE.CylinderGeometry(0.50 * capScale, 0.46 * capScale, 0.40 * capScale, 64);
+  }, [size]);
+
+  // D-ring handle on top of the cap
+  const handleGeo = useMemo(() => {
+    return new THREE.TorusGeometry(0.19 * capScale, 0.046 * capScale, 10, 32);
+  }, [size]);
+
+  // Thin metal collar ring at the neck seam
+  const collarGeo = useMemo(() => {
+    return new THREE.TorusGeometry(0.455 * capScale, 0.028 * capScale, 6, 64);
   }, [size]);
 
   const texture = useMemo(
@@ -235,7 +246,11 @@ function ThermosMesh({
     }
   });
 
-  const scale = size === "sm" ? 0.78 : size === "md" ? 1.0 : size === "lg" ? 1.22 : 1.4;
+  // Positions derived from profile: cap seat at y=1.76*s, cap h=0.40*s
+  const capCenterY  = 1.76 * capScale + 0.20 * capScale; // 1.96
+  const capTopY     = 1.76 * capScale + 0.40 * capScale; // 2.16
+  const handleY     = capTopY + 0.046 * capScale;         // torus tube touches cap top
+  const collarY     = 1.58 * capScale;                    // collar bulge in profile
 
   return (
     <group ref={groupRef}>
@@ -252,29 +267,32 @@ function ThermosMesh({
         />
       </mesh>
 
-      {/* Cap top button */}
-      <mesh geometry={capGeo} position={[0, 2.22 * scale + 0.10 * scale, 0]} castShadow>
-        <meshPhysicalMaterial
-          color="#222222"
-          roughness={0.30}
-          metalness={0.80}
-          clearcoat={0.6}
-          clearcoatRoughness={0.1}
-          envMapIntensity={1.5}
-        />
+      {/* Wide flat screw cap */}
+      <mesh geometry={capGeo} position={[0, capCenterY, 0]} castShadow>
+        <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
       </mesh>
 
+      {/* D-ring carry handle on top of cap */}
+      <mesh geometry={handleGeo} position={[0, handleY, 0]} castShadow>
+        <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
+      </mesh>
+
+      {/* Metal collar seam ring at neck */}
+      <mesh geometry={collarGeo} position={[0, collarY, 0]}>
+        <meshPhysicalMaterial color="#888888" roughness={0.15} metalness={0.95} clearcoat={0.5} envMapIntensity={2.0} />
+      </mesh>
     </group>
   );
 }
 
 // Thermos center Y and half-height per size (scale: sm=0.78, md=1.0, lg=1.22, xl=1.4)
 // Body spans y: -1.80*s to (2.22+0.10+0.10)*s (cap top). Center and padding computed below.
+// New geometry: bottom -1.85*s, handle top ~2.40*s, centre ~0.275*s
 const RIG_PARAMS: Record<string, { fov: number; camZ: number; camY: number; shadowY: number }> = {
-  sm:  { fov: 28, camZ: 7.8, camY: 0.22, shadowY: -1.46 },
-  md:  { fov: 30, camZ: 9.0, camY: 0.28, shadowY: -1.87 },
-  lg:  { fov: 32, camZ: 10.5, camY: 0.36, shadowY: -2.28 },
-  xl:  { fov: 34, camZ: 12.0, camY: 0.42, shadowY: -2.60 },
+  sm:  { fov: 28, camZ: 8.0,  camY: 0.22, shadowY: -1.46 },
+  md:  { fov: 30, camZ: 9.2,  camY: 0.28, shadowY: -1.87 },
+  lg:  { fov: 32, camZ: 10.8, camY: 0.34, shadowY: -2.28 },
+  xl:  { fov: 34, camZ: 12.4, camY: 0.40, shadowY: -2.60 },
 };
 
 function Rig({ size }: { size: string }) {
@@ -369,19 +387,45 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
       ctx.beginPath(); ctx.ellipse(cx, top, bW/2, eRY + topEllipseExtra, 0, 0, Math.PI*2);
       ctx.fillStyle = `rgb(${mix(r,0,0.32)},${mix(g,0,0.32)},${mix(b,0,0.32)})`; ctx.fill();
 
-      // Cap
-      const cW = bW*0.76;
-      const capH = 36 * foreshorten;
+      // Wide flat screw cap (wider than body, matches reference)
+      const cW = bW * 1.04;
+      const capH = 30 * foreshorten;
       const capTop = top - capH;
       const cGrad = ctx.createLinearGradient(cx-cW/2,0,cx+cW/2,0);
-      cGrad.addColorStop(0,"#111"); cGrad.addColorStop(0.5+0.4*Math.sin(a),"#555"); cGrad.addColorStop(1,"#111");
+      const hl = 0.5 + 0.38 * Math.sin(a);
+      cGrad.addColorStop(0,"#111");
+      cGrad.addColorStop(Math.max(0,hl-0.18),"#2a2a2a");
+      cGrad.addColorStop(hl,"#555");
+      cGrad.addColorStop(Math.min(1,hl+0.18),"#222");
+      cGrad.addColorStop(1,"#111");
+      // Cap body — straight-sided (cylinder)
       ctx.beginPath();
-      ctx.moveTo(cx-cW/2, top); ctx.lineTo(cx+cW/2, top);
-      ctx.lineTo(cx+cW/2-3, capTop+5); ctx.quadraticCurveTo(cx+cW/2, capTop, cx+cW/2-8, capTop);
-      ctx.lineTo(cx-cW/2+8, capTop); ctx.quadraticCurveTo(cx-cW/2, capTop, cx-cW/2+3, capTop+5);
-      ctx.closePath(); ctx.fillStyle = cGrad; ctx.fill();
-      ctx.beginPath(); ctx.ellipse(cx, capTop, cW/2, Math.max(2, eRY*0.7 + topEllipseExtra*0.5), 0, 0, Math.PI*2);
+      ctx.moveTo(cx-cW/2, top);
+      ctx.lineTo(cx+cW/2, top);
+      ctx.lineTo(cx+cW/2, capTop+4);
+      ctx.quadraticCurveTo(cx+cW/2, capTop, cx+cW/2-6, capTop);
+      ctx.lineTo(cx-cW/2+6, capTop);
+      ctx.quadraticCurveTo(cx-cW/2, capTop, cx-cW/2, capTop+4);
+      ctx.closePath();
+      ctx.fillStyle = cGrad; ctx.fill();
+      // Cap top ellipse
+      ctx.beginPath(); ctx.ellipse(cx, capTop, cW/2, Math.max(2, eRY*0.8 + topEllipseExtra*0.5), 0, 0, Math.PI*2);
       ctx.fillStyle="#333"; ctx.fill();
+      // Metal collar seam line between body and cap
+      ctx.beginPath();
+      ctx.moveTo(cx-bW/2+2, top+2); ctx.lineTo(cx+bW/2-2, top+2);
+      ctx.strokeStyle="rgba(180,180,180,0.5)"; ctx.lineWidth=1.5; ctx.stroke();
+      // D-ring carry handle on top
+      const hRx = bW * 0.20;
+      const hRy = Math.max(4, capH * 0.65);
+      const handleTop = capTop - hRy * 2;
+      ctx.beginPath();
+      ctx.ellipse(cx, capTop - hRy, hRx, hRy, 0, Math.PI, 0); // upper arc only
+      ctx.strokeStyle = `rgba(30,30,30,${Math.max(0, Math.cos(a)*0.9+0.2)})`;
+      ctx.lineWidth = bW * 0.095;
+      ctx.lineCap = "round";
+      ctx.stroke();
+      void handleTop; // suppress unused warning
 
       // Icon
       const iChar = iconName ? ICON_CHARS[iconName] : null;
