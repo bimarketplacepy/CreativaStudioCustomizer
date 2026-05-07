@@ -1,7 +1,10 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { Button } from "@/components/ui/button";
-import { Star, Truck } from "lucide-react";
+
+const COLOR_STRIP = [
+  "#E63946", "#2D6A9F", "#2D9B5C", "#1A1A1A",
+  "#9B5DE5", "#F4A261", "#E9C46A", "#6D6875",
+];
 
 export default function Hero() {
   const scrollToCustomizer = () => {
@@ -10,111 +13,120 @@ export default function Hero() {
 
   return (
     <>
-      {/* Navbar */}
-      <header className="w-full border-b border-border bg-white sticky top-0 z-50 shadow-xs">
+      {/* Navbar — black, Stanley-style */}
+      <header className="w-full bg-black sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center">
           <img
             src="/navbar-logo.png"
             alt="MarketPlace"
-            className="h-8 object-contain"
+            className="h-8 object-contain brightness-0 invert"
           />
-          <nav className="hidden md:flex flex-1 justify-center items-center gap-6 text-sm text-muted-foreground">
-            <a href="#" className="hover:text-foreground transition-colors">Inicio</a>
-            <a href="#customizer" onClick={e => { e.preventDefault(); scrollToCustomizer(); }} className="hover:text-foreground transition-colors">Personalizar</a>
-            <a href="#gallery" className="hover:text-foreground transition-colors">Galeria</a>
-            <a href="#" className="hover:text-foreground transition-colors">Contacto</a>
+          <nav className="hidden md:flex flex-1 justify-center items-center gap-8 text-xs text-white/60 uppercase tracking-widest font-medium">
+            <a href="#" className="hover:text-white transition-colors">Inicio</a>
+            <a
+              href="#customizer"
+              onClick={e => { e.preventDefault(); scrollToCustomizer(); }}
+              className="hover:text-white transition-colors"
+            >
+              Personalizar
+            </a>
+            <a href="#gallery" className="hover:text-white transition-colors">Galeria</a>
+            <a href="#" className="hover:text-white transition-colors">Contacto</a>
           </nav>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative overflow-hidden border-b border-border">
-        {/* Background image */}
-        <div className="absolute inset-0 z-0">
-          <img
-            src="/hero-bg.png"
-            alt=""
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute inset-0 bg-white/75" />
+      {/* Hero — full bleed dark, editorial */}
+      <section className="relative bg-[#111111] min-h-[92vh] flex items-center overflow-hidden">
+        {/* Giant ghost watermark */}
+        <span
+          aria-hidden
+          className="pointer-events-none select-none absolute right-[-2vw] bottom-[-4vw] text-[28vw] font-black uppercase leading-none text-white/[0.03]"
+        >
+          TERMO
+        </span>
+
+        {/* Thin color bar at bottom */}
+        <div className="absolute bottom-0 left-0 right-0 flex h-1">
+          {COLOR_STRIP.map((c, i) => (
+            <div key={i} style={{ backgroundColor: c }} className="flex-1" />
+          ))}
         </div>
 
-
-        <div className="relative z-10 max-w-7xl mx-auto px-6 py-16 md:py-24 flex flex-col md:flex-row items-center gap-12">
-          {/* Left content */}
+        <div className="relative z-10 w-full max-w-7xl mx-auto px-6 py-20 flex flex-col lg:flex-row items-center gap-12 lg:gap-0">
+          {/* Left — editorial copy */}
           <motion.div
-            className="flex-1 text-left"
-            initial={{ opacity: 0, y: 30 }}
+            className="flex-1"
+            initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div className="inline-flex items-center gap-2 bg-red-50 text-primary border border-red-200 rounded-full px-3 py-1 text-sm font-medium mb-6">
-              <Star className="w-3.5 h-3.5 fill-current" />
-              Termos Personalizados Premium
-            </div>
-
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight mb-4">
-              Diseña tu propio<br />
-              <span className="text-primary">Termo Unico</span>
-            </h1>
-
-            <p className="text-lg text-muted-foreground max-w-lg mb-8 leading-relaxed">
-              Elige el color, el texto, el acabado y los detalles. Tu termo, tu estilo, 100% personalizado. Entrega a todo el pais.
+            <p className="text-white/40 text-[10px] uppercase tracking-[0.4em] mb-8 font-medium">
+              La Creativa — Experiencia Personalizada
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-3 mb-10">
-              <Button
-                size="lg"
-                className="bg-primary text-primary-foreground hover:bg-primary/90 text-base px-8 h-12 font-semibold shadow-sm"
+            <h1 className="text-[clamp(3rem,9vw,7rem)] font-black leading-[0.9] uppercase text-white mb-8">
+              Diseña<br />
+              tu propio<br />
+              <span className="text-red-500">Termo.</span>
+            </h1>
+
+            <p className="text-white/50 text-base max-w-sm mb-10 leading-relaxed">
+              Elegí el color, el texto y el acabado. Tu termo único, entregado en todo el país.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-4">
+              <button
                 onClick={scrollToCustomizer}
+                className="bg-red-600 hover:bg-red-700 text-white font-bold px-8 py-4 text-xs uppercase tracking-[0.2em] transition-colors"
               >
                 Personalizar Ahora
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="text-base px-8 h-12 font-semibold border-border"
+              </button>
+              <button
+                onClick={() => document.getElementById("gallery")?.scrollIntoView({ behavior: "smooth" })}
+                className="border border-white/20 hover:border-white/60 text-white/70 hover:text-white font-bold px-8 py-4 text-xs uppercase tracking-[0.2em] transition-colors"
               >
-                Ver Catalogo
-              </Button>
+                Ver Colores
+              </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
-                  <Truck className="w-4 h-4 text-primary" />
-                </div>
-                <span>Envio gratis +100k</span>
+            {/* Stats row */}
+            <div className="flex gap-8 mt-12 pt-10 border-t border-white/10">
+              <div>
+                <p className="text-white text-2xl font-black">+500</p>
+                <p className="text-white/40 text-xs uppercase tracking-wider mt-0.5">Clientes felices</p>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
-                  <Star className="w-4 h-4 text-primary fill-current" />
-                </div>
-                <span>+500 clientes felices</span>
+              <div>
+                <p className="text-white text-2xl font-black">12</p>
+                <p className="text-white/40 text-xs uppercase tracking-wider mt-0.5">Colores disponibles</p>
+              </div>
+              <div>
+                <p className="text-white text-2xl font-black">24H</p>
+                <p className="text-white/40 text-xs uppercase tracking-wider mt-0.5">Frío garantizado</p>
               </div>
             </div>
           </motion.div>
 
-          {/* Right — Logo showcase */}
+          {/* Right — brand logo on light panel */}
           <motion.div
-            className="flex-1 flex items-center justify-center relative"
-            initial={{ opacity: 0, x: 40 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            className="flex-1 flex items-center justify-center"
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.9, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div className="relative w-80 h-80 flex items-center justify-center">
-              {/* Subtle glow circle behind logo */}
-              <div className="absolute w-72 h-72 rounded-full bg-gradient-to-br from-red-50 via-white to-red-50 border border-red-100 shadow-inner" />
-
-              {/* Logo */}
-              <motion.img
-                src="/la-creativa-logo.png"
-                alt="La Creativa"
-                className="relative z-10 w-72 object-contain drop-shadow-md"
-                animate={{ y: [0, -8, 0] }}
-                transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-              />
-
+            <div className="relative w-72 h-72 lg:w-96 lg:h-96">
+              {/* Outer glow ring */}
+              <div className="absolute inset-0 rounded-full bg-white/5 border border-white/10" />
+              {/* Inner panel */}
+              <div className="absolute inset-8 rounded-full bg-white flex items-center justify-center shadow-2xl">
+                <motion.img
+                  src="/la-creativa-logo.png"
+                  alt="La Creativa"
+                  className="w-3/4 object-contain"
+                  animate={{ y: [0, -10, 0] }}
+                  transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+                />
+              </div>
             </div>
           </motion.div>
         </div>

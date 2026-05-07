@@ -1,52 +1,51 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { Thermometer, Shield, Paintbrush2, Package } from "lucide-react";
 
-const features = [
-  {
-    icon: <Thermometer className="w-6 h-6" />,
-    title: "Doble pared al vacio",
-    desc: "Mantiene tu bebida fria 24h o caliente 12h. Tecnologia de aislamiento profesional.",
-  },
-  {
-    icon: <Shield className="w-6 h-6" />,
-    title: "Acero 18/8 Premium",
-    desc: "Material de grado alimentario. Resistente a golpes y al uso diario intensivo.",
-  },
-  {
-    icon: <Paintbrush2 className="w-6 h-6" />,
-    title: "Impresion de alta definicion",
-    desc: "Tu diseno fusionado con el acero. No se raya, no se desvanece, no se pela.",
-  },
-  {
-    icon: <Package className="w-6 h-6" />,
-    title: "Envio rapido y seguro",
-    desc: "Empaquetado con cuidado y entregado en todo el pais en tiempo record.",
-  },
+const STATS = [
+  { num: "24H", sub: "/ 12H", label: "Frío & Calor", desc: "Doble pared al vacío — tecnología de aislamiento profesional." },
+  { num: "18/8", sub: "", label: "Acero Premium", desc: "Grado alimentario. Resistente al uso diario intensivo." },
+  { num: "100%", sub: "", label: "Personalizable", desc: "Color, texto, acabado e ícono. Completamente tuyo." },
+  { num: "PY", sub: "", label: "Envío nacional", desc: "Empaquetado con cuidado y entregado en todo el país." },
 ];
 
 export default function Features() {
   return (
-    <section className="py-16 bg-secondary/50 border-b border-border">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {features.map((feature, idx) => (
-            <motion.div
-              key={idx}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.4, delay: idx * 0.08 }}
-              className="bg-white rounded-xl p-6 border border-border shadow-xs hover:shadow-sm transition-shadow"
-            >
-              <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center text-primary mb-4">
-                {feature.icon}
-              </div>
-              <h3 className="font-semibold text-foreground mb-2">{feature.title}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{feature.desc}</p>
-            </motion.div>
-          ))}
-        </div>
+    <section className="bg-white border-b border-neutral-200">
+      <div className="max-w-7xl mx-auto">
+        {STATS.map((s, idx) => (
+          <motion.div
+            key={idx}
+            initial={{ opacity: 0, x: -20 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.45, delay: idx * 0.07 }}
+            className={`flex items-center gap-8 px-6 py-10 border-b border-neutral-100 last:border-0 ${
+              idx % 2 === 1 ? "bg-neutral-50" : "bg-white"
+            }`}
+          >
+            {/* Big number */}
+            <div className="shrink-0 w-32 text-right">
+              <span className="text-5xl font-black text-black leading-none tracking-tight">
+                {s.num}
+              </span>
+              {s.sub && (
+                <span className="text-xl font-black text-neutral-400 leading-none">{s.sub}</span>
+              )}
+            </div>
+
+            {/* Divider */}
+            <div className="w-px h-12 bg-neutral-200 shrink-0" />
+
+            {/* Label + desc */}
+            <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-10">
+              <p className="text-sm font-black uppercase tracking-[0.15em] text-black w-40 shrink-0">{s.label}</p>
+              <p className="text-sm text-neutral-500 leading-relaxed max-w-md">{s.desc}</p>
+            </div>
+
+            {/* Right accent bar */}
+            <div className="hidden lg:block shrink-0 w-1 h-10 bg-red-600 rounded-full" />
+          </motion.div>
+        ))}
       </div>
     </section>
   );
