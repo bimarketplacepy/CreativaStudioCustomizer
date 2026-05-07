@@ -150,9 +150,9 @@ function ThermosMesh({
     return new THREE.CylinderGeometry(0.50 * capScale, 0.46 * capScale, 0.40 * capScale, 64);
   }, [size]);
 
-  // D-ring handle on top of the cap
+  // Mug-style side handle on the cap wall
   const handleGeo = useMemo(() => {
-    return new THREE.TorusGeometry(0.19 * capScale, 0.046 * capScale, 10, 32);
+    return new THREE.TorusGeometry(0.26 * capScale, 0.065 * capScale, 12, 32);
   }, [size]);
 
   // Thin metal collar ring at the neck seam
@@ -248,9 +248,11 @@ function ThermosMesh({
 
   // Positions derived from profile: cap seat at y=1.76*s, cap h=0.40*s
   const capCenterY  = 1.76 * capScale + 0.20 * capScale; // 1.96
-  const capTopY     = 1.76 * capScale + 0.40 * capScale; // 2.16
-  const handleY     = capTopY + 0.046 * capScale;         // torus tube touches cap top
-  const collarY     = 1.58 * capScale;                    // collar bulge in profile
+  const collarY     = 1.58 * capScale;
+
+  // Side mug handle: torus in XY plane (faces camera), inner edge flush with cap outer wall
+  // cap outer r=0.50, torus major r=0.26 → center at 0.76 from bottle axis
+  const handleSideX = (0.50 + 0.26) * capScale;
 
   return (
     <group ref={groupRef}>
@@ -272,8 +274,8 @@ function ThermosMesh({
         <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
       </mesh>
 
-      {/* D-ring carry handle on top of cap */}
-      <mesh geometry={handleGeo} position={[0, handleY, 0]} castShadow>
+      {/* Mug-style side handle — torus in XY plane, depth-clipped by cap = D-shape from front */}
+      <mesh geometry={handleGeo} position={[handleSideX, capCenterY, 0]} castShadow>
         <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
       </mesh>
 
@@ -415,17 +417,18 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
       ctx.beginPath();
       ctx.moveTo(cx-bW/2+2, top+2); ctx.lineTo(cx+bW/2-2, top+2);
       ctx.strokeStyle="rgba(180,180,180,0.5)"; ctx.lineWidth=1.5; ctx.stroke();
-      // D-ring carry handle on top
-      const hRx = bW * 0.20;
-      const hRy = Math.max(4, capH * 0.65);
-      const handleTop = capTop - hRy * 2;
+      // Mug-style side handle on the right wall of the cap
+      const hR  = bW * 0.26;                      // matches torus major radius proportion
+      const hTube = bW * 0.065;
+      const capRight = cx + cW / 2;
+      const capMidY  = top - capH / 2;
+      // Draw right-half arc only (left half hidden inside cap via depth)
       ctx.beginPath();
-      ctx.ellipse(cx, capTop - hRy, hRx, hRy, 0, Math.PI, 0); // upper arc only
-      ctx.strokeStyle = `rgba(30,30,30,${Math.max(0, Math.cos(a)*0.9+0.2)})`;
-      ctx.lineWidth = bW * 0.095;
+      ctx.arc(capRight, capMidY, hR, -Math.PI / 2, Math.PI / 2); // right C-arc
+      ctx.strokeStyle = `rgba(18,18,18,${Math.max(0.15, Math.abs(Math.cos(a)) * 0.9 + 0.15)})`;
+      ctx.lineWidth = hTube * 2;
       ctx.lineCap = "round";
       ctx.stroke();
-      void handleTop; // suppress unused warning
 
       // Icon
       const iChar = iconName ? ICON_CHARS[iconName] : null;
