@@ -247,11 +247,10 @@ function ThermosMesh({
   });
 
   // Positions derived from profile: cap seat at y=1.76*s, cap h=0.40*s
-  const capCenterY  = 1.76 * capScale + 0.20 * capScale; // 1.96 — mid-height of cap
+  const capCenterY  = 1.76 * capScale + 0.20 * capScale; // 1.96
+  const capTopY     = 1.76 * capScale + 0.40 * capScale; // 2.16
+  const handleY     = capTopY + 0.046 * capScale;         // torus tube touches cap top
   const collarY     = 1.58 * capScale;                    // collar bulge in profile
-
-  // Side handle: inner ring edge flush with cap outer wall (r=0.50), ring major r=0.19
-  const handleSideX = (0.50 + 0.19) * capScale; // 0.69 * capScale
 
   return (
     <group ref={groupRef}>
@@ -273,8 +272,8 @@ function ThermosMesh({
         <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
       </mesh>
 
-      {/* D-ring side handle — attached to the cap wall, ring lies in XY plane (visible from front) */}
-      <mesh geometry={handleGeo} position={[handleSideX, capCenterY, 0]} castShadow>
+      {/* D-ring carry handle on top of cap */}
+      <mesh geometry={handleGeo} position={[0, handleY, 0]} castShadow>
         <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
       </mesh>
 
@@ -416,20 +415,17 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
       ctx.beginPath();
       ctx.moveTo(cx-bW/2+2, top+2); ctx.lineTo(cx+bW/2-2, top+2);
       ctx.strokeStyle="rgba(180,180,180,0.5)"; ctx.lineWidth=1.5; ctx.stroke();
-      // D-ring side handle — on the right wall of the cap
-      const hRx = bW * 0.18;
-      const hRy = Math.max(5, capH * 0.72);
-      const capRight = cx + cW / 2;
-      const capMidY  = top - capH / 2;
-      // Ring center sits outside the cap wall; draw right-side arc (visible half)
-      const handleCx = capRight + hRx;
-      const handleCy = capMidY;
+      // D-ring carry handle on top
+      const hRx = bW * 0.20;
+      const hRy = Math.max(4, capH * 0.65);
+      const handleTop = capTop - hRy * 2;
       ctx.beginPath();
-      ctx.ellipse(handleCx, handleCy, hRx, hRy, 0, -Math.PI / 2, Math.PI / 2); // right half arc
-      ctx.strokeStyle = `rgba(20,20,20,${Math.max(0, Math.cos(a) * 0.85 + 0.3)})`;
+      ctx.ellipse(cx, capTop - hRy, hRx, hRy, 0, Math.PI, 0); // upper arc only
+      ctx.strokeStyle = `rgba(30,30,30,${Math.max(0, Math.cos(a)*0.9+0.2)})`;
       ctx.lineWidth = bW * 0.095;
       ctx.lineCap = "round";
       ctx.stroke();
+      void handleTop; // suppress unused warning
 
       // Icon
       const iChar = iconName ? ICON_CHARS[iconName] : null;
