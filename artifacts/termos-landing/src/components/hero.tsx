@@ -37,7 +37,17 @@ export default function Hero() {
       </header>
 
       {/* Hero — full bleed dark, editorial */}
-      <section className="relative bg-[#111111] min-h-[92vh] flex items-center overflow-hidden">
+      <section className="relative min-h-[92vh] flex items-center overflow-hidden bg-[#111111]">
+        {/* Background image */}
+        <div className="absolute inset-0 z-0">
+          <img
+            src="/hero-bg-thermos.jpg"
+            alt=""
+            className="w-full h-full object-cover object-center"
+          />
+          <div className="absolute inset-0 bg-black/75" />
+        </div>
+
         {/* Giant ghost watermark */}
         <span
           aria-hidden
