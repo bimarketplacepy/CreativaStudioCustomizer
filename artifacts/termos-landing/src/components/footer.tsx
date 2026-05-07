@@ -12,7 +12,7 @@ export default function Footer() {
             className="h-8 object-contain mb-4"
           />
           <p className="text-sm text-muted-foreground max-w-xs leading-relaxed mb-5">
-            La tienda online de termos personalizados de Paraguay. Diseno tu proprio estilo y recibilo en la puerta de tu casa.
+            La tienda online de termos personalizados de Paraguay. Diseña tu propio estilo y recibilo en la puerta de tu casa.
           </p>
           <div className="space-y-2 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">

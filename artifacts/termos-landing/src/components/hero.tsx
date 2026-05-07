@@ -62,7 +62,7 @@ export default function Hero() {
             </div>
 
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight mb-4">
-              Diseña tu proprio<br />
+              Diseña tu propio<br />
               <span className="text-primary">Termo Unico</span>
             </h1>
 
