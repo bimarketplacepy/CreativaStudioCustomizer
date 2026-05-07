@@ -161,10 +161,6 @@ function ThermosMesh({
     return new THREE.TorusGeometry(0.460 * capScale, 0.030 * capScale, 6, 64);
   }, [size]);
 
-  // Subtle base foot ring
-  const baseRingGeo = useMemo(() => {
-    return new THREE.TorusGeometry(0.42 * capScale, 0.038 * capScale, 6, 64);
-  }, [size]);
 
   const texture = useMemo(
     () => makeBodyTexture(colorHex, text, iconName),
@@ -255,8 +251,6 @@ function ThermosMesh({
   // New profile: cap seat at y=1.78*s, cap h=0.42*s, collar at y=1.60*s
   const capCenterY = (1.78 + 0.21) * capScale; // 1.99
   const collarY    = 1.60 * capScale;
-  const baseRingY  = -1.78 * capScale; // foot ring just above rounded base
-
   // Handle center sits exactly on the cap outer wall → inner half depth-clipped → D-shape
   const handleX = 0.51 * capScale;
 
@@ -290,10 +284,7 @@ function ThermosMesh({
         <meshPhysicalMaterial color="#aaaaaa" roughness={0.12} metalness={0.98} clearcoat={0.6} envMapIntensity={2.2} />
       </mesh>
 
-      {/* Base foot ring */}
-      <mesh geometry={baseRingGeo} position={[0, baseRingY, 0]}>
-        <meshPhysicalMaterial color="#aaaaaa" roughness={0.15} metalness={0.95} clearcoat={0.5} envMapIntensity={2.0} />
-      </mesh>
+
     </group>
   );
 }
