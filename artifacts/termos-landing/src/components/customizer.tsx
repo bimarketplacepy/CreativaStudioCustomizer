@@ -68,7 +68,7 @@ export default function Customizer() {
   const [size, setSize] = useState(SIZES[1].id);
   const [color, setColor] = useState(COLORS[0].id);
   const [finish, setFinish] = useState(FINISHES[0].id);
-  const [text, setText] = useState("MI TERMO");
+  const [text, setText] = useState("");
   const [font, setFont] = useState(FONTS[0].id);
   const [icon, setIcon] = useState(ICONS[0].id);
   const [isOrdered, setIsOrdered] = useState(false);
