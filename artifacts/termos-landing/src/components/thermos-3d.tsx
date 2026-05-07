@@ -31,20 +31,23 @@ const ICON_CHARS: Record<string, string> = {
 function buildThermosPoints(size: string): THREE.Vector2[] {
   const scale = size === "sm" ? 0.78 : size === "md" ? 1.0 : size === "lg" ? 1.22 : 1.4;
   const s = (x: number, y: number) => new THREE.Vector2(x * scale, y * scale);
+  // Slim modern bottle — fully rounded bottom, no base ring
   return [
-    s(0.01, -1.80),
-    s(0.52, -1.80),
-    s(0.58, -1.72),
-    s(0.60, -1.50),
-    s(0.60,  0.80),
-    s(0.58,  1.20),
-    s(0.50,  1.52),
-    s(0.38,  1.65),
-    s(0.32,  1.80),
-    s(0.30,  2.05),
-    s(0.22,  2.12),
-    s(0.18,  2.20),
-    s(0.16,  2.22),
+    s(0.00, -1.85),   // bottom tip
+    s(0.14, -1.83),   // rounded base curve
+    s(0.30, -1.78),
+    s(0.46, -1.66),   // base flare
+    s(0.54, -1.48),   // lower body transition
+    s(0.57,  -1.20),
+    s(0.58,   0.80),  // main body (straight)
+    s(0.56,   1.12),  // upper body
+    s(0.50,   1.40),  // shoulder
+    s(0.40,   1.60),  // shoulder taper
+    s(0.32,   1.74),  // neck
+    s(0.28,   1.92),  // cap base
+    s(0.24,   2.06),
+    s(0.20,   2.16),
+    s(0.17,   2.22),  // cap tip
   ];
 }
 
@@ -261,11 +264,6 @@ function ThermosMesh({
         />
       </mesh>
 
-      {/* Bottom ring */}
-      <mesh position={[0, -1.80 * scale - 0.02, 0]}>
-        <torusGeometry args={[0.54 * scale, 0.04 * scale, 8, 128]} />
-        <meshPhysicalMaterial color="#1a1a1a" roughness={0.4} metalness={0.8} />
-      </mesh>
     </group>
   );
 }
@@ -273,10 +271,10 @@ function ThermosMesh({
 // Thermos center Y and half-height per size (scale: sm=0.78, md=1.0, lg=1.22, xl=1.4)
 // Body spans y: -1.80*s to (2.22+0.10+0.10)*s (cap top). Center and padding computed below.
 const RIG_PARAMS: Record<string, { fov: number; camZ: number; camY: number; shadowY: number }> = {
-  sm:  { fov: 28, camZ: 7.8, camY: 0.24, shadowY: -1.42 },
-  md:  { fov: 30, camZ: 9.0, camY: 0.30, shadowY: -1.82 },
-  lg:  { fov: 32, camZ: 10.5, camY: 0.38, shadowY: -2.22 },
-  xl:  { fov: 34, camZ: 12.0, camY: 0.44, shadowY: -2.55 },
+  sm:  { fov: 28, camZ: 7.8, camY: 0.22, shadowY: -1.46 },
+  md:  { fov: 30, camZ: 9.0, camY: 0.28, shadowY: -1.87 },
+  lg:  { fov: 32, camZ: 10.5, camY: 0.36, shadowY: -2.28 },
+  xl:  { fov: 34, camZ: 12.0, camY: 0.42, shadowY: -2.60 },
 };
 
 function Rig({ size }: { size: string }) {
@@ -351,29 +349,25 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
       grad.addColorStop(Math.min(1, hlPos+0.20), `rgb(${mix(r,0,0.10)},${mix(g,0,0.10)},${mix(b,0,0.10)})`);
       grad.addColorStop(1, `rgb(${mix(r,0,0.58)},${mix(g,0,0.58)},${mix(b,0,0.58)})`);
 
-      const rnd = 14;
+      // Body shape: small rounded top corners, large semicircular bottom (no ring)
+      const topRnd = 8;
+      const botRnd = bW / 2;
       ctx.beginPath();
-      ctx.moveTo(left+rnd, top); ctx.lineTo(right-rnd, top);
-      ctx.quadraticCurveTo(right,top,right,top+rnd);
-      ctx.lineTo(right, bottom-rnd);
-      ctx.quadraticCurveTo(right,bottom,right-rnd,bottom);
-      ctx.lineTo(left+rnd, bottom);
-      ctx.quadraticCurveTo(left,bottom,left,bottom-rnd);
-      ctx.lineTo(left, top+rnd);
-      ctx.quadraticCurveTo(left,top,left+rnd,top);
+      ctx.moveTo(left + topRnd, top);
+      ctx.lineTo(right - topRnd, top);
+      ctx.quadraticCurveTo(right, top, right, top + topRnd);
+      ctx.lineTo(right, bottom - botRnd);
+      ctx.bezierCurveTo(right, bottom + botRnd * 0.55, left, bottom + botRnd * 0.55, left, bottom - botRnd);
+      ctx.lineTo(left, top + topRnd);
+      ctx.quadraticCurveTo(left, top, left + topRnd, top);
       ctx.closePath();
       ctx.fillStyle = grad; ctx.fill();
 
-      // Ellipses: depth changes with yaw; size changes with pitch (top bigger when tilted back)
+      // Top ellipse (depth / rim indicator)
       const eRY = Math.max(3, (bW/2)*0.30*Math.abs(Math.cos(a)));
-      const topEllipseExtra   = Math.max(0,  ax) * 10; // tilted back → bigger top
-      const botEllipseExtra   = Math.max(0, -ax) * 10; // tilted fwd  → bigger bottom
-
+      const topEllipseExtra = Math.max(0, ax) * 10;
       ctx.beginPath(); ctx.ellipse(cx, top, bW/2, eRY + topEllipseExtra, 0, 0, Math.PI*2);
       ctx.fillStyle = `rgb(${mix(r,0,0.32)},${mix(g,0,0.32)},${mix(b,0,0.32)})`; ctx.fill();
-
-      ctx.beginPath(); ctx.ellipse(cx, bottom, bW/2, eRY + botEllipseExtra, 0, 0, Math.PI*2);
-      ctx.fillStyle = "#1a1a1a"; ctx.fill();
 
       // Cap
       const cW = bW*0.76;
@@ -413,10 +407,11 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
           ctx.fillText(text.toUpperCase(), 0, 0); ctx.restore();
         }
       }
-      // Shadow
-      const sGrad = ctx.createRadialGradient(cx, bottom+12, 4, cx, bottom+12, bW*0.85);
+      // Shadow — offset below the rounded bottom
+      const shadowY = bottom + botRnd * 0.35 + 10;
+      const sGrad = ctx.createRadialGradient(cx, shadowY, 4, cx, shadowY, bW*0.85);
       sGrad.addColorStop(0,"rgba(0,0,0,0.18)"); sGrad.addColorStop(1,"rgba(0,0,0,0)");
-      ctx.beginPath(); ctx.ellipse(cx, bottom+12, bW*0.70, 10, 0, 0, Math.PI*2);
+      ctx.beginPath(); ctx.ellipse(cx, shadowY, bW*0.70, 10, 0, 0, Math.PI*2);
       ctx.fillStyle=sGrad; ctx.fill();
 
       // Advance angles
