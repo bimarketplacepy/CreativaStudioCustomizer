@@ -1,7 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { ShoppingCart, Star, Truck } from "lucide-react";
+import { Star, Truck } from "lucide-react";
 
 export default function Hero() {
   const scrollToCustomizer = () => {
@@ -24,10 +24,6 @@ export default function Hero() {
             <a href="#gallery" className="hover:text-foreground transition-colors">Galeria</a>
             <a href="#" className="hover:text-foreground transition-colors">Contacto</a>
           </nav>
-          <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
-            <ShoppingCart className="w-4 h-4" />
-            Pedir Ahora
-          </Button>
         </div>
       </header>
 
@@ -43,10 +39,6 @@ export default function Hero() {
           <div className="absolute inset-0 bg-white/75" />
         </div>
 
-        {/* Subtle top banner */}
-        <div className="relative z-10 bg-primary text-primary-foreground text-center py-2 text-sm font-medium">
-          Envios a todo el pais — Personalizacion 100% a tu gusto
-        </div>
 
         <div className="relative z-10 max-w-7xl mx-auto px-6 py-16 md:py-24 flex flex-col md:flex-row items-center gap-12">
           {/* Left content */}
