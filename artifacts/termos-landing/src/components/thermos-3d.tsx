@@ -31,23 +31,23 @@ const ICON_CHARS: Record<string, string> = {
 function buildThermosPoints(size: string): THREE.Vector2[] {
   const scale = size === "sm" ? 0.78 : size === "md" ? 1.0 : size === "lg" ? 1.22 : 1.4;
   const s = (x: number, y: number) => new THREE.Vector2(x * scale, y * scale);
-  // Wide vacuum bottle (reference: blue wide-body bottle with flat screw cap)
-  // Rounded base → wide straight cylinder → shoulder taper → collar → cap seat
+  // Profile matched to reference: tall wide-body vacuum bottle
+  // Rounded bottom → straight wide cylinder → gentle shoulder → short neck → cap seat
   return [
-    s(0.00, -1.85),   // bottom centre
-    s(0.10, -1.84),   // rounded base curve
-    s(0.28, -1.80),
-    s(0.48, -1.70),   // base flare
-    s(0.59, -1.52),   // body start
-    s(0.62, -1.25),   // lower body (widest)
-    s(0.62,  0.65),   // main body – wide & straight
-    s(0.60,  0.90),   // upper body
-    s(0.56,  1.10),   // shoulder start
-    s(0.50,  1.30),   // shoulder
-    s(0.47,  1.48),   // neck
-    s(0.48,  1.58),   // collar ring (slight bulge)
-    s(0.46,  1.68),   // collar top
-    s(0.44,  1.76),   // cap seat
+    s(0.00, -1.90),   // bottom centre
+    s(0.08, -1.89),
+    s(0.22, -1.86),
+    s(0.42, -1.78),   // base curve
+    s(0.58, -1.62),   // base flare into body
+    s(0.64, -1.40),   // lower body
+    s(0.64,  0.75),   // main body — tall & straight (widest)
+    s(0.63,  0.95),   // upper body
+    s(0.60,  1.12),   // shoulder start
+    s(0.54,  1.32),   // shoulder mid
+    s(0.48,  1.50),   // neck
+    s(0.47,  1.60),   // collar bulge
+    s(0.46,  1.70),
+    s(0.44,  1.78),   // cap seat
   ];
 }
 
@@ -145,19 +145,25 @@ function ThermosMesh({
 
   const capScale = size === "sm" ? 0.78 : size === "md" ? 1.0 : size === "lg" ? 1.22 : 1.4;
 
-  // Wide flat screw cap — matches reference image
+  // Wide flat screw cap
   const capGeo = useMemo(() => {
-    return new THREE.CylinderGeometry(0.50 * capScale, 0.46 * capScale, 0.40 * capScale, 64);
+    return new THREE.CylinderGeometry(0.51 * capScale, 0.47 * capScale, 0.42 * capScale, 64);
   }, [size]);
 
-  // Mug-style side handle on the cap wall
+  // Side D-handle: center placed exactly at cap outer wall (r=0.51)
+  // Inner half sits inside the cap mesh → depth-clipped → true D-shape from front
   const handleGeo = useMemo(() => {
-    return new THREE.TorusGeometry(0.26 * capScale, 0.065 * capScale, 12, 32);
+    return new THREE.TorusGeometry(0.20 * capScale, 0.055 * capScale, 12, 32);
   }, [size]);
 
   // Thin metal collar ring at the neck seam
   const collarGeo = useMemo(() => {
-    return new THREE.TorusGeometry(0.455 * capScale, 0.028 * capScale, 6, 64);
+    return new THREE.TorusGeometry(0.460 * capScale, 0.030 * capScale, 6, 64);
+  }, [size]);
+
+  // Subtle base foot ring
+  const baseRingGeo = useMemo(() => {
+    return new THREE.TorusGeometry(0.42 * capScale, 0.038 * capScale, 6, 64);
   }, [size]);
 
   const texture = useMemo(
@@ -246,13 +252,13 @@ function ThermosMesh({
     }
   });
 
-  // Positions derived from profile: cap seat at y=1.76*s, cap h=0.40*s
-  const capCenterY  = 1.76 * capScale + 0.20 * capScale; // 1.96
-  const collarY     = 1.58 * capScale;
+  // New profile: cap seat at y=1.78*s, cap h=0.42*s, collar at y=1.60*s
+  const capCenterY = (1.78 + 0.21) * capScale; // 1.99
+  const collarY    = 1.60 * capScale;
+  const baseRingY  = -1.78 * capScale; // foot ring just above rounded base
 
-  // Side mug handle: torus in XY plane (faces camera), inner edge flush with cap outer wall
-  // cap outer r=0.50, torus major r=0.26 → center at 0.76 from bottle axis
-  const handleSideX = (0.50 + 0.26) * capScale;
+  // Handle center sits exactly on the cap outer wall → inner half depth-clipped → D-shape
+  const handleX = 0.51 * capScale;
 
   return (
     <group ref={groupRef}>
@@ -274,14 +280,19 @@ function ThermosMesh({
         <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
       </mesh>
 
-      {/* Mug-style side handle — torus in XY plane, depth-clipped by cap = D-shape from front */}
-      <mesh geometry={handleGeo} position={[handleSideX, capCenterY, 0]} castShadow>
+      {/* D-ring side handle: center ON the cap wall → depth test hides inner half → D-shape */}
+      <mesh geometry={handleGeo} position={[handleX, capCenterY, 0]} castShadow>
         <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
       </mesh>
 
-      {/* Metal collar seam ring at neck */}
+      {/* Metal collar seam ring */}
       <mesh geometry={collarGeo} position={[0, collarY, 0]}>
-        <meshPhysicalMaterial color="#888888" roughness={0.15} metalness={0.95} clearcoat={0.5} envMapIntensity={2.0} />
+        <meshPhysicalMaterial color="#aaaaaa" roughness={0.12} metalness={0.98} clearcoat={0.6} envMapIntensity={2.2} />
+      </mesh>
+
+      {/* Base foot ring */}
+      <mesh geometry={baseRingGeo} position={[0, baseRingY, 0]}>
+        <meshPhysicalMaterial color="#aaaaaa" roughness={0.15} metalness={0.95} clearcoat={0.5} envMapIntensity={2.0} />
       </mesh>
     </group>
   );
@@ -417,15 +428,14 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
       ctx.beginPath();
       ctx.moveTo(cx-bW/2+2, top+2); ctx.lineTo(cx+bW/2-2, top+2);
       ctx.strokeStyle="rgba(180,180,180,0.5)"; ctx.lineWidth=1.5; ctx.stroke();
-      // Mug-style side handle on the right wall of the cap
-      const hR  = bW * 0.26;                      // matches torus major radius proportion
-      const hTube = bW * 0.065;
+      // D-handle on cap side: compact C-arc from cap right wall
+      const hR    = bW * 0.20;
+      const hTube = bW * 0.055;
       const capRight = cx + cW / 2;
       const capMidY  = top - capH / 2;
-      // Draw right-half arc only (left half hidden inside cap via depth)
       ctx.beginPath();
-      ctx.arc(capRight, capMidY, hR, -Math.PI / 2, Math.PI / 2); // right C-arc
-      ctx.strokeStyle = `rgba(18,18,18,${Math.max(0.15, Math.abs(Math.cos(a)) * 0.9 + 0.15)})`;
+      ctx.arc(capRight, capMidY, hR, -Math.PI / 2, Math.PI / 2); // right C-arc only
+      ctx.strokeStyle = `rgba(18,18,18,${Math.max(0.18, Math.abs(Math.cos(a)) * 0.88 + 0.18)})`;
       ctx.lineWidth = hTube * 2;
       ctx.lineCap = "round";
       ctx.stroke();
