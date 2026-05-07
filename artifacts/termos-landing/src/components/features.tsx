@@ -2,10 +2,10 @@ import React from "react";
 import { motion } from "framer-motion";
 
 const STATS = [
-  { num: "24H", sub: "/ 12H", label: "Frío & Calor", desc: "Doble pared al vacío — tecnología de aislamiento profesional." },
-  { num: "18/8", sub: "", label: "Acero Premium", desc: "Grado alimentario. Resistente al uso diario intensivo." },
-  { num: "100%", sub: "", label: "Personalizable", desc: "Color, texto, acabado e ícono. Completamente tuyo." },
-  { num: "PY", sub: "", label: "Envío nacional", desc: "Empaquetado con cuidado y entregado en todo el país." },
+  { num: "HD", sub: "", label: "Impresión premium", desc: "Tu diseño en alta definición, fusionado directo en el termo. No se raya, no se pela, no se desvanece." },
+  { num: "360°", sub: "", label: "Diseño total", desc: "Personalización completa alrededor de tu termo. Cada ángulo cuenta tu historia." },
+  { num: "100%", sub: "", label: "A tu medida", desc: "Elegís el color, el texto, el ícono y el acabado. Completamente único, como vos." },
+  { num: "PY", sub: "", label: "Envío nacional", desc: "Empaquetado con cuidado y entregado en todo el país en tiempo récord." },
 ];
 
 export default function Features() {

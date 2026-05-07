@@ -111,8 +111,8 @@ export default function Hero() {
                 <p className="text-white/40 text-xs uppercase tracking-wider mt-0.5">Colores disponibles</p>
               </div>
               <div>
-                <p className="text-white text-2xl font-black">24H</p>
-                <p className="text-white/40 text-xs uppercase tracking-wider mt-0.5">Frío garantizado</p>
+                <p className="text-white text-2xl font-black">100%</p>
+                <p className="text-white/40 text-xs uppercase tracking-wider mt-0.5">Personalizado</p>
               </div>
             </div>
           </motion.div>
