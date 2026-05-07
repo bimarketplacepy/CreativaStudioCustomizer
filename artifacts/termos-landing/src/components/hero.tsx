@@ -12,13 +12,13 @@ export default function Hero() {
     <>
       {/* Navbar */}
       <header className="w-full border-b border-border bg-white sticky top-0 z-50 shadow-xs">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center">
           <img
             src="/navbar-logo.png"
             alt="MarketPlace"
             className="h-8 object-contain"
           />
-          <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
+          <nav className="hidden md:flex flex-1 justify-center items-center gap-6 text-sm text-muted-foreground">
             <a href="#" className="hover:text-foreground transition-colors">Inicio</a>
             <a href="#customizer" onClick={e => { e.preventDefault(); scrollToCustomizer(); }} className="hover:text-foreground transition-colors">Personalizar</a>
             <a href="#gallery" className="hover:text-foreground transition-colors">Galeria</a>
