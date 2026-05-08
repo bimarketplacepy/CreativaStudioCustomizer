@@ -14,7 +14,7 @@ export default function Hero() {
   return (
     <>
       {/* Navbar — black, Stanley-style */}
-      <header className="w-full bg-black sticky top-0 z-50">
+      <header className="w-full bg-[#2a2a2a] sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center">
           <img
             src="/navbar-logo.png"
@@ -37,7 +37,7 @@ export default function Hero() {
       </header>
 
       {/* Hero — full bleed dark, editorial */}
-      <section className="relative min-h-[92vh] flex items-center overflow-hidden bg-[#111111]">
+      <section className="relative min-h-[92vh] flex items-center overflow-hidden bg-[#2a2a2a]">
         {/* Background image */}
         <div className="absolute inset-0 z-0">
           <img

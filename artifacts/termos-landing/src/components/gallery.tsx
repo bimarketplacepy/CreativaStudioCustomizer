@@ -10,7 +10,7 @@ export default function Gallery() {
   return (
     <>
       {/* Full-bleed CTA — black strip */}
-      <section className="bg-black py-24 px-6">
+      <section className="bg-[#2a2a2a] py-24 px-6">
         <motion.div
           className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8"
           initial={{ opacity: 0, y: 20 }}
