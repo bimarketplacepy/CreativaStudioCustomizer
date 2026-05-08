@@ -117,24 +117,25 @@ export default function Hero() {
             </div>
           </motion.div>
 
-          {/* Right — brand logo on light panel */}
+          {/* Right — model photo */}
           <motion.div
             className="flex-1 flex items-center justify-center"
-            initial={{ opacity: 0, scale: 0.92 }}
+            initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.9, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div className="relative w-72 h-72 lg:w-96 lg:h-96">
-              {/* Outer glow ring */}
-              <div className="absolute inset-0 rounded-full bg-white/5 border border-white/10" />
-              {/* Inner panel */}
-              <div className="absolute inset-8 rounded-full bg-white flex items-center justify-center shadow-2xl">
-                <motion.img
+            <div className="relative w-72 lg:w-80 xl:w-96 overflow-hidden rounded-sm shadow-2xl" style={{ height: "520px" }}>
+              <img
+                src="/banner-model.jpg"
+                alt="Modelo"
+                className="w-full h-full object-cover object-top"
+              />
+              {/* La Creativa logo overlay */}
+              <div className="absolute bottom-4 left-4 right-4 bg-black/60 backdrop-blur-sm px-4 py-3 flex items-center justify-center">
+                <img
                   src="/la-creativa-logo.png"
                   alt="La Creativa"
-                  className="w-3/4 object-contain"
-                  animate={{ y: [0, -10, 0] }}
-                  transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+                  className="h-8 object-contain brightness-0 invert"
                 />
               </div>
             </div>
