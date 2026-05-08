@@ -43,7 +43,7 @@ export default function Features() {
             </div>
 
             {/* Right accent bar */}
-            <div className="hidden lg:block shrink-0 w-1 h-10 bg-red-600 rounded-full" />
+            <div className="hidden lg:block shrink-0 w-1 h-10 bg-[#8B1A2F] rounded-full" />
           </motion.div>
         ))}
       </div>

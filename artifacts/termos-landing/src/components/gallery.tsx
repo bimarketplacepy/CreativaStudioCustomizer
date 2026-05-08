@@ -20,7 +20,7 @@ export default function Gallery() {
           <div>
             <p className="text-white/40 text-[10px] uppercase tracking-[0.4em] mb-4">La Creativa</p>
             <h3 className="text-4xl md:text-6xl font-black uppercase text-white leading-none">
-              Hace tu<br /><span className="text-red-500">diseño</span><br />ahora.
+              Hace tu<br /><span className="text-[#8B1A2F]">diseño</span><br />ahora.
             </h3>
           </div>
           <button

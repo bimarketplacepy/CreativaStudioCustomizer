@@ -78,7 +78,7 @@
   --foreground: 220 10% 18%;
   --border: 220 10% 88%;
   --input: 220 10% 88%;
-  --ring: 1 72% 47%;
+  --ring: 345 70% 32%;
 
   --card: 0 0% 98%;
   --card-foreground: 220 10% 18%;
@@ -88,8 +88,8 @@
   --popover-foreground: 220 10% 18%;
   --popover-border: 220 10% 88%;
 
-  /* Red from the Marketplace crown logo */
-  --primary: 1 72% 47%;
+  /* Bordeaux from the Marketplace crown logo */
+  --primary: 345 70% 32%;
   --primary-foreground: 0 0% 100%;
 
   --secondary: 220 10% 96%;
@@ -98,7 +98,7 @@
   --muted: 220 10% 95%;
   --muted-foreground: 220 10% 50%;
 
-  --accent: 1 72% 47%;
+  --accent: 345 70% 32%;
   --accent-foreground: 0 0% 100%;
 
   --destructive: 0 84% 60%;
@@ -107,13 +107,13 @@
   --sidebar: 0 0% 98%;
   --sidebar-foreground: 220 10% 18%;
   --sidebar-border: 220 10% 90%;
-  --sidebar-primary: 1 72% 47%;
+  --sidebar-primary: 345 70% 32%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 220 10% 95%;
   --sidebar-accent-foreground: 220 10% 30%;
-  --sidebar-ring: 1 72% 47%;
+  --sidebar-ring: 345 70% 32%;
 
-  --chart-1: 1 72% 47%;
+  --chart-1: 345 70% 32%;
   --chart-2: 220 70% 50%;
   --chart-3: 142 71% 45%;
   --chart-4: 38 92% 50%;

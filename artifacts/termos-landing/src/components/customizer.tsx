@@ -195,7 +195,7 @@ export default function Customizer() {
                           onClick={() => setSize(s.id)}
                           className={`p-4 border rounded-xl flex flex-col items-center justify-center gap-3 transition-all ${
                             size === s.id
-                              ? 'border-primary bg-red-50 text-primary ring-1 ring-primary/30'
+                              ? 'border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30'
                               : 'border-border hover:border-primary/40 text-muted-foreground hover:bg-secondary/50'
                           }`}
                         >
@@ -254,7 +254,7 @@ export default function Customizer() {
                           onClick={() => setFinish(f.id)}
                           className={`p-3 text-center border rounded-lg font-medium text-sm transition-all ${
                             finish === f.id
-                              ? 'border-primary text-primary bg-red-50 ring-1 ring-primary/30'
+                              ? 'border-primary text-primary bg-[#f5eaec] ring-1 ring-primary/30'
                               : 'border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50'
                           }`}
                         >
@@ -288,7 +288,7 @@ export default function Customizer() {
                           onClick={() => setFont(f.id)}
                           className={`p-4 text-center border rounded-lg text-lg transition-all ${f.css} ${
                             font === f.id
-                              ? 'border-primary text-primary bg-red-50 ring-1 ring-primary/30'
+                              ? 'border-primary text-primary bg-[#f5eaec] ring-1 ring-primary/30'
                               : 'border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50'
                           }`}
                         >
@@ -310,7 +310,7 @@ export default function Customizer() {
                           onClick={() => setIcon(i.id)}
                           className={`aspect-square flex flex-col items-center justify-center gap-1 border rounded-xl text-sm transition-all ${
                             icon === i.id
-                              ? 'border-primary bg-red-50 text-primary ring-1 ring-primary/30'
+                              ? 'border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30'
                               : 'border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50'
                           }`}
                         >

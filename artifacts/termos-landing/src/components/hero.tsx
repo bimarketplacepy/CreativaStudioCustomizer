@@ -78,7 +78,7 @@ export default function Hero() {
             <h1 className="text-[clamp(3rem,9vw,7rem)] font-black leading-[0.9] uppercase text-white mb-8">
               Diseña<br />
               tu propio<br />
-              <span className="text-red-500">Termo.</span>
+              <span className="text-[#8B1A2F]">Termo.</span>
             </h1>
 
             <p className="text-white/50 text-base max-w-sm mb-10 leading-relaxed">
@@ -88,7 +88,7 @@ export default function Hero() {
             <div className="flex flex-col sm:flex-row gap-4">
               <button
                 onClick={scrollToCustomizer}
-                className="bg-red-600 hover:bg-red-700 text-white font-bold px-8 py-4 text-xs uppercase tracking-[0.2em] transition-colors"
+                className="bg-[#8B1A2F] hover:bg-[#721527] text-white font-bold px-8 py-4 text-xs uppercase tracking-[0.2em] transition-colors"
               >
                 Personalizar Ahora
               </button>
