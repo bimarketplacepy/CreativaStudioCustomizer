@@ -37,9 +37,29 @@ const FINISHES = [
 ];
 
 const FONTS = [
-  { id: "font-sans", name: "Moderno", css: "font-sans font-bold uppercase tracking-tight" },
-  { id: "font-mono", name: "Tecnico", css: "font-mono uppercase tracking-widest" },
-  { id: "font-serif", name: "Clasico", css: "font-serif italic" },
+  { id: "f1",  name: "Cronos Pro",        style: { fontFamily: "'Abril Fatface', serif" } },
+  { id: "f2",  name: "Renogare",          style: { fontFamily: "'Bebas Neue', sans-serif", letterSpacing: "0.1em" } },
+  { id: "f3",  name: "TT Rounds Neue",    style: { fontFamily: "'Righteous', sans-serif" } },
+  { id: "f4",  name: "Impac",             style: { fontFamily: "Impact, 'Arial Narrow', sans-serif", letterSpacing: "0.05em" } },
+  { id: "f5",  name: "Heavitas",          style: { fontFamily: "'Josefin Sans', sans-serif", fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.08em" } },
+  { id: "f6",  name: "KG Dark Side",      style: { fontFamily: "'Permanent Marker', cursive" } },
+  { id: "f7",  name: "Square 721",        style: { fontFamily: "'Courier New', monospace", fontWeight: 700, letterSpacing: "0.05em" } },
+  { id: "f8",  name: "Libre Baskerville", style: { fontFamily: "'Libre Baskerville', serif" } },
+  { id: "f9",  name: "Bree Serif",        style: { fontFamily: "'Bree Serif', serif" } },
+  { id: "f10", name: "Rimouski Sb",       style: { fontFamily: "'Lobster', cursive" } },
+  { id: "f11", name: "Party Confetti",    style: { fontFamily: "'Caveat', cursive", fontWeight: 700 } },
+  { id: "f12", name: "Freestyle Script",  style: { fontFamily: "'Dancing Script', cursive", fontWeight: 700 } },
+  { id: "f13", name: "Kissing Season",    style: { fontFamily: "'Satisfy', cursive" } },
+  { id: "f14", name: "Tipografía 14",     style: { fontFamily: "'Georgia', serif", fontStyle: "italic", fontWeight: 700 } },
+  { id: "f15", name: "Eisha",             style: { fontFamily: "'Yellowtail', cursive" } },
+  { id: "f16", name: "Bulgati",           style: { fontFamily: "'Abril Fatface', serif", letterSpacing: "0.05em" } },
+  { id: "f17", name: "Ahony Huer",        style: { fontFamily: "'Righteous', sans-serif", letterSpacing: "0.12em" } },
+  { id: "f18", name: "Era",               style: { fontFamily: "'Arial', sans-serif", fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase" as const } },
+  { id: "f19", name: "Bii Dreams",        style: { fontFamily: "'Pacifico', cursive" } },
+  { id: "f20", name: "Yellowtail",        style: { fontFamily: "'Yellowtail', cursive" } },
+  { id: "f21", name: "Pacífico",          style: { fontFamily: "'Pacifico', cursive" } },
+  { id: "f22", name: "Milkshake",         style: { fontFamily: "'Permanent Marker', cursive", letterSpacing: "0.05em" } },
+  { id: "f23", name: "Blenda",            style: { fontFamily: "'Bebas Neue', sans-serif", letterSpacing: "0.2em", fontSize: "1.1em" } },
 ];
 
 const ICONS = [
@@ -70,6 +90,7 @@ export default function Customizer() {
   const [finish, setFinish] = useState(FINISHES[0].id);
   const [text, setText] = useState("");
   const [font, setFont] = useState(FONTS[0].id);
+  const activeFont = FONTS.find(f => f.id === font) || FONTS[0];
   const [icon, setIcon] = useState(ICONS[0].id);
   const [isOrdered, setIsOrdered] = useState(false);
 
@@ -109,7 +130,8 @@ export default function Customizer() {
                     colorHex={activeColorHex}
                     finish={finish}
                     text={text}
-                    fontClass={FONTS.find(f => f.id === font)?.css || FONTS[0].css}
+                    fontClass=""
+                    fontStyle={activeFont.style}
                     iconName={ICON_IDS[icon] ?? null}
                     size={size}
                   />
@@ -280,19 +302,25 @@ export default function Customizer() {
                   </div>
 
                   <div className="pt-4 border-t border-border">
-                    <Label className="text-sm font-medium text-foreground mb-3 block">Estilo de Tipografia</Label>
-                    <div className="grid grid-cols-1 gap-3">
-                      {FONTS.map(f => (
+                    <Label className="text-sm font-medium text-foreground mb-3 block">Elegí tu Tipografía</Label>
+                    <div className="grid grid-cols-2 gap-2 max-h-[340px] overflow-y-auto pr-1">
+                      {FONTS.map((f, i) => (
                         <button
                           key={f.id}
                           onClick={() => setFont(f.id)}
-                          className={`p-4 text-center border rounded-lg text-lg transition-all ${f.css} ${
+                          className={`p-3 text-center border rounded-lg transition-all ${
                             font === f.id
-                              ? 'border-primary text-primary bg-[#f5eaec] ring-1 ring-primary/30'
+                              ? 'border-primary bg-[#f5eaec] ring-1 ring-primary/30'
                               : 'border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50'
                           }`}
                         >
-                          {text || f.name}
+                          <span
+                            className={`block text-base mb-0.5 ${font === f.id ? 'text-primary' : 'text-foreground'}`}
+                            style={f.style}
+                          >
+                            {text || f.name}
+                          </span>
+                          <span className="block text-[10px] text-muted-foreground">{i + 1}. {f.name}</span>
                         </button>
                       ))}
                     </div>

@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, useState, Suspense, Component, ReactNode } from "react";
+import React, { useRef, useEffect, useMemo, useState, Suspense, Component, ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, ContactShadows, PerspectiveCamera } from "@react-three/drei";
 import * as THREE from "three";
@@ -19,6 +19,7 @@ interface Thermos3DProps {
   finish: string;
   text: string;
   fontClass: string;
+  fontStyle?: React.CSSProperties;
   iconName: string | null;
   size: string;
 }
@@ -54,7 +55,8 @@ function buildThermosPoints(size: string): THREE.Vector2[] {
 function makeBodyTexture(
   colorHex: string,
   text: string,
-  iconName: string | null
+  iconName: string | null,
+  fontFamily = "Inter, system-ui, sans-serif"
 ): THREE.CanvasTexture {
   const W = 1024, H = 2048;
   const canvas = document.createElement("canvas");
@@ -95,7 +97,7 @@ function makeBodyTexture(
   if (text) {
     ctx.save();
     const fontSize = Math.round(W * 0.115);
-    ctx.font = `900 ${fontSize}px Inter, system-ui, sans-serif`;
+    ctx.font = `900 ${fontSize}px ${fontFamily}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "rgba(255,255,255,0.95)";
@@ -120,10 +122,10 @@ function makeBodyTexture(
 }
 
 function ThermosMesh({
-  colorHex, finish, text, iconName, size,
+  colorHex, finish, text, iconName, size, fontFamily,
 }: {
   colorHex: string; finish: string; text: string;
-  iconName: string | null; size: string;
+  iconName: string | null; size: string; fontFamily?: string;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
@@ -163,8 +165,8 @@ function ThermosMesh({
 
 
   const texture = useMemo(
-    () => makeBodyTexture(colorHex, text, iconName),
-    [colorHex, text, iconName]
+    () => makeBodyTexture(colorHex, text, iconName, fontFamily),
+    [colorHex, text, iconName, fontFamily]
   );
 
   // PBR material params per finish
@@ -533,6 +535,7 @@ function ThreeCanvas(props: Thermos3DProps) {
           text={props.text}
           iconName={props.iconName}
           size={props.size}
+          fontFamily={props.fontStyle?.fontFamily as string | undefined}
         />
 
         <ContactShadows
