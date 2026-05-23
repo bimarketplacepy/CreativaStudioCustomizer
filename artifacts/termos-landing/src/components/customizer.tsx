@@ -40,7 +40,7 @@ const FONTS = [
   { id: "f1",  name: "Cronos Pro",        style: { fontFamily: "'Cronos Pro', serif", fontWeight: 600 } },
   { id: "f2",  name: "Renogare",          style: { fontFamily: "'Bebas Neue', sans-serif", letterSpacing: "0.1em" } },
   { id: "f3",  name: "TT Rounds Neue",    style: { fontFamily: "'TT Rounds Neue', sans-serif", fontWeight: 600 } },
-  { id: "f4",  name: "Impac",             style: { fontFamily: "Impact, 'Arial Narrow', sans-serif", letterSpacing: "0.05em" } },
+  { id: "f4",  name: "Impac",             style: { fontFamily: "'Impacted', sans-serif" } },
   { id: "f5",  name: "Heavitas",          style: { fontFamily: "'Heavitas', sans-serif" } },
   { id: "f6",  name: "KG Dark Side",      style: { fontFamily: "'Permanent Marker', cursive" } },
   { id: "f7",  name: "Square 721",        style: { fontFamily: "'Courier New', monospace", fontWeight: 700, letterSpacing: "0.05em" } },
@@ -49,8 +49,8 @@ const FONTS = [
   { id: "f10", name: "Rimouski Sb",       style: { fontFamily: "'Lobster', cursive" } },
   { id: "f11", name: "Party Confetti",    style: { fontFamily: "'Party Confetti', cursive" } },
   { id: "f12", name: "Freestyle Script",  style: { fontFamily: "'Freestyle Script', cursive", fontWeight: 400 } },
-  { id: "f13", name: "Kissing Season",    style: { fontFamily: "'Amertha', cursive" } },
-  { id: "f14", name: "Tipografía 14",     style: { fontFamily: "'Georgia', serif", fontStyle: "italic", fontWeight: 700 } },
+  { id: "f13", name: "Kissing Season",    style: { fontFamily: "'Kissing Season', cursive" } },
+  { id: "f14", name: "Quimil",            style: { fontFamily: "'Quimil', serif" } },
   { id: "f15", name: "Eisha",             style: { fontFamily: "'Ellisha', cursive", fontStyle: "italic" } },
   { id: "f16", name: "Bulgati",           style: { fontFamily: "'Abril Fatface', serif", letterSpacing: "0.05em" } },
   { id: "f17", name: "Ahony Huer",        style: { fontFamily: "'Anthony Hunter', cursive", fontStyle: "italic" } },
@@ -58,7 +58,7 @@ const FONTS = [
   { id: "f19", name: "Bii Dreams",        style: { fontFamily: "'Billion Dreams', cursive" } },
   { id: "f20", name: "Yellowtail",        style: { fontFamily: "'Yellowtail', cursive" } },
   { id: "f21", name: "Pacífico",          style: { fontFamily: "'Pacifico', cursive" } },
-  { id: "f22", name: "Milkshake",         style: { fontFamily: "'Permanent Marker', cursive", letterSpacing: "0.05em" } },
+  { id: "f22", name: "Milkshake",         style: { fontFamily: "'Milkshake', cursive" } },
   { id: "f23", name: "Blenda",            style: { fontFamily: "'Blendaria', sans-serif" } },
 ];
 
