@@ -38,15 +38,15 @@ const FINISHES = [
 
 const FONTS = [
   { id: "f1",  name: "Cronos Pro",        style: { fontFamily: "'Cronos Pro', serif", fontWeight: 600 } },
-  { id: "f2",  name: "Renogare",          style: { fontFamily: "'Bebas Neue', sans-serif", letterSpacing: "0.1em" } },
+  { id: "f2",  name: "Renogare",          style: { fontFamily: "'Renogare', sans-serif" } },
   { id: "f3",  name: "TT Rounds Neue",    style: { fontFamily: "'TT Rounds Neue', sans-serif", fontWeight: 600 } },
   { id: "f4",  name: "Impac",             style: { fontFamily: "'Impacted', sans-serif" } },
   { id: "f5",  name: "Heavitas",          style: { fontFamily: "'Heavitas', sans-serif" } },
-  { id: "f6",  name: "KG Dark Side",      style: { fontFamily: "'Permanent Marker', cursive" } },
-  { id: "f7",  name: "Square 721",        style: { fontFamily: "'Courier New', monospace", fontWeight: 700, letterSpacing: "0.05em" } },
+  { id: "f6",  name: "KG Dark Side",      style: { fontFamily: "'KG Dark Side', cursive" } },
+  { id: "f7",  name: "Square 721",        style: { fontFamily: "'Square 721', sans-serif" } },
   { id: "f8",  name: "Libre Baskerville", style: { fontFamily: "'Libre Baskerville', serif" } },
   { id: "f9",  name: "Bree Serif",        style: { fontFamily: "'Bree Serif', serif" } },
-  { id: "f10", name: "Rimouski Sb",       style: { fontFamily: "'Lobster', cursive" } },
+  { id: "f10", name: "Rimouski Sb",       style: { fontFamily: "'Rimouski Sb', serif" } },
   { id: "f11", name: "Party Confetti",    style: { fontFamily: "'Party Confetti', cursive" } },
   { id: "f12", name: "Freestyle Script",  style: { fontFamily: "'Freestyle Script', cursive", fontWeight: 400 } },
   { id: "f13", name: "Kissing Season",    style: { fontFamily: "'Kissing Season', cursive" } },
@@ -57,7 +57,7 @@ const FONTS = [
   { id: "f18", name: "Era",               style: { fontFamily: "'Arial', sans-serif", fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase" as const } },
   { id: "f19", name: "Bii Dreams",        style: { fontFamily: "'Billion Dreams', cursive" } },
   { id: "f20", name: "Yellowtail",        style: { fontFamily: "'Yellowtail', cursive" } },
-  { id: "f21", name: "Pacífico",          style: { fontFamily: "'Pacifico', cursive" } },
+  { id: "f21", name: "Pacifico",          style: { fontFamily: "'Pacifico', cursive" } },
   { id: "f22", name: "Milkshake",         style: { fontFamily: "'Milkshake', cursive" } },
   { id: "f23", name: "Blenda",            style: { fontFamily: "'Blendaria', sans-serif" } },
 ];

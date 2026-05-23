@@ -116,6 +116,42 @@
   font-weight: 400;
   font-style: normal;
 }
+@font-face {
+  font-family: 'Renogare';
+  src: url('/fonts/Renogare.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'KG Dark Side';
+  src: url('/fonts/KGDarkSide.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Square 721';
+  src: url('/fonts/Square721.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Rimouski Sb';
+  src: url('/fonts/RimouskiSb.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Yellowtail';
+  src: url('/fonts/Yellowtail.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Pacifico';
+  src: url('/fonts/Pacifico.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
 
 @custom-variant dark (&:is(.dark *));
 
