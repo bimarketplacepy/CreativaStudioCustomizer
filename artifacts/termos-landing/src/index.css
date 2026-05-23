@@ -50,6 +50,48 @@
   font-weight: 400;
   font-style: normal;
 }
+@font-face {
+  font-family: 'Anthony Hunter';
+  src: url('/fonts/AnthonyHunter.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+}
+@font-face {
+  font-family: 'Blendaria';
+  src: url('/fonts/Blendaria.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Midletton Blenda';
+  src: url('/fonts/MidlettonBlenda.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Party Confetti';
+  src: url('/fonts/PartyConfetti.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Libre Baskerville';
+  src: url('/fonts/LibreBaskerville.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Heavitas';
+  src: url('/fonts/Heavitas.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Bree Serif';
+  src: url('/fonts/BreeSerif.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
 
 @custom-variant dark (&:is(.dark *));
 
