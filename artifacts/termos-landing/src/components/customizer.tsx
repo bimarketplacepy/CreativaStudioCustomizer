@@ -293,12 +293,12 @@ export default function Customizer() {
                     <Label className="text-sm font-medium text-foreground mb-3 block">Texto Personalizado</Label>
                     <Input
                       value={text}
-                      onChange={(e) => setText(e.target.value.slice(0, 12))}
+                      onChange={(e) => setText(e.target.value.slice(0, 30))}
                       placeholder="Tu nombre o texto"
                       className="h-12 text-base text-center border-border focus-visible:ring-primary"
-                      maxLength={12}
+                      maxLength={30}
                     />
-                    <p className="text-xs text-muted-foreground mt-1.5 text-right">{text.length}/12 caracteres</p>
+                    <p className="text-xs text-muted-foreground mt-1.5 text-right">{text.length}/30 caracteres</p>
                   </div>
 
                   <div className="pt-4 border-t border-border">
