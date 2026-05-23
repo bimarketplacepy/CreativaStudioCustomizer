@@ -104,7 +104,7 @@ function makeBodyTexture(
     ctx.shadowColor = "rgba(0,0,0,0.45)";
     ctx.shadowBlur = 18;
     const textY = iconName ? H * 0.58 : H * 0.50;
-    ctx.fillText(text.toUpperCase(), W / 2, textY);
+    ctx.fillText(text, W / 2, textY);
     ctx.restore();
   }
 
@@ -468,7 +468,7 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
           ctx.globalAlpha = Math.max(0, Math.min(1, facing+0.25));
           ctx.fillStyle="rgba(255,255,255,0.93)";
           ctx.shadowColor="rgba(0,0,0,0.5)"; ctx.shadowBlur=4;
-          ctx.fillText(text.toUpperCase(), 0, 0); ctx.restore();
+          ctx.fillText(text, 0, 0); ctx.restore();
         }
       }
       // Shadow — offset below the rounded bottom
