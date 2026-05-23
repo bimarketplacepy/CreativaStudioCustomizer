@@ -164,9 +164,23 @@ function ThermosMesh({
   }, [size]);
 
 
+  const [fontReady, setFontReady] = useState(0);
+
+  useEffect(() => {
+    if (!fontFamily) return;
+    const families = fontFamily.split(",").map(f => f.trim().replace(/['"]/g, ""));
+    const primary = families[0];
+    if (!primary) return;
+    document.fonts.load(`400 32px "${primary}"`).then(() => {
+      setFontReady(n => n + 1);
+    });
+  }, [fontFamily]);
+
   const texture = useMemo(
     () => makeBodyTexture(colorHex, text, iconName, fontFamily),
-    [colorHex, text, iconName, fontFamily]
+    // fontReady triggers re-creation once the font is actually loaded
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [colorHex, text, iconName, fontFamily, fontReady]
   );
 
   // PBR material params per finish
