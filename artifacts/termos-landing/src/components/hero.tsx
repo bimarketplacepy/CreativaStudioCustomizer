@@ -25,9 +25,13 @@ export default function Hero() {
             <span aria-hidden className="text-white/30 text-lg leading-none">—</span>
             <img
               src="/la-creativa-logo-new.png"
-              alt="Creativa Studio"
+              alt=""
+              aria-hidden
               className="h-8 object-contain brightness-0 invert"
             />
+            <span className="text-white/70 text-sm font-semibold tracking-wide whitespace-nowrap">
+              Creativa Studio
+            </span>
           </div>
           <nav className="hidden md:flex flex-1 justify-center items-center gap-8 text-xs text-white/60 uppercase tracking-widest font-medium">
             <a href="#" className="hover:text-white transition-colors">Inicio</a>
@@ -83,14 +87,13 @@ export default function Hero() {
               Creativa Studio — Experiencia Personalizada
             </p>
 
-            <h1 className="text-[clamp(3rem,9vw,7rem)] font-black leading-[0.9] uppercase text-white mb-8">
-              Diseña<br />
-              tu propio<br />
-              <span className="text-[#8B1A2F]">Termo.</span>
+            <h1 className="text-[clamp(2.5rem,7vw,5.5rem)] font-black leading-[0.9] uppercase text-white mb-8">
+              Diseñe su propia<br />
+              <span className="text-[#8B1A2F]">Pieza Exclusiva.</span>
             </h1>
 
             <p className="text-white/50 text-base max-w-sm mb-10 leading-relaxed">
-              Elegí el color, texto y acabado. Su termo único, como usted.
+              Elija el formato, el color y el grabado. Un artículo de excelencia, tan único como usted.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4">

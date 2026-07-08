@@ -127,19 +127,18 @@ export const PRODUCTS: ProductDef[] = [
     id: "guampa",
     name: "Guampas",
     singular: "Guampa",
-    // Stanley Mate Cup — barrel with concave waist pinch, wide rim, no cap
-    desc: "Guampa termica con cintura conica y borde ancho.",
-    cap: "none",
+    // Stanley Mate Cup — short wide barrel, concave waist mid-body, slight rim flare, stepped lid
+    desc: "Guampa termica ancha con cintura cóncava y borde levemente acampanado.",
+    cap: "lid",
     handle: "none",
     profile: [
-      [0.00, -0.92], [0.08, -0.92],
-      [0.42, -0.88], [0.52, -0.78],
-      [0.50, -0.58], [0.44, -0.32],
-      [0.38,  0.00],
-      [0.44,  0.30], [0.54,  0.60],
-      [0.62,  0.84], [0.64,  0.92],
+      [0.00, -0.85], [0.08, -0.85],
+      [0.32, -0.78], [0.46, -0.60],
+      [0.54, -0.30], [0.52,  0.00],
+      [0.54,  0.30], [0.58,  0.58],
+      [0.62,  0.75], [0.64,  0.85],
     ],
-    band: [-0.50, 0.78],
+    band: [-0.58, 0.62],
     sizes: [
       { id: "guampa-sm", name: "Chica",   label: "300ml", scale: 0.84 },
       { id: "guampa-md", name: "Mediana", label: "500ml", scale: 1.00 },
