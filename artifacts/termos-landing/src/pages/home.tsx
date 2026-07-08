@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import Hero from "@/components/hero";
 import Customizer from "@/components/customizer";
 import Features from "@/components/features";
+import PricingEngraving from "@/components/pricing-engraving";
 import Gallery from "@/components/gallery";
 import Footer from "@/components/footer";
 
@@ -11,6 +12,7 @@ export default function Home() {
       <Hero />
       <Features />
       <Customizer />
+      <PricingEngraving />
       <Gallery />
       <Footer />
     </div>
