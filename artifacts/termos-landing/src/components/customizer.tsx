@@ -160,34 +160,88 @@ function ProductGlyph({ product, className, style }: { product: ProductDef; clas
   const last = pts[pts.length - 1];
   const maxR = Math.max(...pts.map(p => p[0]));
   const bottomY = pts[0][1];
-  const capH = product.cap === "screw" ? 0.42 : product.cap === "lid" ? 0.18 : 0;
-  const capR = last[0] * (product.cap === "screw" ? 1.16 : 1.06);
+
+  const isFlip = product.cap === "flip";
+  const isArch = product.handle === "cap-arch";
+
+  // Cap height and radius per style
+  const capH = product.cap === "screw" ? 0.42
+             : isFlip                  ? 0.38
+             : product.cap === "lid"   ? 0.18
+             : 0;
+  const capR = last[0] * (product.cap === "screw" ? 1.16 : isFlip ? 1.02 : 1.06);
   const topY = last[1] + capH;
 
-  // Flip into SVG space: x grows right from the axis, y grows downward from the top
-  const pt = (r: number, y: number) => `${(maxR + r).toFixed(3)},${(topY - y).toFixed(3)}`;
+  // Arch handle: needs extra vertical room above the cap
+  const archH = isArch ? capR * 1.55 : 0;  // space reserved above cap top
+  const archW = capR * 0.68;                // half-width between posts (matches photo)
+  const archSW = maxR * 0.13;              // stroke width
+
+  // All SVG y-coords are offset down by archH so the arch fits in the viewBox
+  const pt = (r: number, y: number) =>
+    `${(maxR + r).toFixed(3)},${(archH + topY - y).toFixed(3)}`;
   const right = pts.map(([r, y]) => pt(r, y));
-  const left = [...pts].reverse().map(([r, y]) => pt(-r, y));
+  const left  = [...pts].reverse().map(([r, y]) => pt(-r, y));
   const bodyPath = `M ${right.join(" L ")} L ${left.join(" L ")} Z`;
 
+  const svgCapTop = archH;               // where the cap rect starts in SVG y
+  const archTop   = archH * 0.10;        // small margin from top of viewBox
+  const totalH    = archH + topY - bottomY;
+
+  // Legacy cap-d / body handle (non-arch products only)
   const handleOnCap = product.handle === "cap-d";
-  const hR = handleOnCap ? capR * 0.42 : maxR * 0.5;
+  const hR  = handleOnCap ? capR * 0.42 : maxR * 0.5;
   const hCx = maxR + (handleOnCap ? capR : maxR);
-  const hCy = handleOnCap ? capH / 2 : (topY - bottomY) * 0.5;
+  const hCy = archH + (handleOnCap ? capH / 2 : (topY - bottomY) * 0.5);
 
   return (
     <svg
-      viewBox={`0 0 ${maxR * 2.6} ${topY - bottomY}`}
+      viewBox={`0 0 ${(maxR * 2.6).toFixed(3)} ${totalH.toFixed(3)}`}
       className={className}
       style={style}
       preserveAspectRatio="xMidYMax meet"
       aria-hidden
     >
+      {/* Body silhouette */}
       <path d={bodyPath} fill="currentColor" opacity={0.7} />
+
+      {/* Cap / lid */}
       {capH > 0 && (
-        <rect x={maxR - capR} y={0} width={capR * 2} height={capH} rx={0.05} fill="currentColor" />
+        <rect
+          x={maxR - capR} y={svgCapTop}
+          width={capR * 2} height={capH}
+          rx={0.05} fill="currentColor"
+        />
       )}
-      {product.handle !== "none" && (
+
+      {/* Flip-straw nub: small center button sitting on top of the flip lid */}
+      {isFlip && (
+        <rect
+          x={maxR - capR * 0.20} y={svgCapTop - capH * 0.15}
+          width={capR * 0.40} height={capH * 0.17}
+          rx={capR * 0.08} fill="currentColor"
+        />
+      )}
+
+      {/* Arch handle: two vertical posts + horizontal crossbar */}
+      {isArch && (
+        <path
+          d={[
+            `M ${(maxR - archW).toFixed(3)} ${svgCapTop.toFixed(3)}`,
+            `L ${(maxR - archW).toFixed(3)} ${archTop.toFixed(3)}`,
+            `L ${(maxR + archW).toFixed(3)} ${archTop.toFixed(3)}`,
+            `L ${(maxR + archW).toFixed(3)} ${svgCapTop.toFixed(3)}`,
+          ].join(" ")}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={archSW}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      )}
+
+      {/* cap-d or body side handle (non-arch products) */}
+      {!isArch && product.handle !== "none" && (
         <path
           d={`M ${hCx} ${hCy - hR} A ${hR} ${hR} 0 0 1 ${hCx} ${hCy + hR}`}
           fill="none"

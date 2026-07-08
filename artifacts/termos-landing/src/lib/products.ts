@@ -1,7 +1,7 @@
 export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa";
 
-export type CapStyle = "screw" | "lid" | "none";
-export type HandleStyle = "cap-d" | "body" | "none";
+export type CapStyle = "screw" | "lid" | "flip" | "none";
+export type HandleStyle = "cap-d" | "cap-arch" | "body" | "none";
 
 export interface ProductSize {
   id: string;
@@ -83,8 +83,8 @@ export const PRODUCTS: ProductDef[] = [
     singular: "Hoppie",
     // Stanley IceFlow Flip Straw — straight cylindrical body, subtle lower waist, chrome band, carry handle on lid
     desc: "Hoppie IceFlow con cuerpo cilindrico, cintura suave en la base y asa en la tapa.",
-    cap: "lid",
-    handle: "cap-d",
+    cap: "flip",
+    handle: "cap-arch",
     profile: [
       [0.00, -1.35], [0.08, -1.35],
       [0.30, -1.28], [0.46, -1.14],
