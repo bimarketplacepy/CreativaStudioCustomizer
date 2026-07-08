@@ -3,9 +3,8 @@ import { motion } from "framer-motion";
 
 const STATS = [
   { num: "HD", sub: "", label: "Impresión premium", desc: "Tu diseño en alta definición, fusionado directo en el termo. No se raya, no se pela, no se desvanece." },
-  { num: "360°", sub: "", label: "Diseño total", desc: "Personalización completa alrededor de tu termo. Cada ángulo cuenta tu historia." },
+  { num: "360°", sub: "", label: "Diseño total", desc: "Personalización completa alrededor de tu termo. Cada ángulo cuenta tu historia. También puede acercarnos su propio termo y lo personalizamos según su preferencia." },
   { num: "100%", sub: "", label: "A tu medida", desc: "Elegís el color, el texto, el ícono y el acabado. Completamente único, como vos." },
-  { num: "PY", sub: "", label: "Envío nacional", desc: "Empaquetado con cuidado y entregado en todo el país en tiempo récord." },
 ];
 
 export default function Features() {

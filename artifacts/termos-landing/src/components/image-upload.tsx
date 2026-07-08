@@ -47,8 +47,8 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
     <div>
       <p className="text-xs text-muted-foreground mb-3">
         {imageSize === "large"
-          ? "Subí tu logo. Le sacamos el fondo automaticamente y lo mostramos en tamaño grande sobre el termo."
-          : "Subí tu dibujo. Le sacamos el fondo automaticamente y lo mostramos chiquito sobre el termo."}
+          ? "Subí tu logo o foto. Le sacamos el fondo automaticamente y lo grabamos en tamaño grande."
+          : "Subí tu dibujo o foto. Le sacamos el fondo automaticamente y lo grabamos en tamaño chico."}
       </p>
 
       {!value ? (
@@ -100,7 +100,7 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-foreground">Imagen lista</p>
-            <p className="text-xs text-muted-foreground">Fondo removido y adaptada al termo ({imageSize === "large" ? "tamaño grande" : "tamaño chico"}).</p>
+            <p className="text-xs text-muted-foreground">Fondo removido y lista para grabar ({imageSize === "large" ? "tamaño grande" : "tamaño chico"}).</p>
           </div>
           <button
             type="button"

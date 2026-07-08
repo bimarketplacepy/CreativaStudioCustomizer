@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /home/runner/workspace stash push -q -m tmp)",
+      "Bash(npx tsc *)",
+      "Bash(git -C /home/runner/workspace stash pop)",
+      "Bash(perl -0pi -e ' *)",
+      "Bash(npx vite *)",
+      "Bash(perl -pi -e 's/La Creativa — Experiencia Personalizada/Creativa Studio — Experiencia Personalizada/; s/alt=\"La Creativa\"/alt=\"Creativa Studio\"/' src/components/hero.tsx)",
+      "Bash(perl -pi -e 's/\"LA CREATIVA\"/\"CREATIVA STUDIO\"/' src/components/thermos-3d.tsx)",
+      "Bash(perl -pi -e 's/>La Creativa</>Creativa Studio</' src/components/gallery.tsx)"
+    ]
+  }
+}

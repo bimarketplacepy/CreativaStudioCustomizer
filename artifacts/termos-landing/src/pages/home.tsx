@@ -5,6 +5,7 @@ import Features from "@/components/features";
 import PricingEngraving from "@/components/pricing-engraving";
 import Gallery from "@/components/gallery";
 import Footer from "@/components/footer";
+import WhatsAppButton from "@/components/whatsapp-button";
 
 export default function Home() {
   return (
@@ -15,6 +16,7 @@ export default function Home() {
       <PricingEngraving />
       <Gallery />
       <Footer />
+      <WhatsAppButton />
     </div>
   );
 }

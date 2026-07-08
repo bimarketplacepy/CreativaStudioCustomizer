@@ -5,6 +5,8 @@ export interface EngravingPlan {
   id: EngravingPlanId;
   title: string;
   subtitle?: string;
+  /** Compact name used on the plan picker buttons. */
+  shortLabel: string;
   price: number;
   priceLabel: string;
   allowsImage: boolean;
@@ -15,6 +17,7 @@ export const ENGRAVING_PLANS: EngravingPlan[] = [
   {
     id: "names",
     title: "Grabado de Nombres y Apellidos",
+    shortLabel: "Nombres",
     price: 35000,
     priceLabel: "35.000gs",
     allowsImage: false,
@@ -23,7 +26,8 @@ export const ENGRAVING_PLANS: EngravingPlan[] = [
   {
     id: "drawing",
     title: "Grabado de Nombres y Apellidos",
-    subtitle: "mas un dibujo chiquito",
+    subtitle: "mas un dibujo pequeño",
+    shortLabel: "Nombres + un dibujo pequeño",
     price: 40000,
     priceLabel: "40.000gs",
     allowsImage: true,
@@ -33,6 +37,7 @@ export const ENGRAVING_PLANS: EngravingPlan[] = [
     id: "logo",
     title: "Grabado de Nombres y Apellidos",
     subtitle: "mas un logo",
+    shortLabel: "Nombres + un logo",
     price: 50000,
     priceLabel: "50.000gs",
     allowsImage: true,

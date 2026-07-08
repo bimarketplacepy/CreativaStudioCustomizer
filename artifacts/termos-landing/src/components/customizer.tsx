@@ -4,18 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, Palette, Sparkles, Type, Box, Flame, Star, Zap, Heart, Mountain, Waves, Leaf } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Check, Palette, Type, Box, Pipette, ImageIcon, MoveHorizontal, MoveVertical } from "lucide-react";
 import Thermos3D from "./thermos-3d";
 import ImageUpload from "./image-upload";
 import { ENGRAVING_PLANS, type EngravingPlanId } from "@/lib/engraving-plans";
 import type { ProcessedImage } from "@/lib/image-processing";
-
-const SIZES = [
-  { id: "sm", name: "12oz Mug", label: "Mug" },
-  { id: "md", name: "20oz Estandar", label: "Std" },
-  { id: "lg", name: "32oz Grande", label: "Lrg" },
-  { id: "xl", name: "40oz Jug", label: "Jug" },
-];
+import { PRODUCTS, DEFAULT_PRODUCT_ID, getProduct, getSize, type ProductDef } from "@/lib/products";
+import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "@/lib/placement";
+import { whatsappUrl } from "@/lib/contact";
 
 const COLORS = [
   { id: "c1", hex: "#C1121F", name: "Rojo Marketplace" },
@@ -31,6 +28,22 @@ const COLORS = [
   { id: "c11", hex: "#EB5757", name: "Coral" },
   { id: "c12", hex: "#27AE60", name: "Verde Esmeralda" },
 ];
+
+/** Shade steps used to build the tone ramp around the selected base colour. */
+const TONE_STEPS = [-0.5, -0.32, -0.16, 0, 0.16, 0.32, 0.5];
+
+function shadeHex(hex: string, amount: number): string {
+  const num = parseInt(hex.slice(1), 16);
+  const target = amount < 0 ? 0 : 255;
+  const t = Math.abs(amount);
+  const ch = (shift: number) => {
+    const v = (num >> shift) & 0xff;
+    return Math.round(v + (target - v) * t)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${ch(16)}${ch(8)}${ch(0)}`;
+}
 
 const FINISHES = [
   { id: "matte", name: "Mate" },
@@ -65,43 +78,160 @@ const FONTS = [
   { id: "f23", name: "Blenda",            style: { fontFamily: "'Blendaria', sans-serif" } },
 ];
 
-const ICONS = [
-  { id: "none", name: "Ninguno", render: null },
-  { id: "flames", name: "Llamas", render: <Flame className="w-14 h-14" /> },
-  { id: "star", name: "Estrella", render: <Star className="w-14 h-14" /> },
-  { id: "lightning", name: "Rayo", render: <Zap className="w-14 h-14" /> },
-  { id: "heart", name: "Corazon", render: <Heart className="w-14 h-14" /> },
-  { id: "mountain", name: "Montana", render: <Mountain className="w-14 h-14" /> },
-  { id: "waves", name: "Olas", render: <Waves className="w-14 h-14" /> },
-  { id: "leaf", name: "Hoja", render: <Leaf className="w-14 h-14" /> },
-];
+/** Position + orientation controls for one engraved element (text or art). */
+function PlacementControls({
+  value,
+  onChange,
+  withSize,
+}: {
+  value: Placement;
+  onChange: (next: Placement) => void;
+  withSize?: boolean;
+}) {
+  const set = (patch: Partial<Placement>) => onChange({ ...value, ...patch });
 
-const ICON_IDS: Record<string, string | null> = {
-  none: null,
-  flames: "flames",
-  star: "star",
-  lightning: "lightning",
-  heart: "heart",
-  mountain: "mountain",
-  waves: "waves",
-  leaf: "leaf",
-};
+  return (
+    <div className="space-y-4">
+      <div>
+        <Label className="text-xs text-muted-foreground mb-2 block">Orientacion</Label>
+        <div className="grid grid-cols-2 gap-2">
+          {(["horizontal", "vertical"] as const).map(o => (
+            <button
+              key={o}
+              onClick={() => set({ orientation: o })}
+              className={`flex items-center justify-center gap-2 p-2.5 border rounded-lg text-sm font-medium transition-all ${
+                value.orientation === o
+                  ? "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30"
+                  : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
+              }`}
+            >
+              {o === "horizontal" ? <MoveHorizontal className="w-4 h-4" /> : <MoveVertical className="w-4 h-4" />}
+              {o === "horizontal" ? "Horizontal" : "Vertical"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <Label className="text-xs text-muted-foreground mb-2 block">Girar alrededor del producto</Label>
+        <Slider
+          value={[value.u * 100]}
+          onValueChange={([v]) => set({ u: v / 100 })}
+          min={0}
+          max={100}
+          step={1}
+        />
+      </div>
+
+      <div>
+        <Label className="text-xs text-muted-foreground mb-2 block">Altura sobre la cara</Label>
+        <Slider
+          value={[value.v * 100]}
+          onValueChange={([v]) => set({ v: v / 100 })}
+          min={0}
+          max={100}
+          step={1}
+        />
+      </div>
+
+      {withSize && (
+        <div>
+          <Label className="text-xs text-muted-foreground mb-2 block">Tamano</Label>
+          <Slider
+            value={[value.scale * 100]}
+            onValueChange={([v]) => set({ scale: v / 100 })}
+            min={50}
+            max={150}
+            step={5}
+          />
+        </div>
+      )}
+
+      <p className="text-xs text-muted-foreground">
+        Solo grabamos las caras externas: la tapa y la base quedan siempre libres.
+      </p>
+    </div>
+  );
+}
+
+/** Tiny silhouette drawn straight from the product's lathe profile. */
+function ProductGlyph({ product, className, style }: { product: ProductDef; className?: string; style?: React.CSSProperties }) {
+  const pts = product.profile;
+  const last = pts[pts.length - 1];
+  const maxR = Math.max(...pts.map(p => p[0]));
+  const bottomY = pts[0][1];
+  const capH = product.cap === "screw" ? 0.42 : product.cap === "lid" ? 0.18 : 0;
+  const capR = last[0] * (product.cap === "screw" ? 1.16 : 1.06);
+  const topY = last[1] + capH;
+
+  // Flip into SVG space: x grows right from the axis, y grows downward from the top
+  const pt = (r: number, y: number) => `${(maxR + r).toFixed(3)},${(topY - y).toFixed(3)}`;
+  const right = pts.map(([r, y]) => pt(r, y));
+  const left = [...pts].reverse().map(([r, y]) => pt(-r, y));
+  const bodyPath = `M ${right.join(" L ")} L ${left.join(" L ")} Z`;
+
+  const handleOnCap = product.handle === "cap-d";
+  const hR = handleOnCap ? capR * 0.42 : maxR * 0.5;
+  const hCx = maxR + (handleOnCap ? capR : maxR);
+  const hCy = handleOnCap ? capH / 2 : (topY - bottomY) * 0.5;
+
+  return (
+    <svg
+      viewBox={`0 0 ${maxR * 2.6} ${topY - bottomY}`}
+      className={className}
+      style={style}
+      preserveAspectRatio="xMidYMax meet"
+      aria-hidden
+    >
+      <path d={bodyPath} fill="currentColor" opacity={0.7} />
+      {capH > 0 && (
+        <rect x={maxR - capR} y={0} width={capR * 2} height={capH} rx={0.05} fill="currentColor" />
+      )}
+      {product.handle !== "none" && (
+        <path
+          d={`M ${hCx} ${hCy - hR} A ${hR} ${hR} 0 0 1 ${hCx} ${hCy + hR}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={maxR * 0.16}
+          strokeLinecap="round"
+        />
+      )}
+    </svg>
+  );
+}
 
 export default function Customizer() {
-  const [size, setSize] = useState(SIZES[1].id);
+  const [productId, setProductId] = useState<string>(DEFAULT_PRODUCT_ID);
+  const product = getProduct(productId);
+  const [size, setSize] = useState(getProduct(DEFAULT_PRODUCT_ID).sizes[1].id);
+  const activeSize = getSize(product, size);
   const [color, setColor] = useState(COLORS[0].id);
+  const [customHex, setCustomHex] = useState<string | null>(null);
   const [finish, setFinish] = useState(FINISHES[0].id);
   const [text, setText] = useState("");
   const [font, setFont] = useState(FONTS[0].id);
   const activeFont = FONTS.find(f => f.id === font) || FONTS[0];
-  const [icon, setIcon] = useState(ICONS[0].id);
   const [isOrdered, setIsOrdered] = useState(false);
   const [plan, setPlan] = useState<EngravingPlanId>(ENGRAVING_PLANS[0].id);
   const [customImage, setCustomImage] = useState<ProcessedImage | null>(null);
+  const [textPlacement, setTextPlacement] = useState<Placement>(DEFAULT_TEXT_PLACEMENT);
+  const [artPlacement, setArtPlacement] = useState<Placement>(DEFAULT_ART_PLACEMENT);
 
-  const activeColorHex = COLORS.find(c => c.id === color)?.hex || COLORS[0].hex;
-  const activeColorName = COLORS.find(c => c.id === color)?.name || "";
+  const baseColor = COLORS.find(c => c.id === color) || COLORS[0];
+  const activeColorHex = customHex ?? baseColor.hex;
+  const activeColorName = customHex ? `${baseColor.name} · ${customHex.toUpperCase()}` : baseColor.name;
+
+  const handleSelectColor = (id: string) => {
+    setColor(id);
+    setCustomHex(null);
+  };
   const activePlan = ENGRAVING_PLANS.find(p => p.id === plan) || ENGRAVING_PLANS[0];
+
+  const handleSelectProduct = (id: string) => {
+    const next = getProduct(id);
+    setProductId(id);
+    setSize(next.sizes[1]?.id ?? next.sizes[0].id);
+  };
 
   const handleSelectPlan = (id: EngravingPlanId) => {
     setPlan(id);
@@ -109,7 +239,21 @@ export default function Customizer() {
     if (!nextPlan?.allowsImage) setCustomImage(null);
   };
 
+  /** Send the whole configuration to WhatsApp so the shop can quote it directly. */
   const handleOrder = () => {
+    const lines = [
+      "Hola! Quiero pedir un producto personalizado:",
+      `• Producto: ${product.singular} ${activeSize.name} (${activeSize.label})`,
+      `• Color: ${activeColorName}`,
+      `• Acabado: ${FINISHES.find(f => f.id === finish)?.name}`,
+      text ? `• Texto: "${text}" en ${activeFont.name}, ${textPlacement.orientation}` : "• Sin texto",
+      activePlan.allowsImage
+        ? `• Imagen: ${activePlan.imageSize === "large" ? "logo" : "dibujo"} ${customImage ? "(la envio en este chat)" : "(la envio en breve)"}`
+        : "• Sin imagen",
+      `• Plan: ${activePlan.shortLabel} — ${activePlan.priceLabel}`,
+    ];
+
+    window.open(whatsappUrl(lines.join("\n")), "_blank", "noopener,noreferrer");
     setIsOrdered(true);
     setTimeout(() => setIsOrdered(false), 5000);
   };
@@ -136,18 +280,20 @@ export default function Customizer() {
               />
 
               <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
-                {/* 3D Thermos Canvas — taller for bigger sizes */}
-                <div className="w-full" style={{ height: size === "xl" ? 560 : size === "lg" ? 520 : size === "sm" ? 480 : 500 }}>
+                {/* 3D Canvas — taller for bigger sizes */}
+                <div className="w-full" style={{ height: 480 + Math.round((activeSize.scale - 0.84) * 200) }}>
                   <Thermos3D
                     colorHex={activeColorHex}
                     finish={finish}
                     text={text}
                     fontClass=""
                     fontStyle={activeFont.style}
-                    iconName={ICON_IDS[icon] ?? null}
-                    size={size}
+                    productId={productId}
+                    sizeId={size}
                     customImageUrl={activePlan.allowsImage ? customImage?.svgDataUrl ?? null : null}
                     imageSize={activePlan.imageSize}
+                    textPlacement={textPlacement}
+                    artPlacement={artPlacement}
                   />
                 </div>
 
@@ -156,7 +302,7 @@ export default function Customizer() {
                 {/* Summary badges */}
                 <div className="flex flex-wrap gap-2 justify-center px-4 pb-4">
                   <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground">
-                    {SIZES.find(s => s.id === size)?.name}
+                    {product.singular} {activeSize.name}
                   </span>
                   <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: activeColorHex }} />
@@ -179,8 +325,8 @@ export default function Customizer() {
                     <div className="w-16 h-16 bg-primary text-primary-foreground rounded-full flex items-center justify-center mb-4 shadow-sm">
                       <Check className="w-8 h-8" />
                     </div>
-                    <h3 className="text-xl font-bold text-foreground mb-1">Pedido Recibido</h3>
-                    <p className="text-sm text-muted-foreground">Nos pondremos en contacto contigo pronto para confirmar tu orden.</p>
+                    <h3 className="text-xl font-bold text-foreground mb-1">Te llevamos a WhatsApp</h3>
+                    <p className="text-sm text-muted-foreground">Te abrimos el chat con tu diseño ya cargado. Enviá el mensaje y coordinamos tu pedido.</p>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -211,10 +357,10 @@ export default function Customizer() {
                     <Type className="w-4 h-4 mr-1.5 hidden sm:inline" /> Texto
                   </TabsTrigger>
                   <TabsTrigger
-                    value="art"
+                    value="media"
                     className="h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    <Sparkles className="w-4 h-4 mr-1.5 hidden sm:inline" /> Arte
+                    <ImageIcon className="w-4 h-4 mr-1.5 hidden sm:inline" /> Logo o foto
                   </TabsTrigger>
                 </TabsList>
               </div>
@@ -223,27 +369,51 @@ export default function Customizer() {
                 {/* SHAPE TAB */}
                 <TabsContent value="shape" className="mt-0 space-y-6">
                   <div>
-                    <Label className="text-sm font-medium text-foreground mb-3 block">Tamano y Silueta</Label>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {SIZES.map(s => (
+                    <Label className="text-sm font-medium text-foreground mb-3 block">Tipo de Producto</Label>
+                    <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+                      {PRODUCTS.map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => handleSelectProduct(p.id)}
+                          title={p.desc}
+                          className={`p-3 border rounded-xl flex flex-col items-center justify-end gap-2 transition-all ${
+                            productId === p.id
+                              ? 'border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30'
+                              : 'border-border hover:border-primary/40 text-muted-foreground hover:bg-secondary/50'
+                          }`}
+                        >
+                          <ProductGlyph product={p} className="h-16 w-full" />
+                          <span className="font-medium text-sm">{p.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-3">{product.desc}</p>
+                  </div>
+
+                  <div className="pt-4 border-t border-border">
+                    <Label className="text-sm font-medium text-foreground mb-3 block">
+                      Tamano del {product.singular}
+                    </Label>
+                    <div className="grid grid-cols-3 gap-3">
+                      {product.sizes.map(s => (
                         <button
                           key={s.id}
                           onClick={() => setSize(s.id)}
-                          className={`p-4 border rounded-xl flex flex-col items-center justify-center gap-3 transition-all ${
+                          className={`p-4 border rounded-xl flex flex-col items-center justify-end gap-2 transition-all ${
                             size === s.id
                               ? 'border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30'
                               : 'border-border hover:border-primary/40 text-muted-foreground hover:bg-secondary/50'
                           }`}
                         >
                           <div className="h-14 flex items-end justify-center">
-                            <div className={`bg-current opacity-70 rounded-b-md ${
-                              s.id === 'sm' ? 'w-6 h-8' :
-                              s.id === 'md' ? 'w-7 h-11' :
-                              s.id === 'lg' ? 'w-8 h-14' :
-                              'w-9 h-14'
-                            }`} />
+                            <ProductGlyph
+                              product={product}
+                              className="w-full"
+                              style={{ height: `${Math.round(28 + s.scale * 26)}px` }}
+                            />
                           </div>
-                          <span className="font-medium text-sm">{s.name}</span>
+                          <span className="font-medium text-sm leading-none">{s.name}</span>
+                          <span className="text-[11px] text-muted-foreground leading-none">{s.label}</span>
                         </button>
                       ))}
                     </div>
@@ -258,14 +428,14 @@ export default function Customizer() {
                       {COLORS.map(c => (
                         <button
                           key={c.id}
-                          onClick={() => setColor(c.id)}
+                          onClick={() => handleSelectColor(c.id)}
                           title={c.name}
                           className={`group relative aspect-square rounded-full overflow-hidden transition-all hover:scale-105 focus:outline-none ring-offset-2 ${
-                            color === c.id ? 'ring-2 ring-primary' : 'ring-0'
+                            color === c.id && !customHex ? 'ring-2 ring-primary' : 'ring-0'
                           }`}
                         >
                           <div className="absolute inset-0" style={{ backgroundColor: c.hex }} />
-                          {color === c.id && (
+                          {color === c.id && !customHex && (
                             <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                               <Check className="text-white w-5 h-5 drop-shadow" />
                             </div>
@@ -279,6 +449,66 @@ export default function Customizer() {
                         {activeColorName}
                       </p>
                     )}
+                  </div>
+
+                  {/* Fine-tune the exact tone within the selected colour family */}
+                  <div className="pt-4 border-t border-border">
+                    <div className="flex items-baseline justify-between mb-1">
+                      <Label className="text-sm font-medium text-foreground">Tono exacto</Label>
+                      {customHex && (
+                        <button
+                          onClick={() => setCustomHex(null)}
+                          className="text-xs text-primary hover:underline"
+                        >
+                          Volver al tono original
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Cada color tiene variantes. Elegí la que mas te guste de la paleta, o marca el tono exacto con el selector.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <label
+                        className="relative shrink-0 w-11 h-11 rounded-xl overflow-hidden border border-border cursor-pointer hover:border-primary/40 transition-colors"
+                        title="Elegir un tono exacto"
+                      >
+                        <span className="absolute inset-0" style={{ backgroundColor: activeColorHex }} />
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <Pipette className="w-4 h-4 text-white mix-blend-difference" />
+                        </span>
+                        <input
+                          type="color"
+                          value={activeColorHex}
+                          onChange={e => setCustomHex(e.target.value)}
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                          aria-label="Selector de color personalizado"
+                        />
+                      </label>
+
+                      <div className="grid grid-cols-7 gap-2 flex-1">
+                        {TONE_STEPS.map(step => {
+                          const hex = shadeHex(baseColor.hex, step);
+                          const selected = customHex?.toLowerCase() === hex.toLowerCase();
+                          return (
+                            <button
+                              key={step}
+                              onClick={() => setCustomHex(hex)}
+                              title={hex.toUpperCase()}
+                              className={`relative aspect-square rounded-lg overflow-hidden transition-all hover:scale-105 ring-offset-2 ${
+                                selected ? 'ring-2 ring-primary' : 'ring-0'
+                              }`}
+                            >
+                              <span className="absolute inset-0" style={{ backgroundColor: hex }} />
+                              {selected && (
+                                <span className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                  <Check className="text-white w-3.5 h-3.5 drop-shadow" />
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
 
                   <div className="pt-4 border-t border-border">
@@ -316,6 +546,14 @@ export default function Customizer() {
                   </div>
 
                   <div className="pt-4 border-t border-border">
+                    <Label className="text-sm font-medium text-foreground mb-1 block">Ubicacion del Texto</Label>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Colocá el texto donde quieras alrededor del {product.singular.toLowerCase()}.
+                    </p>
+                    <PlacementControls value={textPlacement} onChange={setTextPlacement} withSize />
+                  </div>
+
+                  <div className="pt-4 border-t border-border">
                     <Label className="text-sm font-medium text-foreground mb-3 block">Elegí tu Tipografía</Label>
                     <div className="grid grid-cols-2 gap-2 max-h-[340px] overflow-y-auto pr-1">
                       {FONTS.map((f, i) => (
@@ -341,26 +579,55 @@ export default function Customizer() {
                   </div>
                 </TabsContent>
 
-                {/* ART TAB */}
-                <TabsContent value="art" className="mt-0 space-y-6">
+                {/* LOGO / PHOTO TAB */}
+                <TabsContent value="media" className="mt-0 space-y-6">
                   <div>
-                    <Label className="text-sm font-medium text-foreground mb-3 block">Icono / Decoracion</Label>
-                    <div className="grid grid-cols-4 gap-3">
-                      {ICONS.map(i => (
-                        <button
-                          key={i.id}
-                          onClick={() => setIcon(i.id)}
-                          className={`aspect-square flex flex-col items-center justify-center gap-1 border rounded-xl text-sm transition-all ${
-                            icon === i.id
-                              ? 'border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30'
-                              : 'border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50'
-                          }`}
-                        >
-                          <div className="scale-75">{i.render || <span className="text-xs font-medium">Sin icono</span>}</div>
-                          <span className="text-xs font-medium">{i.name}</span>
-                        </button>
-                      ))}
-                    </div>
+                    <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Subí tu logo o tu foto. Le sacamos el fondo automaticamente y la grabamos sobre el {product.singular.toLowerCase()}.
+                    </p>
+
+                    {activePlan.allowsImage ? (
+                      <>
+                        <ImageUpload
+                          imageSize={activePlan.imageSize === "large" ? "large" : "small"}
+                          value={customImage}
+                          onChange={setCustomImage}
+                        />
+                        <p className="text-xs text-muted-foreground mt-3">
+                          Con el plan <span className="font-medium text-foreground">{activePlan.shortLabel}</span> la
+                          imagen se graba en tamano {activePlan.imageSize === "large" ? "grande (logo)" : "chico (dibujo)"}, ya definido por el plan.
+                        </p>
+
+                        {customImage && (
+                          <div className="pt-4 mt-4 border-t border-border">
+                            <Label className="text-sm font-medium text-foreground mb-1 block">Ubicacion de la Imagen</Label>
+                            <p className="text-xs text-muted-foreground mb-3">
+                              Movela y girala libremente sobre las caras del {product.singular.toLowerCase()}.
+                            </p>
+                            <PlacementControls value={artPlacement} onChange={setArtPlacement} />
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="border border-dashed border-border rounded-xl p-6 text-center space-y-3">
+                        <ImageIcon className="w-6 h-6 text-muted-foreground mx-auto" />
+                        <p className="text-sm text-muted-foreground">
+                          El plan de solo nombres no incluye imagen. Elegí un plan con dibujo o logo para subir tu foto.
+                        </p>
+                        <div className="flex justify-center gap-2">
+                          {ENGRAVING_PLANS.filter(p => p.allowsImage).map(p => (
+                            <button
+                              key={p.id}
+                              onClick={() => handleSelectPlan(p.id)}
+                              className="text-xs font-medium border border-border rounded-lg px-3 py-2 text-foreground hover:border-primary/40 hover:bg-secondary/50 transition-colors"
+                            >
+                              {p.shortLabel} — {p.priceLabel}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
               </div>
@@ -381,9 +648,7 @@ export default function Customizer() {
                             : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
                         }`}
                       >
-                        <span className="text-xs font-semibold leading-tight">
-                          {p.subtitle ? p.subtitle.replace(/^mas /, "+ ") : "Nombres"}
-                        </span>
+                        <span className="text-xs font-semibold leading-tight">{p.shortLabel}</span>
                         <span className="text-[11px] font-medium">{p.priceLabel}</span>
                       </button>
                     ))}
@@ -394,28 +659,14 @@ export default function Customizer() {
                   </p>
                 </div>
 
-                {activePlan.allowsImage && (
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">
-                      Subi tu {activePlan.imageSize === "large" ? "logo" : "dibujo"}
-                    </Label>
-                    <ImageUpload
-                      imageSize={activePlan.imageSize === "large" ? "large" : "small"}
-                      value={customImage}
-                      onChange={setCustomImage}
-                    />
-                  </div>
-                )}
-
                 <Button
                   onClick={handleOrder}
                   disabled={isOrdered}
                   size="lg"
                   className="w-full h-12 text-base font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
                 >
-                  {isOrdered ? "Pedido enviado..." : `Pedir Mi Termo — ${activePlan.priceLabel}`}
+                  {isOrdered ? "Abriendo WhatsApp..." : `Personalizar mi ${product.singular} — ${activePlan.priceLabel}`}
                 </Button>
-                <p className="text-xs text-center text-muted-foreground mt-2">Envio incluido en compras sobre Gs. 500.000</p>
               </div>
             </Tabs>
           </div>

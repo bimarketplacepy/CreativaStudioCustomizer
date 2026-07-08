@@ -16,11 +16,19 @@ export default function Hero() {
       {/* Navbar — black, Stanley-style */}
       <header className="w-full bg-[#2a2a2a] sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center">
-          <img
-            src="/navbar-logo.png"
-            alt="MarketPlace"
-            className="h-8 object-contain brightness-0 invert"
-          />
+          <div className="flex items-center gap-3 shrink-0">
+            <img
+              src="/navbar-logo.png"
+              alt="MarketPlace"
+              className="h-8 object-contain brightness-0 invert"
+            />
+            <span aria-hidden className="text-white/30 text-lg leading-none">—</span>
+            <img
+              src="/la-creativa-logo.png"
+              alt="Creativa Studio"
+              className="h-8 object-contain brightness-0 invert"
+            />
+          </div>
           <nav className="hidden md:flex flex-1 justify-center items-center gap-8 text-xs text-white/60 uppercase tracking-widest font-medium">
             <a href="#" className="hover:text-white transition-colors">Inicio</a>
             <a
@@ -72,7 +80,7 @@ export default function Hero() {
             transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
           >
             <p className="text-white/40 text-[10px] uppercase tracking-[0.4em] mb-8 font-medium">
-              La Creativa — Experiencia Personalizada
+              Creativa Studio — Experiencia Personalizada
             </p>
 
             <h1 className="text-[clamp(3rem,9vw,7rem)] font-black leading-[0.9] uppercase text-white mb-8">
@@ -82,7 +90,7 @@ export default function Hero() {
             </h1>
 
             <p className="text-white/50 text-base max-w-sm mb-10 leading-relaxed">
-              Elegí el color, el texto y el acabado. Tu termo único, entregado en todo el país.
+              Elegí el color, texto y acabado. Su termo único, como usted.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4">
@@ -131,7 +139,7 @@ export default function Hero() {
               <div className="absolute inset-8 rounded-full bg-white flex items-center justify-center shadow-2xl">
                 <motion.img
                   src="/la-creativa-logo.png"
-                  alt="La Creativa"
+                  alt="Creativa Studio"
                   className="w-3/4 object-contain"
                   animate={{ y: [0, -10, 0] }}
                   transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}

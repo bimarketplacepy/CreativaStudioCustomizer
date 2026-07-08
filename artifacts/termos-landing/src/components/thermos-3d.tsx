@@ -2,6 +2,8 @@ import React, { useRef, useEffect, useMemo, useState, Suspense, Component, React
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, ContactShadows, PerspectiveCamera } from "@react-three/drei";
 import * as THREE from "three";
+import { getProduct, getSize, resampledProfile, type ProductDef } from "@/lib/products";
+import { bandRange, DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "@/lib/placement";
 
 class WebGLErrorBoundary extends Component<
   { fallback: ReactNode; children: ReactNode },
@@ -20,47 +22,120 @@ interface Thermos3DProps {
   text: string;
   fontClass: string;
   fontStyle?: React.CSSProperties;
-  iconName: string | null;
-  size: string;
+  productId: string;
+  sizeId: string;
   customImageUrl: string | null;
   imageSize: "none" | "small" | "large";
+  textPlacement?: Placement;
+  artPlacement?: Placement;
 }
 
-const ICON_CHARS: Record<string, string> = {
-  flames: "🔥", star: "★", lightning: "⚡", heart: "♥",
-  mountain: "▲", waves: "≈", leaf: "✿",
-};
+/** Everything the meshes and the camera rig need, derived from the product profile. */
+interface Silhouette {
+  points: THREE.Vector2[];
+  scale: number;
+  /** Widest radius of the body. */
+  maxR: number;
+  bottomY: number;
+  /** Y of the topmost profile point (where the cap seats). */
+  neckY: number;
+  neckR: number;
+  capR: number;
+  capH: number;
+  /** Top of the whole object, cap included. */
+  topY: number;
+  /** Engravable band [bottomY, topY], scaled. */
+  band: [number, number];
+}
 
-function buildThermosPoints(size: string): THREE.Vector2[] {
-  const scale = size === "sm" ? 0.78 : size === "md" ? 1.0 : size === "lg" ? 1.22 : 1.4;
-  const s = (x: number, y: number) => new THREE.Vector2(x * scale, y * scale);
-  // Profile matched to reference: tall wide-body vacuum bottle
-  // Rounded bottom → straight wide cylinder → gentle shoulder → short neck → cap seat
-  return [
-    s(0.00, -1.90),   // bottom centre
-    s(0.08, -1.89),
-    s(0.22, -1.86),
-    s(0.42, -1.78),   // base curve
-    s(0.58, -1.62),   // base flare into body
-    s(0.64, -1.40),   // lower body
-    s(0.64,  0.75),   // main body — tall & straight (widest)
-    s(0.63,  0.95),   // upper body
-    s(0.60,  1.12),   // shoulder start
-    s(0.54,  1.32),   // shoulder mid
-    s(0.48,  1.50),   // neck
-    s(0.47,  1.60),   // collar bulge
-    s(0.46,  1.70),
-    s(0.44,  1.78),   // cap seat
-  ];
+function buildSilhouette(product: ProductDef, scale: number): Silhouette {
+  const points = resampledProfile(product).map(([x, y]) => new THREE.Vector2(x * scale, y * scale));
+  const maxR = Math.max(...product.profile.map(p => p[0])) * scale;
+  const bottomY = product.profile[0][1] * scale;
+  const last = product.profile[product.profile.length - 1];
+  const neckR = last[0] * scale;
+  const neckY = last[1] * scale;
+
+  const capH = product.cap === "screw" ? 0.42 * scale : product.cap === "lid" ? 0.18 * scale : 0;
+  const capR = product.cap === "screw" ? neckR * 1.16 : neckR * 1.06;
+
+  return {
+    points, scale, maxR, bottomY, neckY, neckR, capR, capH,
+    topY: neckY + capH,
+    band: [product.band[0] * scale, product.band[1] * scale] as [number, number],
+  };
+}
+
+const FOV = 30;
+const HALF_FOV_TAN = Math.tan((FOV / 2) * (Math.PI / 180));
+/** Conservative worst-case aspect (w/h) of the preview canvas. */
+const CANVAS_ASPECT = 0.7;
+
+function fitCamera(sil: Silhouette) {
+  const height = sil.topY - sil.bottomY;
+  const centerY = (sil.topY + sil.bottomY) / 2;
+  const fitByHeight = (height / 2) * 1.18 / HALF_FOV_TAN;
+  const fitByWidth = sil.maxR * 1.35 / (HALF_FOV_TAN * CANVAS_ASPECT);
+  return { fov: FOV, camY: centerY, camZ: Math.max(fitByHeight, fitByWidth), shadowY: sil.bottomY };
+}
+
+const clamp = (v: number, lo: number, hi: number) => (lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, v)));
+
+/**
+ * The engravable band in texture pixels, plus the vertical squash needed to
+ * cancel the lathe's non-uniform UV so art keeps its real-world proportions.
+ */
+function bandMetrics(product: ProductDef, W: number, H: number) {
+  const [vBot, vTop] = bandRange(product);
+  const topPx = (1 - vTop) * H;
+  const botPx = (1 - vBot) * H;
+  const maxR = Math.max(...product.profile.map(p => p[0]));
+  const hPxPerUnit = W / (2 * Math.PI * maxR);
+  const vPxPerUnit = (botPx - topPx) / (product.band[1] - product.band[0]);
+  return { topPx, botPx, aspect: vPxPerUnit / hPxPerUnit };
+}
+
+type BandMetrics = ReturnType<typeof bandMetrics>;
+
+/**
+ * Draw something centred on the band at the given placement. Content is drawn
+ * around the origin in square pixels; we clamp it inside the band and repeat it
+ * across the texture seam so it wraps cleanly.
+ */
+function drawPlaced(
+  ctx: CanvasRenderingContext2D,
+  m: BandMetrics,
+  W: number,
+  p: Placement,
+  halfW: number,
+  halfH: number,
+  render: () => void
+) {
+  const rot = p.orientation === "vertical" ? -Math.PI / 2 : 0;
+  const boundHalfH = (rot ? halfW : halfH) * m.aspect;
+
+  const cx = ((p.u % 1) + 1) % 1 * W;
+  const cy = clamp(m.topPx + (m.botPx - m.topPx) * p.v, m.topPx + boundHalfH, m.botPx - boundHalfH);
+
+  for (const dx of [-W, 0, W]) {
+    ctx.save();
+    ctx.translate(cx + dx, cy);
+    ctx.scale(1, m.aspect);
+    ctx.rotate(rot);
+    render();
+    ctx.restore();
+  }
 }
 
 function makeBodyTexture(
+  product: ProductDef,
   colorHex: string,
   text: string,
-  iconName: string | null,
+  textPlacement: Placement,
   fontFamily = "Inter, system-ui, sans-serif",
   customImageEl: HTMLImageElement | null = null,
-  imageSize: "none" | "small" | "large" = "none"
+  imageSize: "none" | "small" | "large" = "none",
+  artPlacement: Placement = DEFAULT_ART_PLACEMENT
 ): THREE.CanvasTexture {
   const W = 1024, H = 2048;
   const canvas = document.createElement("canvas");
@@ -80,76 +155,66 @@ function makeBodyTexture(
   ctx.fillStyle = stripe;
   ctx.fillRect(0, 0, W, H);
 
-  // Label band (slightly lighter bg)
-  const labelTop = H * 0.28, labelBot = H * 0.72;
+  const m = bandMetrics(product, W, H);
+
+  // Engravable band (slightly lighter bg) — never the lid or the base
   ctx.fillStyle = "rgba(255,255,255,0.06)";
-  ctx.fillRect(0, labelTop, W, labelBot - labelTop);
+  ctx.fillRect(0, m.topPx, W, m.botPx - m.topPx);
 
   const hasArt = !!(customImageEl && imageSize !== "none");
 
-  // Icon (only rendered when no custom image is set — the uploaded art takes its place)
-  if (!hasArt && iconName && ICON_CHARS[iconName]) {
-    ctx.save();
-    ctx.font = `${Math.round(W * 0.22)}px serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.globalAlpha = 0.80;
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    ctx.fillText(ICON_CHARS[iconName], W / 2, H * 0.36);
-    ctx.restore();
-  }
-
-  // Custom uploaded image (drawing or logo, background already removed)
+  // Custom uploaded logo or photo (background already removed)
   if (hasArt && customImageEl) {
-    ctx.save();
-    const maxFraction = imageSize === "large" ? 0.34 : 0.19;
-    const maxDim = W * maxFraction;
+    const maxDim = W * (imageSize === "large" ? 0.34 : 0.19);
     const naturalW = customImageEl.naturalWidth || customImageEl.width || 1;
     const naturalH = customImageEl.naturalHeight || customImageEl.height || 1;
     const ratio = Math.min(maxDim / naturalW, maxDim / naturalH);
     const dw = naturalW * ratio;
     const dh = naturalH * ratio;
-    const cx = W / 2;
-    const cy = H * 0.36;
-    ctx.globalAlpha = 0.95;
-    ctx.drawImage(customImageEl, cx - dw / 2, cy - dh / 2, dw, dh);
-    ctx.restore();
+    drawPlaced(ctx, m, W, artPlacement, dw / 2, dh / 2, () => {
+      ctx.globalAlpha = 0.95;
+      ctx.drawImage(customImageEl, -dw / 2, -dh / 2, dw, dh);
+    });
   }
 
-  // Custom text — horizontal across the label
+  // Custom text
   if (text) {
-    ctx.save();
-    const fontSize = Math.round(W * 0.115);
-    ctx.font = `900 ${fontSize}px ${fontFamily}`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "rgba(255,255,255,0.95)";
-    ctx.shadowColor = "rgba(0,0,0,0.45)";
-    ctx.shadowBlur = 18;
-    const textY = (iconName || hasArt) ? H * 0.58 : H * 0.50;
-    ctx.fillText(text, W / 2, textY);
-    ctx.restore();
+    const fontSize = Math.round(W * 0.13 * textPlacement.scale);
+    const font = `900 ${fontSize}px ${fontFamily}`;
+    ctx.font = font;
+    const textW = ctx.measureText(text).width;
+    drawPlaced(ctx, m, W, textPlacement, textW / 2, fontSize * 0.6, () => {
+      ctx.font = font;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "rgba(255,255,255,0.95)";
+      ctx.shadowColor = "rgba(0,0,0,0.45)";
+      ctx.shadowBlur = 18;
+      ctx.fillText(text, 0, 0);
+    });
   }
 
-  // Brand text
+  // Brand text — pinned near the bottom of the band
   ctx.save();
   ctx.font = `500 ${Math.round(W * 0.040)}px Inter, system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = "rgba(255,255,255,0.30)";
   ctx.letterSpacing = "0.15em";
-  ctx.fillText("LA CREATIVA", W / 2, H * 0.82);
+  ctx.fillText("CREATIVA STUDIO", W / 2, m.botPx - (m.botPx - m.topPx) * 0.07);
   ctx.restore();
 
   return new THREE.CanvasTexture(canvas);
 }
 
 function ThermosMesh({
-  colorHex, finish, text, iconName, size, fontFamily, customImageUrl, imageSize,
+  colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
+  textPlacement, artPlacement,
 }: {
   colorHex: string; finish: string; text: string;
-  iconName: string | null; size: string; fontFamily?: string;
+  product: ProductDef; sil: Silhouette; fontFamily?: string;
   customImageUrl: string | null; imageSize: "none" | "small" | "large";
+  textPlacement: Placement; artPlacement: Placement;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
@@ -160,32 +225,31 @@ function ThermosMesh({
   const lastTime = useRef(0);
   const { gl } = useThree();
 
-  // Build points and geometry
-  const points = useMemo(() => buildThermosPoints(size), [size]);
-
   const bodyGeo = useMemo(() => {
-    const geo = new THREE.LatheGeometry(points, 128);
+    const geo = new THREE.LatheGeometry(sil.points, 128);
     geo.computeVertexNormals();
     return geo;
-  }, [points]);
+  }, [sil]);
 
-  const capScale = size === "sm" ? 0.78 : size === "md" ? 1.0 : size === "lg" ? 1.22 : 1.4;
-
-  // Wide flat screw cap
+  // Cap: chunky screw cap for termos/jugs, low press-on lid for vasos/hoppies, none for guampas
   const capGeo = useMemo(() => {
-    return new THREE.CylinderGeometry(0.51 * capScale, 0.47 * capScale, 0.42 * capScale, 64);
-  }, [size]);
+    if (product.cap === "none") return null;
+    return new THREE.CylinderGeometry(sil.capR, sil.capR * 0.94, sil.capH, 64);
+  }, [product.cap, sil]);
 
-  // Side D-handle: center placed exactly at cap outer wall (r=0.51)
-  // Inner half sits inside the cap mesh → depth-clipped → true D-shape from front
+  // Handle: torus centered exactly on the outer wall → inner half depth-clipped → D-shape
   const handleGeo = useMemo(() => {
-    return new THREE.TorusGeometry(0.20 * capScale, 0.055 * capScale, 12, 32);
-  }, [size]);
+    if (product.handle === "none") return null;
+    const r = product.handle === "cap-d" ? sil.capR * 0.42 : sil.maxR * 0.58;
+    const tube = product.handle === "cap-d" ? sil.capR * 0.11 : sil.maxR * 0.10;
+    return new THREE.TorusGeometry(r, tube, 12, 32);
+  }, [product.handle, sil]);
 
-  // Thin metal collar ring at the neck seam
+  // Thin metal collar ring at the neck seam (screw caps only)
   const collarGeo = useMemo(() => {
-    return new THREE.TorusGeometry(0.460 * capScale, 0.030 * capScale, 6, 64);
-  }, [size]);
+    if (product.cap !== "screw") return null;
+    return new THREE.TorusGeometry(sil.neckR * 1.02, 0.030 * sil.scale, 6, 64);
+  }, [product.cap, sil]);
 
 
   const [fontReady, setFontReady] = useState(0);
@@ -216,10 +280,10 @@ function ThermosMesh({
   }, [customImageUrl]);
 
   const texture = useMemo(
-    () => makeBodyTexture(colorHex, text, iconName, fontFamily, customImageEl, imageSize),
+    () => makeBodyTexture(product, colorHex, text, textPlacement, fontFamily, customImageEl, imageSize, artPlacement),
     // fontReady triggers re-creation once the font is actually loaded
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [colorHex, text, iconName, fontFamily, fontReady, customImageEl, imageSize]
+    [product, colorHex, text, textPlacement, fontFamily, fontReady, customImageEl, imageSize, artPlacement]
   );
 
   // PBR material params per finish
@@ -303,15 +367,15 @@ function ThermosMesh({
     }
   });
 
-  // New profile: cap seat at y=1.78*s, cap h=0.42*s, collar at y=1.60*s
-  const capCenterY = (1.78 + 0.21) * capScale; // 1.99
-  const collarY    = 1.60 * capScale;
-  // Handle center sits exactly on the cap outer wall → inner half depth-clipped → D-shape
-  const handleX = 0.51 * capScale;
+  const capCenterY = sil.neckY + sil.capH / 2;
+  const collarY    = sil.neckY - 0.10 * sil.scale;
+  // Handle center sits exactly on the outer wall → inner half depth-clipped → D-shape
+  const handleX = product.handle === "cap-d" ? sil.capR : sil.maxR;
+  const handleY = product.handle === "cap-d" ? capCenterY : 0.05 * sil.scale;
 
   return (
     <group ref={groupRef}>
-      {/* Main thermos body */}
+      {/* Main body */}
       <mesh geometry={bodyGeo} castShadow receiveShadow>
         <meshPhysicalMaterial
           map={texture}
@@ -324,38 +388,32 @@ function ThermosMesh({
         />
       </mesh>
 
-      {/* Wide flat screw cap */}
-      <mesh geometry={capGeo} position={[0, capCenterY, 0]} castShadow>
-        <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
-      </mesh>
+      {/* Cap / lid */}
+      {capGeo && (
+        <mesh geometry={capGeo} position={[0, capCenterY, 0]} castShadow>
+          <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
+        </mesh>
+      )}
 
-      {/* D-ring side handle: center ON the cap wall → depth test hides inner half → D-shape */}
-      <mesh geometry={handleGeo} position={[handleX, capCenterY, 0]} castShadow>
-        <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
-      </mesh>
+      {/* D-ring handle: center ON the outer wall → depth test hides inner half → D-shape */}
+      {handleGeo && (
+        <mesh geometry={handleGeo} position={[handleX, handleY, 0]} castShadow>
+          <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
+        </mesh>
+      )}
 
       {/* Metal collar seam ring */}
-      <mesh geometry={collarGeo} position={[0, collarY, 0]}>
-        <meshPhysicalMaterial color="#aaaaaa" roughness={0.12} metalness={0.98} clearcoat={0.6} envMapIntensity={2.2} />
-      </mesh>
-
-
+      {collarGeo && (
+        <mesh geometry={collarGeo} position={[0, collarY, 0]}>
+          <meshPhysicalMaterial color="#aaaaaa" roughness={0.12} metalness={0.98} clearcoat={0.6} envMapIntensity={2.2} />
+        </mesh>
+      )}
     </group>
   );
 }
 
-// Thermos center Y and half-height per size (scale: sm=0.78, md=1.0, lg=1.22, xl=1.4)
-// Body spans y: -1.80*s to (2.22+0.10+0.10)*s (cap top). Center and padding computed below.
-// New geometry: bottom -1.85*s, handle top ~2.40*s, centre ~0.275*s
-const RIG_PARAMS: Record<string, { fov: number; camZ: number; camY: number; shadowY: number }> = {
-  sm:  { fov: 28, camZ: 8.0,  camY: 0.22, shadowY: -1.46 },
-  md:  { fov: 30, camZ: 9.2,  camY: 0.28, shadowY: -1.87 },
-  lg:  { fov: 32, camZ: 10.8, camY: 0.34, shadowY: -2.28 },
-  xl:  { fov: 34, camZ: 12.4, camY: 0.40, shadowY: -2.60 },
-};
-
-function Rig({ size }: { size: string }) {
-  const { fov, camZ, camY } = RIG_PARAMS[size] ?? RIG_PARAMS.md;
+function Rig({ sil }: { sil: Silhouette }) {
+  const { fov, camZ, camY } = fitCamera(sil);
   return <PerspectiveCamera makeDefault fov={fov} position={[0, camY, camZ]} />;
 }
 
@@ -374,7 +432,11 @@ function isWebGLAvailable(): boolean {
 }
 
 // Canvas 2D fallback (simplified)
-function FallbackCanvas({ colorHex, text, iconName, size, customImageUrl, imageSize }: Omit<Thermos3DProps, "finish" | "fontClass">) {
+function FallbackCanvas({
+  colorHex, text, product, sil, customImageUrl, imageSize, textPlacement, artPlacement,
+}: Omit<Thermos3DProps, "finish" | "fontClass" | "productId" | "sizeId"> & {
+  product: ProductDef; sil: Silhouette; textPlacement: Placement; artPlacement: Placement;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const angleRef = useRef(0);
   const angleXRef = useRef(0); // pitch (up/down tilt)
@@ -385,8 +447,8 @@ function FallbackCanvas({ colorHex, text, iconName, size, customImageUrl, imageS
   const velRef = useRef(0);
   const velXRef = useRef(0);
   const customImgRef = useRef<HTMLImageElement | null>(null);
-  const propsRef = useRef({ colorHex, text, iconName, size, imageSize });
-  propsRef.current = { colorHex, text, iconName, size, imageSize };
+  const propsRef = useRef({ colorHex, text, product, sil, imageSize, textPlacement, artPlacement });
+  propsRef.current = { colorHex, text, product, sil, imageSize, textPlacement, artPlacement };
 
   useEffect(() => {
     if (!customImageUrl) { customImgRef.current = null; return; }
@@ -409,12 +471,14 @@ function FallbackCanvas({ colorHex, text, iconName, size, customImageUrl, imageS
     function mix(a: number, b: number, t: number) { return a + (b - a) * t; }
 
     const draw = () => {
-      const { colorHex, text, iconName, size, imageSize } = propsRef.current;
+      const { colorHex, text, product, sil, imageSize, textPlacement, artPlacement } = propsRef.current;
       const customImg = customImgRef.current;
       const hasArt = !!(customImg && imageSize && imageSize !== "none");
       ctx.clearRect(0, 0, W, H);
-      const bH = size === "sm" ? 190 : size === "md" ? 240 : size === "lg" ? 290 : 330;
-      const bW = size === "xl" ? 108 : size === "lg" ? 98 : size === "sm" ? 82 : 92;
+      // Scale the silhouette into the canvas, leaving room for cap and shadow
+      const px = Math.min((H - 100) / (sil.topY - sil.bottomY), (W - 50) / (sil.maxR * 3));
+      const bH = (sil.neckY - sil.bottomY) * px;
+      const bW = sil.maxR * 2 * px;
       const a  = angleRef.current;
       const ax = Math.max(-1.1, Math.min(1.1, angleXRef.current)); // pitch clamp
       const [r,g,b] = hexToRgb(colorHex);
@@ -459,78 +523,98 @@ function FallbackCanvas({ colorHex, text, iconName, size, customImageUrl, imageS
       ctx.beginPath(); ctx.ellipse(cx, top, bW/2, eRY + topEllipseExtra, 0, 0, Math.PI*2);
       ctx.fillStyle = `rgb(${mix(r,0,0.32)},${mix(g,0,0.32)},${mix(b,0,0.32)})`; ctx.fill();
 
-      // Wide flat screw cap (wider than body, matches reference)
-      const cW = bW * 1.04;
-      const capH = 30 * foreshorten;
+      // Cap / lid (guampas have none)
+      const cW = sil.capR * 2 * px;
+      const capH = sil.capH * px * foreshorten;
       const capTop = top - capH;
-      const cGrad = ctx.createLinearGradient(cx-cW/2,0,cx+cW/2,0);
-      const hl = 0.5 + 0.38 * Math.sin(a);
-      cGrad.addColorStop(0,"#111");
-      cGrad.addColorStop(Math.max(0,hl-0.18),"#2a2a2a");
-      cGrad.addColorStop(hl,"#555");
-      cGrad.addColorStop(Math.min(1,hl+0.18),"#222");
-      cGrad.addColorStop(1,"#111");
-      // Cap body — straight-sided (cylinder)
-      ctx.beginPath();
-      ctx.moveTo(cx-cW/2, top);
-      ctx.lineTo(cx+cW/2, top);
-      ctx.lineTo(cx+cW/2, capTop+4);
-      ctx.quadraticCurveTo(cx+cW/2, capTop, cx+cW/2-6, capTop);
-      ctx.lineTo(cx-cW/2+6, capTop);
-      ctx.quadraticCurveTo(cx-cW/2, capTop, cx-cW/2, capTop+4);
-      ctx.closePath();
-      ctx.fillStyle = cGrad; ctx.fill();
-      // Cap top ellipse
-      ctx.beginPath(); ctx.ellipse(cx, capTop, cW/2, Math.max(2, eRY*0.8 + topEllipseExtra*0.5), 0, 0, Math.PI*2);
-      ctx.fillStyle="#333"; ctx.fill();
-      // Metal collar seam line between body and cap
-      ctx.beginPath();
-      ctx.moveTo(cx-bW/2+2, top+2); ctx.lineTo(cx+bW/2-2, top+2);
-      ctx.strokeStyle="rgba(180,180,180,0.5)"; ctx.lineWidth=1.5; ctx.stroke();
-      // D-handle on cap side: compact C-arc from cap right wall
-      const hR    = bW * 0.20;
-      const hTube = bW * 0.055;
-      const capRight = cx + cW / 2;
-      const capMidY  = top - capH / 2;
-      ctx.beginPath();
-      ctx.arc(capRight, capMidY, hR, -Math.PI / 2, Math.PI / 2); // right C-arc only
-      ctx.strokeStyle = `rgba(18,18,18,${Math.max(0.18, Math.abs(Math.cos(a)) * 0.88 + 0.18)})`;
-      ctx.lineWidth = hTube * 2;
-      ctx.lineCap = "round";
-      ctx.stroke();
+      const handleAlpha = Math.max(0.18, Math.abs(Math.cos(a)) * 0.88 + 0.18);
 
-      // Icon (skipped when a custom image is set — it takes the icon's place)
-      const iChar = !hasArt && iconName ? ICON_CHARS[iconName] : null;
-      if (iChar && Math.cos(a) > 0) {
-        ctx.save(); ctx.font = `${Math.floor(bW*0.50)}px serif`;
-        ctx.textAlign="center"; ctx.textBaseline="middle";
-        ctx.globalAlpha = Math.min(1, Math.cos(a)*1.2);
-        ctx.fillText(iChar, cx, cy - visH*0.10); ctx.restore();
+      if (product.cap !== "none") {
+        const cGrad = ctx.createLinearGradient(cx-cW/2,0,cx+cW/2,0);
+        const hl = 0.5 + 0.38 * Math.sin(a);
+        cGrad.addColorStop(0,"#111");
+        cGrad.addColorStop(Math.max(0,hl-0.18),"#2a2a2a");
+        cGrad.addColorStop(hl,"#555");
+        cGrad.addColorStop(Math.min(1,hl+0.18),"#222");
+        cGrad.addColorStop(1,"#111");
+        // Cap body — straight-sided (cylinder)
+        ctx.beginPath();
+        ctx.moveTo(cx-cW/2, top);
+        ctx.lineTo(cx+cW/2, top);
+        ctx.lineTo(cx+cW/2, capTop+4);
+        ctx.quadraticCurveTo(cx+cW/2, capTop, cx+cW/2-6, capTop);
+        ctx.lineTo(cx-cW/2+6, capTop);
+        ctx.quadraticCurveTo(cx-cW/2, capTop, cx-cW/2, capTop+4);
+        ctx.closePath();
+        ctx.fillStyle = cGrad; ctx.fill();
+        // Cap top ellipse
+        ctx.beginPath(); ctx.ellipse(cx, capTop, cW/2, Math.max(2, eRY*0.8 + topEllipseExtra*0.5), 0, 0, Math.PI*2);
+        ctx.fillStyle="#333"; ctx.fill();
       }
-      // Custom uploaded image (drawing or logo)
-      if (hasArt && customImg && Math.cos(a) > 0) {
-        const naturalW = customImg.naturalWidth || customImg.width || 1;
-        const naturalH = customImg.naturalHeight || customImg.height || 1;
-        const maxDim = bW * (imageSize === "large" ? 0.62 : 0.36);
-        const ratio = Math.min(maxDim / naturalW, maxDim / naturalH);
-        const dw = naturalW * ratio;
-        const dh = naturalH * ratio;
-        ctx.save();
-        ctx.globalAlpha = Math.min(1, Math.cos(a) * 1.2);
-        ctx.drawImage(customImg, cx - dw / 2, cy - visH * 0.10 - dh / 2, dw, dh);
-        ctx.restore();
+      if (product.cap === "screw") {
+        // Metal collar seam line between body and cap
+        ctx.beginPath();
+        ctx.moveTo(cx-bW/2+2, top+2); ctx.lineTo(cx+bW/2-2, top+2);
+        ctx.strokeStyle="rgba(180,180,180,0.5)"; ctx.lineWidth=1.5; ctx.stroke();
+      }
+      if (product.handle !== "none") {
+        // Compact C-arc springing from the right wall (cap wall or body wall)
+        const onCap = product.handle === "cap-d";
+        const hR      = bW * (onCap ? 0.20 : 0.30);
+        const hTube   = bW * (onCap ? 0.055 : 0.05);
+        const anchorX = cx + (onCap ? cW : bW) / 2;
+        const anchorY = onCap ? top - capH / 2 : cy;
+        ctx.beginPath();
+        ctx.arc(anchorX, anchorY, hR, -Math.PI / 2, Math.PI / 2); // right C-arc only
+        ctx.strokeStyle = `rgba(18,18,18,${handleAlpha})`;
+        ctx.lineWidth = hTube * 2;
+        ctx.lineCap = "round";
+        ctx.stroke();
+      }
+
+      // Map a placement onto the visible face: y from the band, x/alpha from the spin angle
+      const bandTopPx    = bottom - (sil.band[1] - sil.bottomY) / (sil.neckY - sil.bottomY) * visH;
+      const bandBottomPx = bottom - (sil.band[0] - sil.bottomY) / (sil.neckY - sil.bottomY) * visH;
+      const project = (p: Placement) => {
+        const phase = a + (p.u - 0.5) * Math.PI * 2;
+        return {
+          facing: Math.cos(phase),
+          x: cx + Math.sin(phase) * (bW / 2) * 0.55,
+          y: bandTopPx + (bandBottomPx - bandTopPx) * p.v,
+          rot: p.orientation === "vertical" ? -Math.PI / 2 : 0,
+        };
+      };
+
+      // Custom uploaded logo or photo
+      if (hasArt && customImg) {
+        const art = project(artPlacement);
+        if (art.facing > 0) {
+          const naturalW = customImg.naturalWidth || customImg.width || 1;
+          const naturalH = customImg.naturalHeight || customImg.height || 1;
+          const maxDim = bW * (imageSize === "large" ? 0.62 : 0.36);
+          const ratio = Math.min(maxDim / naturalW, maxDim / naturalH);
+          const dw = naturalW * ratio;
+          const dh = naturalH * ratio;
+          ctx.save();
+          ctx.beginPath(); ctx.rect(left, top, bW, visH); ctx.clip();
+          ctx.globalAlpha = Math.min(1, art.facing * 1.2);
+          ctx.translate(art.x, art.y);
+          ctx.rotate(art.rot);
+          ctx.drawImage(customImg, -dw / 2, -dh / 2, dw, dh);
+          ctx.restore();
+        }
       }
       // Text
       if (text) {
-        const facing = Math.cos(a - Math.PI*0.5);
-        if (facing > -0.15) {
+        const tp = project(textPlacement);
+        if (tp.facing > -0.15) {
           ctx.save();
           ctx.beginPath(); ctx.rect(left, top, bW, visH); ctx.clip();
-          ctx.translate(cx, cy + ((iChar || hasArt) ? visH*0.18 : 0));
-          ctx.rotate(-Math.PI/2);
-          ctx.font = `900 ${Math.max(12, Math.floor(bW*0.25))}px Inter, sans-serif`;
+          ctx.translate(tp.x, tp.y);
+          ctx.rotate(tp.rot);
+          ctx.font = `900 ${Math.max(12, Math.floor(bW * 0.25 * textPlacement.scale))}px Inter, sans-serif`;
           ctx.textAlign="center"; ctx.textBaseline="middle";
-          ctx.globalAlpha = Math.max(0, Math.min(1, facing+0.25));
+          ctx.globalAlpha = Math.max(0, Math.min(1, tp.facing+0.25));
           ctx.fillStyle="rgba(255,255,255,0.93)";
           ctx.shadowColor="rgba(0,0,0,0.5)"; ctx.shadowBlur=4;
           ctx.fillText(text, 0, 0); ctx.restore();
@@ -595,15 +679,15 @@ function FallbackCanvas({ colorHex, text, iconName, size, customImageUrl, imageS
   );
 }
 
-function ThreeCanvas(props: Thermos3DProps) {
-  const { shadowY } = RIG_PARAMS[props.size] ?? RIG_PARAMS.md;
+function ThreeCanvas({ product, sil, ...props }: Thermos3DProps & { product: ProductDef; sil: Silhouette }) {
+  const { shadowY } = fitCamera(sil);
   return (
     <Canvas
       shadows
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
       style={{ background: "transparent", cursor: "grab" }}
     >
-      <Rig size={props.size} />
+      <Rig sil={sil} />
 
       <Suspense fallback={null}>
         <Environment preset="studio" environmentIntensity={0.9} />
@@ -612,17 +696,19 @@ function ThreeCanvas(props: Thermos3DProps) {
           colorHex={props.colorHex}
           finish={props.finish}
           text={props.text}
-          iconName={props.iconName}
-          size={props.size}
+          product={product}
+          sil={sil}
           fontFamily={props.fontStyle?.fontFamily as string | undefined}
           customImageUrl={props.customImageUrl}
           imageSize={props.imageSize}
+          textPlacement={props.textPlacement ?? DEFAULT_TEXT_PLACEMENT}
+          artPlacement={props.artPlacement ?? DEFAULT_ART_PLACEMENT}
         />
 
         <ContactShadows
           position={[0, shadowY, 0]}
           opacity={0.45}
-          scale={5}
+          scale={Math.max(5, sil.maxR * 7)}
           blur={2.5}
           far={3}
           color="#000000"
@@ -638,14 +724,22 @@ function ThreeCanvas(props: Thermos3DProps) {
 }
 
 export default function Thermos3D(props: Thermos3DProps) {
+  const product = getProduct(props.productId);
+  const sil = useMemo(
+    () => buildSilhouette(product, getSize(product, props.sizeId).scale),
+    [product, props.sizeId]
+  );
+
   const fallback = (
     <FallbackCanvas
       colorHex={props.colorHex}
       text={props.text}
-      iconName={props.iconName}
-      size={props.size}
+      product={product}
+      sil={sil}
       customImageUrl={props.customImageUrl}
       imageSize={props.imageSize}
+      textPlacement={props.textPlacement ?? DEFAULT_TEXT_PLACEMENT}
+      artPlacement={props.artPlacement ?? DEFAULT_ART_PLACEMENT}
     />
   );
 
@@ -654,7 +748,7 @@ export default function Thermos3D(props: Thermos3DProps) {
 
   return (
     <WebGLErrorBoundary fallback={fallback}>
-      <ThreeCanvas {...props} />
+      <ThreeCanvas {...props} product={product} sil={sil} />
     </WebGLErrorBoundary>
   );
 }
