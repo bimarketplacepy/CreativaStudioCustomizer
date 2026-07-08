@@ -6,6 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Check, Palette, Sparkles, Type, Box, Flame, Star, Zap, Heart, Mountain, Waves, Leaf } from "lucide-react";
 import Thermos3D from "./thermos-3d";
+import ImageUpload from "./image-upload";
+import { ENGRAVING_PLANS, type EngravingPlanId } from "@/lib/engraving-plans";
+import type { ProcessedImage } from "@/lib/image-processing";
 
 const SIZES = [
   { id: "sm", name: "12oz Mug", label: "Mug" },
@@ -93,9 +96,18 @@ export default function Customizer() {
   const activeFont = FONTS.find(f => f.id === font) || FONTS[0];
   const [icon, setIcon] = useState(ICONS[0].id);
   const [isOrdered, setIsOrdered] = useState(false);
+  const [plan, setPlan] = useState<EngravingPlanId>(ENGRAVING_PLANS[0].id);
+  const [customImage, setCustomImage] = useState<ProcessedImage | null>(null);
 
   const activeColorHex = COLORS.find(c => c.id === color)?.hex || COLORS[0].hex;
   const activeColorName = COLORS.find(c => c.id === color)?.name || "";
+  const activePlan = ENGRAVING_PLANS.find(p => p.id === plan) || ENGRAVING_PLANS[0];
+
+  const handleSelectPlan = (id: EngravingPlanId) => {
+    setPlan(id);
+    const nextPlan = ENGRAVING_PLANS.find(p => p.id === id);
+    if (!nextPlan?.allowsImage) setCustomImage(null);
+  };
 
   const handleOrder = () => {
     setIsOrdered(true);
@@ -134,6 +146,8 @@ export default function Customizer() {
                     fontStyle={activeFont.style}
                     iconName={ICON_IDS[icon] ?? null}
                     size={size}
+                    customImageUrl={activePlan.allowsImage ? customImage?.svgDataUrl ?? null : null}
+                    imageSize={activePlan.imageSize}
                   />
                 </div>
 
@@ -351,15 +365,55 @@ export default function Customizer() {
                 </TabsContent>
               </div>
 
-              {/* ORDER BUTTON */}
-              <div className="px-6 pb-6 pt-2 border-t border-border">
+              {/* PLAN + UPLOAD + ORDER */}
+              <div className="px-6 pb-6 pt-4 border-t border-border space-y-4">
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Plan de grabado</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {ENGRAVING_PLANS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleSelectPlan(p.id)}
+                        className={`flex flex-col items-center gap-0.5 rounded-lg border-2 px-2 py-2.5 text-center transition-colors ${
+                          plan === p.id
+                            ? "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30"
+                            : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
+                        }`}
+                      >
+                        <span className="text-xs font-semibold leading-tight">
+                          {p.subtitle ? p.subtitle.replace(/^mas /, "+ ") : "Nombres"}
+                        </span>
+                        <span className="text-[11px] font-medium">{p.priceLabel}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {activePlan.title}
+                    {activePlan.subtitle ? ` ${activePlan.subtitle}` : ""}
+                  </p>
+                </div>
+
+                {activePlan.allowsImage && (
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">
+                      Subi tu {activePlan.imageSize === "large" ? "logo" : "dibujo"}
+                    </Label>
+                    <ImageUpload
+                      imageSize={activePlan.imageSize === "large" ? "large" : "small"}
+                      value={customImage}
+                      onChange={setCustomImage}
+                    />
+                  </div>
+                )}
+
                 <Button
                   onClick={handleOrder}
                   disabled={isOrdered}
                   size="lg"
                   className="w-full h-12 text-base font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
                 >
-                  {isOrdered ? "Pedido enviado..." : "Pedir Mi Termo — desde Gs. 250.000"}
+                  {isOrdered ? "Pedido enviado..." : `Pedir Mi Termo — ${activePlan.priceLabel}`}
                 </Button>
                 <p className="text-xs text-center text-muted-foreground mt-2">Envio incluido en compras sobre Gs. 500.000</p>
               </div>

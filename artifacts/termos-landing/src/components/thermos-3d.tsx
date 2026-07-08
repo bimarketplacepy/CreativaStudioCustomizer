@@ -22,6 +22,8 @@ interface Thermos3DProps {
   fontStyle?: React.CSSProperties;
   iconName: string | null;
   size: string;
+  customImageUrl: string | null;
+  imageSize: "none" | "small" | "large";
 }
 
 const ICON_CHARS: Record<string, string> = {
@@ -56,7 +58,9 @@ function makeBodyTexture(
   colorHex: string,
   text: string,
   iconName: string | null,
-  fontFamily = "Inter, system-ui, sans-serif"
+  fontFamily = "Inter, system-ui, sans-serif",
+  customImageEl: HTMLImageElement | null = null,
+  imageSize: "none" | "small" | "large" = "none"
 ): THREE.CanvasTexture {
   const W = 1024, H = 2048;
   const canvas = document.createElement("canvas");
@@ -81,8 +85,10 @@ function makeBodyTexture(
   ctx.fillStyle = "rgba(255,255,255,0.06)";
   ctx.fillRect(0, labelTop, W, labelBot - labelTop);
 
-  // Icon
-  if (iconName && ICON_CHARS[iconName]) {
+  const hasArt = !!(customImageEl && imageSize !== "none");
+
+  // Icon (only rendered when no custom image is set — the uploaded art takes its place)
+  if (!hasArt && iconName && ICON_CHARS[iconName]) {
     ctx.save();
     ctx.font = `${Math.round(W * 0.22)}px serif`;
     ctx.textAlign = "center";
@@ -90,6 +96,23 @@ function makeBodyTexture(
     ctx.globalAlpha = 0.80;
     ctx.fillStyle = "rgba(255,255,255,0.9)";
     ctx.fillText(ICON_CHARS[iconName], W / 2, H * 0.36);
+    ctx.restore();
+  }
+
+  // Custom uploaded image (drawing or logo, background already removed)
+  if (hasArt && customImageEl) {
+    ctx.save();
+    const maxFraction = imageSize === "large" ? 0.34 : 0.19;
+    const maxDim = W * maxFraction;
+    const naturalW = customImageEl.naturalWidth || customImageEl.width || 1;
+    const naturalH = customImageEl.naturalHeight || customImageEl.height || 1;
+    const ratio = Math.min(maxDim / naturalW, maxDim / naturalH);
+    const dw = naturalW * ratio;
+    const dh = naturalH * ratio;
+    const cx = W / 2;
+    const cy = H * 0.36;
+    ctx.globalAlpha = 0.95;
+    ctx.drawImage(customImageEl, cx - dw / 2, cy - dh / 2, dw, dh);
     ctx.restore();
   }
 
@@ -103,7 +126,7 @@ function makeBodyTexture(
     ctx.fillStyle = "rgba(255,255,255,0.95)";
     ctx.shadowColor = "rgba(0,0,0,0.45)";
     ctx.shadowBlur = 18;
-    const textY = iconName ? H * 0.58 : H * 0.50;
+    const textY = (iconName || hasArt) ? H * 0.58 : H * 0.50;
     ctx.fillText(text, W / 2, textY);
     ctx.restore();
   }
@@ -122,10 +145,11 @@ function makeBodyTexture(
 }
 
 function ThermosMesh({
-  colorHex, finish, text, iconName, size, fontFamily,
+  colorHex, finish, text, iconName, size, fontFamily, customImageUrl, imageSize,
 }: {
   colorHex: string; finish: string; text: string;
   iconName: string | null; size: string; fontFamily?: string;
+  customImageUrl: string | null; imageSize: "none" | "small" | "large";
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
@@ -176,11 +200,26 @@ function ThermosMesh({
     });
   }, [fontFamily]);
 
+  const [customImageEl, setCustomImageEl] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    if (!customImageUrl) {
+      setCustomImageEl(null);
+      return;
+    }
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => { if (!cancelled) setCustomImageEl(img); };
+    img.onerror = () => { if (!cancelled) setCustomImageEl(null); };
+    img.src = customImageUrl;
+    return () => { cancelled = true; };
+  }, [customImageUrl]);
+
   const texture = useMemo(
-    () => makeBodyTexture(colorHex, text, iconName, fontFamily),
+    () => makeBodyTexture(colorHex, text, iconName, fontFamily, customImageEl, imageSize),
     // fontReady triggers re-creation once the font is actually loaded
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [colorHex, text, iconName, fontFamily, fontReady]
+    [colorHex, text, iconName, fontFamily, fontReady, customImageEl, imageSize]
   );
 
   // PBR material params per finish
@@ -335,7 +374,7 @@ function isWebGLAvailable(): boolean {
 }
 
 // Canvas 2D fallback (simplified)
-function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps, "finish" | "fontClass">) {
+function FallbackCanvas({ colorHex, text, iconName, size, customImageUrl, imageSize }: Omit<Thermos3DProps, "finish" | "fontClass">) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const angleRef = useRef(0);
   const angleXRef = useRef(0); // pitch (up/down tilt)
@@ -345,8 +384,19 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
   const lastY = useRef(0);
   const velRef = useRef(0);
   const velXRef = useRef(0);
-  const propsRef = useRef({ colorHex, text, iconName, size });
-  propsRef.current = { colorHex, text, iconName, size };
+  const customImgRef = useRef<HTMLImageElement | null>(null);
+  const propsRef = useRef({ colorHex, text, iconName, size, imageSize });
+  propsRef.current = { colorHex, text, iconName, size, imageSize };
+
+  useEffect(() => {
+    if (!customImageUrl) { customImgRef.current = null; return; }
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => { if (!cancelled) customImgRef.current = img; };
+    img.onerror = () => { if (!cancelled) customImgRef.current = null; };
+    img.src = customImageUrl;
+    return () => { cancelled = true; };
+  }, [customImageUrl]);
 
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return;
@@ -359,7 +409,9 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
     function mix(a: number, b: number, t: number) { return a + (b - a) * t; }
 
     const draw = () => {
-      const { colorHex, text, iconName, size } = propsRef.current;
+      const { colorHex, text, iconName, size, imageSize } = propsRef.current;
+      const customImg = customImgRef.current;
+      const hasArt = !!(customImg && imageSize && imageSize !== "none");
       ctx.clearRect(0, 0, W, H);
       const bH = size === "sm" ? 190 : size === "md" ? 240 : size === "lg" ? 290 : 330;
       const bW = size === "xl" ? 108 : size === "lg" ? 98 : size === "sm" ? 82 : 92;
@@ -447,13 +499,26 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
       ctx.lineCap = "round";
       ctx.stroke();
 
-      // Icon
-      const iChar = iconName ? ICON_CHARS[iconName] : null;
+      // Icon (skipped when a custom image is set — it takes the icon's place)
+      const iChar = !hasArt && iconName ? ICON_CHARS[iconName] : null;
       if (iChar && Math.cos(a) > 0) {
         ctx.save(); ctx.font = `${Math.floor(bW*0.50)}px serif`;
         ctx.textAlign="center"; ctx.textBaseline="middle";
         ctx.globalAlpha = Math.min(1, Math.cos(a)*1.2);
         ctx.fillText(iChar, cx, cy - visH*0.10); ctx.restore();
+      }
+      // Custom uploaded image (drawing or logo)
+      if (hasArt && customImg && Math.cos(a) > 0) {
+        const naturalW = customImg.naturalWidth || customImg.width || 1;
+        const naturalH = customImg.naturalHeight || customImg.height || 1;
+        const maxDim = bW * (imageSize === "large" ? 0.62 : 0.36);
+        const ratio = Math.min(maxDim / naturalW, maxDim / naturalH);
+        const dw = naturalW * ratio;
+        const dh = naturalH * ratio;
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, Math.cos(a) * 1.2);
+        ctx.drawImage(customImg, cx - dw / 2, cy - visH * 0.10 - dh / 2, dw, dh);
+        ctx.restore();
       }
       // Text
       if (text) {
@@ -461,7 +526,7 @@ function FallbackCanvas({ colorHex, text, iconName, size }: Omit<Thermos3DProps,
         if (facing > -0.15) {
           ctx.save();
           ctx.beginPath(); ctx.rect(left, top, bW, visH); ctx.clip();
-          ctx.translate(cx, cy + (iChar ? visH*0.18 : 0));
+          ctx.translate(cx, cy + ((iChar || hasArt) ? visH*0.18 : 0));
           ctx.rotate(-Math.PI/2);
           ctx.font = `900 ${Math.max(12, Math.floor(bW*0.25))}px Inter, sans-serif`;
           ctx.textAlign="center"; ctx.textBaseline="middle";
@@ -550,6 +615,8 @@ function ThreeCanvas(props: Thermos3DProps) {
           iconName={props.iconName}
           size={props.size}
           fontFamily={props.fontStyle?.fontFamily as string | undefined}
+          customImageUrl={props.customImageUrl}
+          imageSize={props.imageSize}
         />
 
         <ContactShadows
@@ -577,6 +644,8 @@ export default function Thermos3D(props: Thermos3DProps) {
       text={props.text}
       iconName={props.iconName}
       size={props.size}
+      customImageUrl={props.customImageUrl}
+      imageSize={props.imageSize}
     />
   );
 

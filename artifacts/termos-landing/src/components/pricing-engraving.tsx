@@ -1,23 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Lightbulb } from "lucide-react";
-
-const PLANS = [
-  {
-    title: "Grabado de Nombres y Apellidos",
-    price: "35.000",
-  },
-  {
-    title: "Grabado de Nombres y Apellidos",
-    subtitle: "mas un dibujo chiquito",
-    price: "40.000",
-  },
-  {
-    title: "Grabado de Nombres y Apellidos",
-    subtitle: "mas un logo",
-    price: "50.000",
-  },
-];
+import { ENGRAVING_PLANS } from "@/lib/engraving-plans";
 
 export default function PricingEngraving() {
   return (
@@ -35,9 +19,9 @@ export default function PricingEngraving() {
         </h2>
 
         <div className="w-full flex flex-col gap-12">
-          {PLANS.map((plan, idx) => (
+          {ENGRAVING_PLANS.map((plan, idx) => (
             <motion.div
-              key={idx}
+              key={plan.id}
               className="flex flex-col items-center gap-5"
               initial={{ opacity: 0, y: 15 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -55,7 +39,7 @@ export default function PricingEngraving() {
               </p>
               <div className="border-2 border-[#8B1A2F] rounded-full px-8 py-3">
                 <span className="text-xl sm:text-2xl font-black text-white tracking-wide">
-                  {plan.price}gs
+                  {plan.priceLabel}
                 </span>
               </div>
             </motion.div>
