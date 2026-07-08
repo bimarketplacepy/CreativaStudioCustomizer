@@ -24,7 +24,7 @@ export default function Hero() {
             />
             <span aria-hidden className="text-white/30 text-lg leading-none">—</span>
             <img
-              src="/la-creativa-logo.png"
+              src="/la-creativa-logo-new.png"
               alt="Creativa Studio"
               className="h-8 object-contain brightness-0 invert"
             />
@@ -136,11 +136,11 @@ export default function Hero() {
               {/* Outer glow ring */}
               <div className="absolute inset-0 rounded-full bg-white/5 border border-white/10" />
               {/* Inner panel */}
-              <div className="absolute inset-8 rounded-full bg-white flex items-center justify-center shadow-2xl">
+              <div className="absolute inset-8 rounded-full bg-[#2a2a2a] flex items-center justify-center shadow-2xl">
                 <motion.img
-                  src="/la-creativa-logo.png"
+                  src="/la-creativa-logo-new.png"
                   alt="Creativa Studio"
-                  className="w-3/4 object-contain"
+                  className="w-3/5 object-contain"
                   animate={{ y: [0, -10, 0] }}
                   transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
                 />
