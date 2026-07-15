@@ -57,11 +57,6 @@ function Blank({ obj, baseColor }: { obj: ObjectDef; baseColor: string }) {
           <RoundedBox args={[hx * 2.06, hy * 0.6, hz * 2.06]} radius={0.08} smoothness={4} position={[0, hy * 0.62, 0]} castShadow>
             <meshPhysicalMaterial {...body} />
           </RoundedBox>
-          {/* Black arch handle over the lid */}
-          <mesh position={[0, hy * 1.35, 0]} castShadow>
-            <torusGeometry args={[hx * 0.72, 0.05, 12, 40, Math.PI]} />
-            <meshPhysicalMaterial color={obj.accentColor} roughness={0.5} metalness={0.2} />
-          </mesh>
           {/* Rubber T-latches on the front */}
           {[-hx * 0.72, hx * 0.72].map((x, i) => (
             <RoundedBox key={i} args={[0.16, 0.34, 0.1]} radius={0.03} smoothness={2} position={[x, hy * 0.2, hz + 0.02]} castShadow>
