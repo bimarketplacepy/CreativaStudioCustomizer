@@ -1,4 +1,4 @@
-export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa";
+export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "none";
@@ -143,6 +143,54 @@ export const PRODUCTS: ProductDef[] = [
       { id: "guampa-sm", name: "Chica",   label: "300ml", scale: 0.84 },
       { id: "guampa-md", name: "Mediana", label: "500ml", scale: 1.00 },
       { id: "guampa-lg", name: "Grande",  label: "750ml", scale: 1.16 },
+    ],
+  },
+  {
+    id: "copa",
+    name: "Copas",
+    singular: "Copa",
+    // Copa de cristal tipo pilsner — pie ancho, tallo fino y bombé acampanado (ref. copas.jpeg)
+    desc: "Copa de cristal con pie, tallo fino y bombé acampanado.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.00, -1.30], [0.52, -1.30],
+      [0.52, -1.26], [0.30, -1.22],
+      [0.09, -1.14], [0.07, -0.95],
+      [0.07, -0.66], [0.14, -0.55],
+      [0.28, -0.34], [0.40, -0.06],
+      [0.47,  0.24], [0.48,  0.50],
+      [0.46,  0.80], [0.43,  1.05],
+      [0.41,  1.20],
+    ],
+    band: [-0.20, 1.02],
+    sizes: [
+      { id: "copa-sm", name: "Chica",   label: "300ml", scale: 0.88 },
+      { id: "copa-md", name: "Mediana", label: "450ml", scale: 1.00 },
+      { id: "copa-lg", name: "Grande",  label: "600ml", scale: 1.12 },
+    ],
+  },
+  {
+    id: "botella",
+    name: "Botellas",
+    singular: "Botella",
+    // Botella de whisky tipo decanter (aprox. redonda del Johnnie Walker Swing, ref. botella.jpeg)
+    desc: "Botella de whisky de cristal, cuerpo bombé con cuello corto y tapa.",
+    cap: "screw",
+    handle: "none",
+    profile: [
+      [0.00, -1.25], [0.34, -1.23],
+      [0.56, -1.10], [0.66, -0.84],
+      [0.68, -0.52], [0.66, -0.22],
+      [0.58,  0.06], [0.45,  0.30],
+      [0.30,  0.48], [0.19,  0.60],
+      [0.16,  0.82], [0.18,  0.90],
+    ],
+    band: [-0.80, 0.16],
+    sizes: [
+      { id: "botella-sm", name: "Chica",   label: "500ml", scale: 0.90 },
+      { id: "botella-md", name: "Clásica", label: "750ml", scale: 1.00 },
+      { id: "botella-lg", name: "Grande",  label: "1L",    scale: 1.12 },
     ],
   },
 ];

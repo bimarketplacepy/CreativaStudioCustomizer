@@ -47,8 +47,8 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
     <div>
       <p className="text-xs text-muted-foreground mb-3">
         {imageSize === "large"
-          ? "Subí tu logo o foto. Le sacamos el fondo automaticamente y lo grabamos en tamaño grande."
-          : "Subí tu dibujo o foto. Le sacamos el fondo automaticamente y lo grabamos en tamaño chico."}
+          ? "Subí tu logo o foto. Si tiene un fondo liso se lo sacamos automaticamente, y lo grabamos en tamaño grande."
+          : "Subí tu dibujo o foto. Si tiene un fondo liso se lo sacamos automaticamente, y lo grabamos en tamaño chico."}
       </p>
 
       {!value ? (
@@ -100,7 +100,11 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-foreground">Imagen lista</p>
-            <p className="text-xs text-muted-foreground">Fondo removido y lista para grabar ({imageSize === "large" ? "tamaño grande" : "tamaño chico"}).</p>
+            <p className="text-xs text-muted-foreground">
+              {value.backgroundRemoved
+                ? `Fondo removido y lista para grabar (${imageSize === "large" ? "tamaño grande" : "tamaño chico"}).`
+                : `No encontramos un fondo liso, asi que grabamos la imagen completa (${imageSize === "large" ? "tamaño grande" : "tamaño chico"}).`}
+            </p>
           </div>
           <button
             type="button"

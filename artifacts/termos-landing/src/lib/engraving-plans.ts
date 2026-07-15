@@ -5,41 +5,49 @@ export interface EngravingPlan {
   id: EngravingPlanId;
   title: string;
   subtitle?: string;
-  /** Compact name used on the plan picker buttons. */
+  /** Name used on the pricing cards, e.g. "Nombres + un logo". */
   shortLabel: string;
+  /** Two-word name for the narrow plan picker buttons. */
+  pickerLabel: string;
   price: number;
   priceLabel: string;
   allowsImage: boolean;
   imageSize: EngravingImageSize;
 }
 
+/** Included in every plan — stated once instead of repeated on each card. */
+export const ENGRAVING_BASE = "Grabado de nombres y apellidos";
+
 export const ENGRAVING_PLANS: EngravingPlan[] = [
   {
     id: "names",
     title: "Grabado de Nombres y Apellidos",
-    shortLabel: "Nombres",
+    shortLabel: "Solo nombres",
+    pickerLabel: "Nombres",
     price: 35000,
-    priceLabel: "35.000gs",
+    priceLabel: "Gs. 35.000",
     allowsImage: false,
     imageSize: "none",
   },
   {
     id: "drawing",
     title: "Grabado de Nombres y Apellidos",
-    subtitle: "mas un dibujo pequeño",
+    subtitle: "más un dibujo pequeño",
     shortLabel: "Nombres + un dibujo pequeño",
+    pickerLabel: "+ Dibujo",
     price: 40000,
-    priceLabel: "40.000gs",
+    priceLabel: "Gs. 40.000",
     allowsImage: true,
     imageSize: "small",
   },
   {
     id: "logo",
     title: "Grabado de Nombres y Apellidos",
-    subtitle: "mas un logo",
+    subtitle: "más un logo",
     shortLabel: "Nombres + un logo",
+    pickerLabel: "+ Logo",
     price: 50000,
-    priceLabel: "50.000gs",
+    priceLabel: "Gs. 50.000",
     allowsImage: true,
     imageSize: "large",
   },

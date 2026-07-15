@@ -3,7 +3,9 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, ContactShadows, PerspectiveCamera } from "@react-three/drei";
 import * as THREE from "three";
 import { getProduct, getSize, resampledProfile, type ProductDef } from "@/lib/products";
-import { bandRange, DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "@/lib/placement";
+import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "@/lib/placement";
+import { buildEngraveMask } from "@/lib/image-processing";
+import { makeBodyMaps } from "@/lib/engraving-maps";
 
 class WebGLErrorBoundary extends Component<
   { fallback: ReactNode; children: ReactNode },
@@ -28,6 +30,8 @@ interface Thermos3DProps {
   imageSize: "none" | "small" | "large";
   textPlacement?: Placement;
   artPlacement?: Placement;
+  /** Eufy Make (UV DTF): print the artwork in colour instead of engraving it. */
+  colorPrint?: boolean;
 }
 
 /** Everything the meshes and the camera rig need, derived from the product profile. */
@@ -56,8 +60,9 @@ function buildSilhouette(product: ProductDef, scale: number): Silhouette {
   const neckR = last[0] * scale;
   const neckY = last[1] * scale;
 
-  const capH = product.cap === "screw" ? 0.42 * scale : product.cap === "lid" ? 0.18 * scale : 0;
-  const capR = product.cap === "screw" ? neckR * 1.16 : neckR * 1.06;
+  // A flip-straw lid stands taller than a sliding one but shorter than a screw cap.
+  const capH = (product.cap === "screw" ? 0.42 : product.cap === "flip" ? 0.30 : product.cap === "lid" ? 0.18 : 0) * scale;
+  const capR = neckR * (product.cap === "screw" ? 1.16 : product.cap === "flip" ? 1.08 : 1.06);
 
   return {
     points, scale, maxR, bottomY, neckY, neckR, capR, capH,
@@ -79,142 +84,14 @@ function fitCamera(sil: Silhouette) {
   return { fov: FOV, camY: centerY, camZ: Math.max(fitByHeight, fitByWidth), shadowY: sil.bottomY };
 }
 
-const clamp = (v: number, lo: number, hi: number) => (lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, v)));
-
-/**
- * The engravable band in texture pixels, plus the vertical squash needed to
- * cancel the lathe's non-uniform UV so art keeps its real-world proportions.
- */
-function bandMetrics(product: ProductDef, W: number, H: number) {
-  const [vBot, vTop] = bandRange(product);
-  const topPx = (1 - vTop) * H;
-  const botPx = (1 - vBot) * H;
-  const maxR = Math.max(...product.profile.map(p => p[0]));
-  const hPxPerUnit = W / (2 * Math.PI * maxR);
-  const vPxPerUnit = (botPx - topPx) / (product.band[1] - product.band[0]);
-  return { topPx, botPx, aspect: vPxPerUnit / hPxPerUnit };
-}
-
-type BandMetrics = ReturnType<typeof bandMetrics>;
-
-/**
- * Draw something centred on the band at the given placement. Content is drawn
- * around the origin in square pixels; we clamp it inside the band and repeat it
- * across the texture seam so it wraps cleanly.
- */
-function drawPlaced(
-  ctx: CanvasRenderingContext2D,
-  m: BandMetrics,
-  W: number,
-  p: Placement,
-  halfW: number,
-  halfH: number,
-  render: () => void
-) {
-  const rot = p.orientation === "vertical" ? -Math.PI / 2 : 0;
-  const boundHalfH = (rot ? halfW : halfH) * m.aspect;
-
-  const cx = ((p.u % 1) + 1) % 1 * W;
-  const cy = clamp(m.topPx + (m.botPx - m.topPx) * p.v, m.topPx + boundHalfH, m.botPx - boundHalfH);
-
-  for (const dx of [-W, 0, W]) {
-    ctx.save();
-    ctx.translate(cx + dx, cy);
-    ctx.scale(1, m.aspect);
-    ctx.rotate(rot);
-    render();
-    ctx.restore();
-  }
-}
-
-function makeBodyTexture(
-  product: ProductDef,
-  colorHex: string,
-  text: string,
-  textPlacement: Placement,
-  fontFamily = "Inter, system-ui, sans-serif",
-  customImageEl: HTMLImageElement | null = null,
-  imageSize: "none" | "small" | "large" = "none",
-  artPlacement: Placement = DEFAULT_ART_PLACEMENT
-): THREE.CanvasTexture {
-  const W = 1024, H = 2048;
-  const canvas = document.createElement("canvas");
-  canvas.width = W; canvas.height = H;
-  const ctx = canvas.getContext("2d")!;
-
-  ctx.fillStyle = colorHex;
-  ctx.fillRect(0, 0, W, H);
-
-  // Vertical light stripe (label area highlight)
-  const stripe = ctx.createLinearGradient(0, 0, W, 0);
-  stripe.addColorStop(0.0,  "rgba(0,0,0,0.0)");
-  stripe.addColorStop(0.42, "rgba(255,255,255,0.06)");
-  stripe.addColorStop(0.50, "rgba(255,255,255,0.12)");
-  stripe.addColorStop(0.58, "rgba(255,255,255,0.06)");
-  stripe.addColorStop(1.0,  "rgba(0,0,0,0.0)");
-  ctx.fillStyle = stripe;
-  ctx.fillRect(0, 0, W, H);
-
-  const m = bandMetrics(product, W, H);
-
-  // Engravable band (slightly lighter bg) — never the lid or the base
-  ctx.fillStyle = "rgba(255,255,255,0.06)";
-  ctx.fillRect(0, m.topPx, W, m.botPx - m.topPx);
-
-  const hasArt = !!(customImageEl && imageSize !== "none");
-
-  // Custom uploaded logo or photo (background already removed)
-  if (hasArt && customImageEl) {
-    const maxDim = W * (imageSize === "large" ? 0.34 : 0.19);
-    const naturalW = customImageEl.naturalWidth || customImageEl.width || 1;
-    const naturalH = customImageEl.naturalHeight || customImageEl.height || 1;
-    const ratio = Math.min(maxDim / naturalW, maxDim / naturalH);
-    const dw = naturalW * ratio;
-    const dh = naturalH * ratio;
-    drawPlaced(ctx, m, W, artPlacement, dw / 2, dh / 2, () => {
-      ctx.globalAlpha = 0.95;
-      ctx.drawImage(customImageEl, -dw / 2, -dh / 2, dw, dh);
-    });
-  }
-
-  // Custom text
-  if (text) {
-    const fontSize = Math.round(W * 0.13 * textPlacement.scale);
-    const font = `900 ${fontSize}px ${fontFamily}`;
-    ctx.font = font;
-    const textW = ctx.measureText(text).width;
-    drawPlaced(ctx, m, W, textPlacement, textW / 2, fontSize * 0.6, () => {
-      ctx.font = font;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillStyle = "rgba(255,255,255,0.95)";
-      ctx.shadowColor = "rgba(0,0,0,0.45)";
-      ctx.shadowBlur = 18;
-      ctx.fillText(text, 0, 0);
-    });
-  }
-
-  // Brand text — pinned near the bottom of the band
-  ctx.save();
-  ctx.font = `500 ${Math.round(W * 0.040)}px Inter, system-ui, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "rgba(255,255,255,0.30)";
-  ctx.letterSpacing = "0.15em";
-  ctx.fillText("CREATIVA STUDIO", W / 2, m.botPx - (m.botPx - m.topPx) * 0.07);
-  ctx.restore();
-
-  return new THREE.CanvasTexture(canvas);
-}
-
 function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
-  textPlacement, artPlacement,
+  textPlacement, artPlacement, colorPrint,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
   customImageUrl: string | null; imageSize: "none" | "small" | "large";
-  textPlacement: Placement; artPlacement: Placement;
+  textPlacement: Placement; artPlacement: Placement; colorPrint: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
@@ -237,13 +114,26 @@ function ThermosMesh({
     return new THREE.CylinderGeometry(sil.capR, sil.capR * 0.94, sil.capH, 64);
   }, [product.cap, sil]);
 
-  // Handle: torus centered exactly on the outer wall → inner half depth-clipped → D-shape
-  const handleGeo = useMemo(() => {
-    if (product.handle === "none") return null;
-    const r = product.handle === "cap-d" ? sil.capR * 0.42 : sil.maxR * 0.58;
-    const tube = product.handle === "cap-d" ? sil.capR * 0.11 : sil.maxR * 0.10;
-    return new THREE.TorusGeometry(r, tube, 12, 32);
+  // Handles are toruses buried halfway into the body they spring from, so the
+  // depth test clips the inner half and leaves a D or an arch.
+  const handle = useMemo(() => {
+    switch (product.handle) {
+      case "cap-d":
+        return { r: sil.capR * 0.42, tube: sil.capR * 0.11, position: [sil.capR, sil.neckY + sil.capH / 2, 0] as const };
+      case "cap-arch":
+        // A carry loop rising off the lid: sunk into the cap, not the wall.
+        return { r: sil.capR * 0.62, tube: sil.capR * 0.09, position: [0, sil.topY, 0] as const };
+      case "body":
+        return { r: sil.maxR * 0.58, tube: sil.maxR * 0.10, position: [sil.maxR, 0.05 * sil.scale, 0] as const };
+      default:
+        return null;
+    }
   }, [product.handle, sil]);
+
+  const handleGeo = useMemo(
+    () => (handle ? new THREE.TorusGeometry(handle.r, handle.tube, 12, 32) : null),
+    [handle]
+  );
 
   // Thin metal collar ring at the neck seam (screw caps only)
   const collarGeo = useMemo(() => {
@@ -279,12 +169,8 @@ function ThermosMesh({
     return () => { cancelled = true; };
   }, [customImageUrl]);
 
-  const texture = useMemo(
-    () => makeBodyTexture(product, colorHex, text, textPlacement, fontFamily, customImageEl, imageSize, artPlacement),
-    // fontReady triggers re-creation once the font is actually loaded
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [product, colorHex, text, textPlacement, fontFamily, fontReady, customImageEl, imageSize, artPlacement]
-  );
+  // The laser burns tone, not colour: resolve the artwork to a coverage map once.
+  const artMask = useMemo(() => (customImageEl ? buildEngraveMask(customImageEl) : null), [customImageEl]);
 
   // PBR material params per finish
   const matProps = useMemo(() => {
@@ -293,8 +179,26 @@ function ThermosMesh({
     if (finish === "glossy")   return { ...base, roughness: 0.05, metalness: 0.10, clearcoat: 1.0, clearcoatRoughness: 0.02 };
     if (finish === "metallic") return { ...base, roughness: 0.18, metalness: 0.90, clearcoat: 0.6, clearcoatRoughness: 0.08 };
     if (finish === "gradient") return { ...base, roughness: 0.22, metalness: 0.20, clearcoat: 0.9, clearcoatRoughness: 0.05 };
+    // Cuero forrado: superficie muy mate, sin metal ni barniz, con un leve satinado.
+    if (finish === "cuero")    return { ...base, roughness: 0.95, metalness: 0.0, clearcoat: 0.06, clearcoatRoughness: 0.9 };
     return base;
   }, [finish]);
+
+  const maxAnisotropy = useMemo(() => gl.capabilities.getMaxAnisotropy(), [gl]);
+
+  const maps = useMemo(
+    () => makeBodyMaps({
+      product, colorHex, finish: matProps, isGradientFinish: finish === "gradient",
+      text, textPlacement, fontFamily, artMask, imageSize, artPlacement,
+      anisotropy: maxAnisotropy, colorPrint, artImage: customImageEl,
+    }),
+    // fontReady triggers re-creation once the font is actually loaded
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [product, colorHex, matProps, finish, text, textPlacement, fontFamily, fontReady, artMask, imageSize, artPlacement, maxAnisotropy, colorPrint, customImageEl]
+  );
+
+  // Four textures per rebuild, and a rebuild lands on every keystroke.
+  useEffect(() => () => maps.dispose(), [maps]);
 
   // Pointer drag handlers — both axes
   useEffect(() => {
@@ -369,22 +273,28 @@ function ThermosMesh({
 
   const capCenterY = sil.neckY + sil.capH / 2;
   const collarY    = sil.neckY - 0.10 * sil.scale;
-  // Handle center sits exactly on the outer wall → inner half depth-clipped → D-shape
-  const handleX = product.handle === "cap-d" ? sil.capR : sil.maxR;
-  const handleY = product.handle === "cap-d" ? capCenterY : 0.05 * sil.scale;
 
   return (
     <group ref={groupRef}>
-      {/* Main body */}
+      {/* Main body. The maps carry the colour and the finish; leaving `color`
+          white keeps the exposed steel steel-coloured instead of tinting it. */}
       <mesh geometry={bodyGeo} castShadow receiveShadow>
+        {/* Keyed on finish: three only recompiles a shader when material.version
+            changes, so toggling clearcoat on a live material never lights up the
+            USE_CLEARCOAT define. Remounting sidesteps that. */}
         <meshPhysicalMaterial
-          map={texture}
-          color={colorHex}
-          roughness={matProps.roughness}
-          metalness={matProps.metalness}
+          key={finish}
+          map={maps.map}
+          roughnessMap={maps.roughnessMap}
+          roughness={1}
+          metalnessMap={maps.metalnessMap}
+          metalness={1}
+          bumpMap={maps.grooveMap}
+          bumpScale={0.42}
+          clearcoatMap={maps.grooveMap}
           clearcoat={matProps.clearcoat}
           clearcoatRoughness={matProps.clearcoatRoughness}
-          envMapIntensity={finish === "metallic" ? 2.0 : finish === "glossy" ? 1.8 : 1.2}
+          envMapIntensity={finish === "metallic" ? 2.0 : finish === "glossy" ? 1.8 : 1.4}
         />
       </mesh>
 
@@ -395,9 +305,9 @@ function ThermosMesh({
         </mesh>
       )}
 
-      {/* D-ring handle: center ON the outer wall → depth test hides inner half → D-shape */}
-      {handleGeo && (
-        <mesh geometry={handleGeo} position={[handleX, handleY, 0]} castShadow>
+      {/* Handle: buried halfway so the depth test hides the inner half */}
+      {handleGeo && handle && (
+        <mesh geometry={handleGeo} position={handle.position} castShadow>
           <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
         </mesh>
       )}
@@ -604,7 +514,7 @@ function FallbackCanvas({
           ctx.restore();
         }
       }
-      // Text
+      // Text — engraved: a dark groove wall above, bare steel catching light below
       if (text) {
         const tp = project(textPlacement);
         if (tp.facing > -0.15) {
@@ -612,11 +522,17 @@ function FallbackCanvas({
           ctx.beginPath(); ctx.rect(left, top, bW, visH); ctx.clip();
           ctx.translate(tp.x, tp.y);
           ctx.rotate(tp.rot);
-          ctx.font = `900 ${Math.max(12, Math.floor(bW * 0.25 * textPlacement.scale))}px Inter, sans-serif`;
+          const fs = Math.max(12, Math.floor(bW * 0.25 * textPlacement.scale));
+          ctx.font = `900 ${fs}px Inter, sans-serif`;
           ctx.textAlign="center"; ctx.textBaseline="middle";
           ctx.globalAlpha = Math.max(0, Math.min(1, tp.facing+0.25));
-          ctx.fillStyle="rgba(255,255,255,0.93)";
-          ctx.shadowColor="rgba(0,0,0,0.5)"; ctx.shadowBlur=4;
+          ctx.fillStyle = "rgba(0,0,0,0.55)";
+          ctx.fillText(text, 0, -Math.max(1, fs * 0.035));
+          const steel = ctx.createLinearGradient(0, -fs / 2, 0, fs / 2);
+          steel.addColorStop(0, "#8f979f");
+          steel.addColorStop(0.45, "#e6eaee");
+          steel.addColorStop(1, "#9aa2aa");
+          ctx.fillStyle = steel;
           ctx.fillText(text, 0, 0); ctx.restore();
         }
       }
@@ -703,13 +619,15 @@ function ThreeCanvas({ product, sil, ...props }: Thermos3DProps & { product: Pro
           imageSize={props.imageSize}
           textPlacement={props.textPlacement ?? DEFAULT_TEXT_PLACEMENT}
           artPlacement={props.artPlacement ?? DEFAULT_ART_PLACEMENT}
+          colorPrint={props.colorPrint ?? false}
         />
 
         <ContactShadows
           position={[0, shadowY, 0]}
-          opacity={0.45}
+          opacity={0.55}
           scale={Math.max(5, sil.maxR * 7)}
-          blur={2.5}
+          blur={2.2}
+          resolution={512}
           far={3}
           color="#000000"
         />
@@ -718,7 +636,10 @@ function ThreeCanvas({ product, sil, ...props }: Thermos3DProps & { product: Pro
       <directionalLight position={[4, 6, 4]} intensity={1.6} castShadow />
       <directionalLight position={[-4, 2, -3]} intensity={0.5} color="#aaccff" />
       <directionalLight position={[0, -2, -5]} intensity={0.3} color="#ffeecc" />
-      <ambientLight intensity={0.35} />
+      {/* Rim light: separates the silhouette from the background and rakes across
+          the engraving, which is what makes the cut edges read as depth. */}
+      <directionalLight position={[-3, 4, -6]} intensity={1.1} color="#ffffff" />
+      <ambientLight intensity={0.28} />
     </Canvas>
   );
 }

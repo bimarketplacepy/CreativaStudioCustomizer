@@ -2,9 +2,9 @@ import React from "react";
 import { motion } from "framer-motion";
 
 const STATS = [
-  { num: "HD", sub: "", label: "Impresión premium", desc: "Tu diseño en alta definición, fusionado directo en el termo. No se raya, no se pela, no se desvanece." },
-  { num: "360°", sub: "", label: "Diseño total", desc: "Personalización completa alrededor de tu termo. Cada ángulo cuenta tu historia. También puede acercarnos su propio termo y lo personalizamos según su preferencia." },
-  { num: "100%", sub: "", label: "A tu medida", desc: "Elegís el color, el texto, el ícono y el acabado. Completamente único, como vos." },
+  { num: "HD", sub: "", label: "Impresión premium", desc: "Su diseño en alta definición, fusionado directo en el producto. No se raya, no se pela, no se desvanece." },
+  { num: "360°", sub: "", label: "Diseño total", desc: "Personalización completa alrededor de la pieza. Cada ángulo cuenta su historia. También puede acercarnos su propio producto y lo personalizamos según su preferencia." },
+  { num: "100%", sub: "", label: "A su medida", desc: "Elija el color, el texto, el ícono y el acabado. Completamente único, como usted." },
 ];
 
 export default function Features() {
