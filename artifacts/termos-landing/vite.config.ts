@@ -40,6 +40,12 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // No manualChunks on purpose: the React.lazy boundaries in home.tsx are the
+    // split points. Rollup naturally moves Three.js (and the whole customizer)
+    // into an async chunk that only downloads when the customizer mounts, and
+    // keeps the shared runtime helpers in the always-loaded entry. Forcing a
+    // dedicated "three" vendor chunk made the entry statically depend on it and
+    // pulled ~200 KB into first paint — the opposite of what we want.
   },
   server: {
     port,

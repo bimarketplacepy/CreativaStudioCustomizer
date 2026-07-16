@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo, useState, Suspense, Component, ReactNode } from "react";
+import React, { useRef, useEffect, useMemo, useState, useDeferredValue, Suspense, Component, ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, ContactShadows, PerspectiveCamera, RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
@@ -311,14 +311,20 @@ function ObjectMesh({
   const artMask = useMemo(() => (customImageEl ? buildEngraveMask(customImageEl) : null), [customImageEl]);
   const maxAnisotropy = useMemo(() => gl.capabilities.getMaxAnisotropy(), [gl]);
 
+  // Defer the keystroke-/drag-driven inputs so rebuilding the face textures
+  // (the expensive part) doesn't block typing. See thermos-3d for the rationale.
+  const dText = useDeferredValue(text);
+  const dTextPlacement = useDeferredValue(textPlacement);
+  const dArtPlacement = useDeferredValue(artPlacement);
+
   const maps = useMemo(
     () => makeFaceMaps({
       engrave: obj.engrave, faceW: obj.face.w, faceH: obj.face.h,
-      text, textPlacement, fontFamily, artMask, imageSize, artPlacement,
+      text: dText, textPlacement: dTextPlacement, fontFamily, artMask, imageSize, artPlacement: dArtPlacement,
       anisotropy: maxAnisotropy,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [obj, text, textPlacement, fontFamily, fontReady, artMask, imageSize, artPlacement, maxAnisotropy]
+    [obj, dText, dTextPlacement, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy]
   );
   useEffect(() => () => maps.dispose(), [maps]);
 

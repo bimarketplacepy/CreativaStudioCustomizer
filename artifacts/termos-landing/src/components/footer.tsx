@@ -17,9 +17,13 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-10 mb-10">
         <div className="md:col-span-2">
           <img
-            src="/marketplace-logo.png"
+            src="/marketplace-logo.webp"
             alt="MarketPlace"
-            className="h-8 object-contain mb-4"
+            width={160}
+            height={32}
+            loading="lazy"
+            decoding="async"
+            className="h-8 object-contain mb-4 w-auto"
           />
           <p className="text-sm text-muted-foreground max-w-xs leading-relaxed mb-5">
             El personalizador online de Creativa Studio. Diseñá y personalizá tu producto a tu gusto, tal como lo imaginás.

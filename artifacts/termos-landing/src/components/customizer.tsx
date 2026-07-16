@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -477,6 +478,11 @@ function ProductGlyph({ product, className, style }: { product: ProductDef; clas
 }
 
 export default function Customizer() {
+  // On phones the preview panel is full-width and stacked, so keep the 3D canvas
+  // compact — a tall canvas there eats the whole screen and hides the sections
+  // below. On ≥md it goes back to the roomier desktop sizing.
+  const isMobile = useIsMobile();
+
   // STEP 1 — material, STEP 2 — product within the material
   const [materialId, setMaterialId] = useState<MaterialId>(DEFAULT_MATERIAL_ID);
   const material = getMaterial(materialId);
@@ -679,7 +685,7 @@ export default function Customizer() {
   ];
 
   return (
-    <section id="customizer" className="py-20 md:py-28 px-6 bg-white border-b border-border">
+    <section className="py-20 md:py-28 px-6 bg-white border-b border-border">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-10">
@@ -768,7 +774,7 @@ export default function Customizer() {
 
           {/* PREVIEW AREA */}
           <div className="lg:col-span-4 relative">
-            <div className="sticky top-24 bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[520px]">
+            <div className="sticky top-24 bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[360px] md:min-h-[520px]">
               <div
                 className="absolute inset-0 opacity-[0.07] transition-colors duration-500 rounded-2xl"
                 style={{ backgroundColor: isDrinkware ? activeColorHex : "#C1121F" }}
@@ -776,8 +782,8 @@ export default function Customizer() {
 
               {isDrinkware ? (
                 <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
-                  {/* 3D Canvas — taller for bigger sizes */}
-                  <div className="w-full" style={{ height: 480 + Math.round((activeSize.scale - 0.84) * 200) }}>
+                  {/* 3D Canvas — taller for bigger sizes; compact on phones */}
+                  <div className="w-full" style={{ height: (isMobile ? 300 : 480) + Math.round((activeSize.scale - 0.84) * (isMobile ? 110 : 200)) }}>
                     <Thermos3D
                       colorHex={activeColorHex}
                       finish={finish}
@@ -813,7 +819,7 @@ export default function Customizer() {
                 </div>
               ) : is3DObject && activeObject ? (
                 <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
-                  <div className="w-full" style={{ height: 460 }}>
+                  <div className="w-full" style={{ height: isMobile ? 300 : 460 }}>
                     <Object3D
                       objectId={activeObject.id}
                       colorHex={activeObject.colorable ? activeColorHex : undefined}
@@ -841,7 +847,7 @@ export default function Customizer() {
                   </div>
                 </div>
               ) : (
-                <div className="relative z-10 flex flex-col items-center justify-center gap-4 w-full h-full min-h-[520px] p-8 text-center">
+                <div className="relative z-10 flex flex-col items-center justify-center gap-4 w-full h-full min-h-[360px] md:min-h-[520px] p-8 text-center">
                   <div className="w-32 h-32 rounded-3xl bg-white border border-border flex items-center justify-center text-primary shadow-sm">
                     <MaterialGlyph className="w-16 h-16" />
                   </div>

@@ -3,6 +3,8 @@ modules = ["nodejs-24"]
 [deployment]
 router = "application"
 deploymentTarget = "autoscale"
+build = ["pnpm", "--filter", "@workspace/termos-landing", "run", "build"]
+run = ["pnpm", "--filter", "@workspace/termos-landing", "run", "start"]
 
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]

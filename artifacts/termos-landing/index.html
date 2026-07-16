@@ -22,9 +22,14 @@
     <meta property="og:image" content="/opengraph.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Abril+Fatface&display=swap" rel="stylesheet">
+    <!-- Fonts are now self-hosted (see @font-face in index.css) — no third-party
+         connection blocks render. Preload only Inter (the body font used across
+         the whole page); Cronos Pro (headline only) is left to load with
+         font-display:swap so it doesn't compete with the LCP image. -->
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin.woff2" crossorigin>
+
+    <!-- Preload the hero carousel's first frame — the LCP element. -->
+    <link rel="preload" as="image" href="/galeria/termomate.webp" fetchpriority="high">
   </head>
   <body>
     <div id="root"></div>

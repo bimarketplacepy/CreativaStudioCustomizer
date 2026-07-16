@@ -22,15 +22,21 @@ export default function Hero() {
         <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center">
           <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
             <img
-              src="/navbar-logo.png"
+              src="/navbar-logo.webp"
               alt="MarketPlace"
-              className="h-5 sm:h-8 object-contain brightness-0 invert shrink-0"
+              width={120}
+              height={32}
+              decoding="async"
+              className="h-5 sm:h-8 object-contain brightness-0 invert shrink-0 w-auto"
             />
             <span aria-hidden className="text-white/25 text-sm sm:text-lg font-light leading-none shrink-0">|</span>
             <img
-              src="/la-creativa-logo-new.png"
+              src="/la-creativa-logo-new.webp"
               alt="Creativa Studio"
-              className="h-5 sm:h-8 object-contain brightness-0 invert shrink-0"
+              width={120}
+              height={32}
+              decoding="async"
+              className="h-5 sm:h-8 object-contain brightness-0 invert shrink-0 w-auto"
             />
             <span className="text-white/70 text-[11px] sm:text-sm font-semibold tracking-wide whitespace-nowrap">
               Creativa Studio

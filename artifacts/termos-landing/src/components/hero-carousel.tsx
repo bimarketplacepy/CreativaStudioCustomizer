@@ -54,12 +54,17 @@ export default function HeroCarousel({ onImageChange }: { onImageChange?: (src: 
             key={current.src}
             src={current.src}
             alt={current.caption}
+            width={900}
+            height={900}
             className="absolute inset-0 h-full w-full object-cover"
             initial={reduceMotion ? { opacity: 1 } : { opacity: 0, scale: 1.04 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 1.02 }}
             transition={{ duration: reduceMotion ? 0.2 : 0.9, ease: [0.16, 1, 0.3, 1] }}
             loading="eager"
+            decoding="async"
+            // The first frame is the hero's LCP element — prioritise it.
+            fetchPriority={index === 0 ? "high" : "auto"}
           />
         </AnimatePresence>
 

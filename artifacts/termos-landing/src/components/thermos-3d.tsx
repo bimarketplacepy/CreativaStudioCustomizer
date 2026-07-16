@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo, useState, Suspense, Component, ReactNode } from "react";
+import React, { useRef, useEffect, useMemo, useState, useDeferredValue, Suspense, Component, ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, ContactShadows, PerspectiveCamera } from "@react-three/drei";
 import * as THREE from "three";
@@ -280,18 +280,27 @@ function ThermosMesh({
 
   const maxAnisotropy = useMemo(() => gl.capabilities.getMaxAnisotropy(), [gl]);
 
+  // Rebuilding the four 1024×2048 canvas textures is the single most expensive
+  // thing this component does, and it re-runs on every keystroke / drag frame —
+  // which used to freeze the whole tab while typing a name. Deferring the
+  // inputs that drive it lets React keep the text field and rotation responsive
+  // and coalesce the texture rebuild to the last value once input settles.
+  const dText = useDeferredValue(text);
+  const dTextPlacement = useDeferredValue(textPlacement);
+  const dArtPlacement = useDeferredValue(artPlacement);
+
   const maps = useMemo(
     () => makeBodyMaps({
       product, colorHex, finish: matProps, isGradientFinish: finish === "gradient",
-      text, textPlacement, fontFamily, artMask, imageSize, artPlacement,
+      text: dText, textPlacement: dTextPlacement, fontFamily, artMask, imageSize, artPlacement: dArtPlacement,
       anisotropy: maxAnisotropy, colorPrint, artImage: customImageEl, engraveStyle,
     }),
     // fontReady triggers re-creation once the font is actually loaded
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [product, colorHex, matProps, finish, text, textPlacement, fontFamily, fontReady, artMask, imageSize, artPlacement, maxAnisotropy, colorPrint, customImageEl, engraveStyle]
+    [product, colorHex, matProps, finish, dText, dTextPlacement, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, customImageEl, engraveStyle]
   );
 
-  // Four textures per rebuild, and a rebuild lands on every keystroke.
+  // Four textures per rebuild, now coalesced to the settled input via useDeferredValue.
   useEffect(() => () => maps.dispose(), [maps]);
 
   // Pointer drag handlers — both axes

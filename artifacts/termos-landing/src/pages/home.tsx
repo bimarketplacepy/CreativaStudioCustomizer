@@ -1,22 +1,48 @@
-import React, { useState } from "react";
+import React, { Suspense, lazy } from "react";
 import Hero from "@/components/hero";
-import Customizer from "@/components/customizer";
-import PersonalizationInfo from "@/components/personalization-info";
-import PricingEngraving from "@/components/pricing-engraving";
-import Gallery from "@/components/gallery";
-import Footer from "@/components/footer";
-import WhatsAppButton from "@/components/whatsapp-button";
+import DeferUntilVisible from "@/components/defer-until-visible";
+
+// Everything below the hero is loaded on demand. The hero is the only
+// above-the-fold section, so it stays in the initial bundle; the rest —
+// including the heavy Three.js customizer (~600 KB) — is split into separate
+// chunks that download while the visitor reads the hero.
+const PersonalizationInfo = lazy(() => import("@/components/personalization-info"));
+const Customizer = lazy(() => import("@/components/customizer"));
+const PricingEngraving = lazy(() => import("@/components/pricing-engraving"));
+const Gallery = lazy(() => import("@/components/gallery"));
+const Footer = lazy(() => import("@/components/footer"));
+const WhatsAppButton = lazy(() => import("@/components/whatsapp-button"));
+
+/** Minimal placeholder while a lazy section streams in — reserves vertical
+ *  space so nothing jumps (keeps CLS at 0). */
+function SectionFallback({ minH = "60vh" }: { minH?: string }) {
+  return <div aria-hidden style={{ minHeight: minH }} className="w-full" />;
+}
 
 export default function Home() {
   return (
     <div className="min-h-[100dvh] w-full flex flex-col overflow-x-hidden">
       <Hero />
-      <PersonalizationInfo />
-      <Customizer />
-      <PricingEngraving />
-      <Gallery />
-      <Footer />
-      <WhatsAppButton />
+      <Suspense fallback={<SectionFallback minH="40vh" />}>
+        <PersonalizationInfo />
+      </Suspense>
+      <DeferUntilVisible id="customizer" minHeight="90vh">
+        <Suspense fallback={<SectionFallback minH="90vh" />}>
+          <Customizer />
+        </Suspense>
+      </DeferUntilVisible>
+      <Suspense fallback={<SectionFallback minH="60vh" />}>
+        <PricingEngraving />
+      </Suspense>
+      <Suspense fallback={<SectionFallback minH="60vh" />}>
+        <Gallery />
+      </Suspense>
+      <Suspense fallback={<SectionFallback minH="30vh" />}>
+        <Footer />
+      </Suspense>
+      <Suspense fallback={null}>
+        <WhatsAppButton />
+      </Suspense>
     </div>
   );
 }
