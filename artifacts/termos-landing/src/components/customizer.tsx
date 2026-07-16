@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import {
   Check, Palette, Type, Box, Pipette, ImageIcon, MoveHorizontal, MoveVertical,
-  Shapes, Zap, Sparkles, Wallet, TreePine, Square, PenLine, Wine, CupSoda, Snowflake,
+  Shapes, Zap, Sparkles, Wallet, TreePine, Square, PenLine, Wine, CupSoda, Snowflake, MessageCircle,
+  Minus, Plus, Move, WrapText,
 } from "lucide-react";
 import Thermos3D from "./thermos-3d";
 import Object3D from "./object-3d";
@@ -21,7 +22,38 @@ import {
   MATERIALS, DEFAULT_MATERIAL_ID, getMaterial, allowsColorPrint, PEN_OPTIONS, type MaterialId,
 } from "@/lib/materials";
 import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
+import { wrapEngraveText } from "@/lib/engraving-text";
 import { whatsappUrl } from "@/lib/contact";
+
+/**
+ * Past this many characters a single engraved line starts to look cramped, so
+ * we offer the "varias líneas" toggle and wrap words at this same width.
+ */
+const LINE_MAX = 14;
+
+/** Toggle that appears once the text is long enough to benefit from wrapping. */
+function LineWrapToggle({ show, on, onToggle }: { show: boolean; on: boolean; onToggle: () => void }) {
+  if (!show) return null;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`mt-3 w-full flex items-center gap-3 p-3 border rounded-lg text-left transition-all active:scale-[0.99] ${on ? activeCard : idleCard}`}
+    >
+      <span className={`relative w-9 h-5 rounded-full shrink-0 transition-colors ${on ? "bg-primary" : "bg-muted-foreground/30"}`}>
+        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${on ? "left-[18px]" : "left-0.5"}`} />
+      </span>
+      <span className="min-w-0">
+        <span className="flex items-center gap-1.5 text-sm font-medium">
+          <WrapText className="w-3.5 h-3.5" /> Dividir en varias líneas
+        </span>
+        <span className="block text-xs text-muted-foreground mt-0.5">
+          Tu texto es largo. Repartilo en varios renglones para que se grabe más grande y se lea mejor.
+        </span>
+      </span>
+    </button>
+  );
+}
 
 const COLORS = [
   { id: "c1", hex: "#C1121F", name: "Rojo Marketplace" },
@@ -64,35 +96,34 @@ const FINISHES: { id: string; name: string; material?: MaterialId }[] = [
 ];
 
 const FONTS = [
-  { id: "f1",  name: "Cronos Pro",        style: { fontFamily: "'Cronos Pro', serif", fontWeight: 600 } },
-  { id: "f2",  name: "Renogare",          style: { fontFamily: "'Renogare', sans-serif" } },
-  { id: "f3",  name: "TT Rounds Neue",    style: { fontFamily: "'TT Rounds Neue', sans-serif", fontWeight: 600 } },
-  { id: "f4",  name: "Impacted",          style: { fontFamily: "'Impacted', sans-serif" } },
-  { id: "f5",  name: "Heavitas",          style: { fontFamily: "'Heavitas', sans-serif" } },
-  { id: "f6",  name: "KG Dark Side",      style: { fontFamily: "'KG Dark Side', cursive" } },
-  { id: "f7",  name: "Square 721",        style: { fontFamily: "'Square 721', sans-serif" } },
-  { id: "f8",  name: "Libre Baskerville", style: { fontFamily: "'Libre Baskerville', serif" } },
-  { id: "f9",  name: "Bree Serif",        style: { fontFamily: "'Bree Serif', serif" } },
-  { id: "f10", name: "Rimouski Sb",       style: { fontFamily: "'Rimouski Sb', serif" } },
-  { id: "f11", name: "Party Confetti",    style: { fontFamily: "'Party Confetti', cursive" } },
-  { id: "f12", name: "Freestyle Script",  style: { fontFamily: "'Freestyle Script', cursive", fontWeight: 400 } },
-  { id: "f13", name: "Kissing Season",    style: { fontFamily: "'Kissing Season', cursive" } },
-  { id: "f14", name: "Quimil",            style: { fontFamily: "'Quimil', serif" } },
-  { id: "f15", name: "Ellisha",           style: { fontFamily: "'Ellisha', cursive", fontStyle: "italic" } },
-  { id: "f16", name: "Abril Fatface",     style: { fontFamily: "'Abril Fatface', serif", letterSpacing: "0.05em" } },
-  { id: "f17", name: "Anthony Hunter",    style: { fontFamily: "'Anthony Hunter', cursive", fontStyle: "italic" } },
-  { id: "f18", name: "Versalita",         style: { fontFamily: "'Arial', sans-serif", fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase" as const } },
-  { id: "f19", name: "Billion Dreams",    style: { fontFamily: "'Billion Dreams', cursive" } },
-  { id: "f20", name: "Yellowtail",        style: { fontFamily: "'Yellowtail', cursive" } },
-  { id: "f21", name: "Pacifico",          style: { fontFamily: "'Pacifico', cursive" } },
-  { id: "f22", name: "Milkshake",         style: { fontFamily: "'Milkshake', cursive" } },
-  { id: "f23", name: "Blendaria",         style: { fontFamily: "'Blendaria', sans-serif" } },
+  { id: "f1",  name: "Abril Fatface",     style: { fontFamily: "'Abril Fatface', serif", letterSpacing: "0.05em" } },
+  { id: "f2",  name: "Anthony Hunter",    style: { fontFamily: "'Anthony Hunter', cursive", fontStyle: "italic" } },
+  { id: "f3",  name: "Billion Dreams",    style: { fontFamily: "'Billion Dreams', cursive" } },
+  { id: "f4",  name: "Blendaria",         style: { fontFamily: "'Blendaria', sans-serif" } },
+  { id: "f5",  name: "Bree Serif",        style: { fontFamily: "'Bree Serif', serif" } },
+  { id: "f6",  name: "Cronos Pro",        style: { fontFamily: "'Cronos Pro', serif", fontWeight: 600 } },
+  { id: "f7",  name: "Ellisha",           style: { fontFamily: "'Ellisha', cursive", fontStyle: "italic" } },
+  { id: "f8",  name: "Freestyle Script",  style: { fontFamily: "'Freestyle Script', cursive", fontWeight: 400 } },
+  { id: "f9",  name: "Heavitas",          style: { fontFamily: "'Heavitas', sans-serif" } },
+  { id: "f10", name: "Impacted",          style: { fontFamily: "'Impacted', sans-serif" } },
+  { id: "f11", name: "KG Dark Side",      style: { fontFamily: "'KG Dark Side', cursive" } },
+  { id: "f12", name: "Kissing Season",    style: { fontFamily: "'Kissing Season', cursive" } },
+  { id: "f13", name: "Libre Baskerville", style: { fontFamily: "'Libre Baskerville', serif" } },
+  { id: "f14", name: "Milkshake",         style: { fontFamily: "'Milkshake', cursive" } },
+  { id: "f15", name: "Pacifico",          style: { fontFamily: "'Pacifico', cursive" } },
+  { id: "f16", name: "Party Confetti",    style: { fontFamily: "'Party Confetti', cursive" } },
+  { id: "f17", name: "Quimil",            style: { fontFamily: "'Quimil', serif" } },
+  { id: "f18", name: "Renogare",          style: { fontFamily: "'Renogare', sans-serif" } },
+  { id: "f19", name: "Rimouski Sb",       style: { fontFamily: "'Rimouski Sb', serif" } },
+  { id: "f20", name: "Square 721",        style: { fontFamily: "'Square 721', sans-serif" } },
+  { id: "f21", name: "TT Rounds Neue",    style: { fontFamily: "'TT Rounds Neue', sans-serif", fontWeight: 600 } },
+  { id: "f22", name: "Versalita",         style: { fontFamily: "'Arial', sans-serif", fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase" as const } },
 ];
 
 /** Engraving techniques offered on drinkware. */
 const TECHNIQUES = [
   { id: "laser", name: "Grabado láser", desc: "Monocromático, permanente sobre el acero.", color: false },
-  { id: "eufy",  name: "Eufy Make (UV DTF)", desc: "Impresión a todo color sobre el producto.", color: true },
+  { id: "eufy",  name: "Impresión UV", desc: "Impresión a todo color sobre el producto.", color: true },
 ] as const;
 type TechniqueId = (typeof TECHNIQUES)[number]["id"];
 
@@ -114,8 +145,10 @@ const MATERIAL_ICON: Record<string, React.ComponentType<{ className?: string }>>
   cooler: Snowflake,
 };
 
-const activeCard = "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30";
-const idleCard = "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50";
+// Tactile press feedback (active:scale) gives every selection a sub-100ms
+// physical "click" — the invisible dopamine beat — without extra markup.
+const activeCard = "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30 active:scale-[0.97]";
+const idleCard = "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50 active:scale-[0.97]";
 
 /** Grid of preset icons the customer can engrave. Toggles selection off on re-click. */
 function IconPicker({ value, onChange }: { value: string | null; onChange: (id: string | null) => void }) {
@@ -157,7 +190,7 @@ function TechniqueSelector({ value, onChange }: { value: TechniqueId; onChange: 
               <Icon className="w-4 h-4" />
               <span className="font-semibold text-sm">{t.name}</span>
               {t.color && (
-                <span className="ml-auto text-[10px] font-semibold rounded-full px-2 py-0.5 bg-gradient-to-r from-fuchsia-500 via-orange-400 to-cyan-400 text-white">
+                <span className="ml-auto text-[10px] font-medium uppercase tracking-wide rounded-full px-2.5 py-0.5 bg-[#1A1614] text-white/90">
                   Todo color
                 </span>
               )}
@@ -170,7 +203,17 @@ function TechniqueSelector({ value, onChange }: { value: TechniqueId; onChange: 
   );
 }
 
-/** Position + orientation controls for one engraved element (text or art). */
+/**
+ * Direct-manipulation controls for one engraved element (text or art).
+ *
+ * The core is a drag pad: a square that stands in for the product face. The user
+ * drags the element to move it (updates u/v live) and drags the corner handle to
+ * scale it (updates scale live) — so "how do I move and resize this" is answered
+ * by the widget itself, no abstract X/Y sliders. A precise size row (−/+ and a
+ * slider with a live %) and the orientation toggle sit underneath.
+ */
+const PAD_BASE = 0.15; // element half-size as a fraction of the pad, at scale 1
+
 function PlacementControls({
   value,
   onChange,
@@ -180,13 +223,127 @@ function PlacementControls({
   value: Placement;
   onChange: (next: Placement) => void;
   withSize?: boolean;
-  /** Flat objects have a single face: relabel the axes and drop the wrap note. */
+  /** Flat objects have a single face: relabel the note. */
   flat?: boolean;
 }) {
+  const padRef = useRef<HTMLDivElement>(null);
+  const mode = useRef<null | "move" | "scale">(null);
+
+  const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+  const clampScale = (n: number) => Math.max(0.5, Math.min(1.5, n));
   const set = (patch: Partial<Placement>) => onChange({ ...value, ...patch });
+
+  const applyPointer = (e: React.PointerEvent) => {
+    const el = padRef.current;
+    if (!el || !mode.current) return;
+    const rect = el.getBoundingClientRect();
+    const px = clamp01((e.clientX - rect.left) / rect.width);
+    const py = clamp01((e.clientY - rect.top) / rect.height);
+    if (mode.current === "move") {
+      set({ u: px, v: py });
+    } else {
+      // Scale from the element centre out to the pointer (square feel).
+      const half = Math.max(Math.abs(px - value.u), Math.abs(py - value.v));
+      set({ scale: clampScale(half / PAD_BASE) });
+    }
+  };
+
+  const onPadDown = (e: React.PointerEvent) => {
+    const isCorner = (e.target as HTMLElement).dataset?.role === "scale";
+    mode.current = isCorner ? "scale" : "move";
+    padRef.current?.setPointerCapture(e.pointerId);
+    if (!isCorner) applyPointer(e); // move: jump straight to the tapped point
+  };
+  const onPadMove = (e: React.PointerEvent) => { if (mode.current) applyPointer(e); };
+  const onPadUp = () => { mode.current = null; };
+
+  const cx = value.u * 100;
+  const cy = value.v * 100;
+  const sizePct = PAD_BASE * value.scale * 2 * 100;
 
   return (
     <div className="space-y-4">
+      {/* Drag pad — move + scale by direct manipulation */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <Label className="text-xs text-muted-foreground">Posición{withSize ? " y tamaño" : ""}</Label>
+          <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/80">
+            <Move className="w-3 h-3" /> Arrastre para mover{withSize ? " · esquina para escalar" : ""}
+          </span>
+        </div>
+        <div
+          ref={padRef}
+          onPointerDown={onPadDown}
+          onPointerMove={onPadMove}
+          onPointerUp={onPadUp}
+          onPointerCancel={onPadUp}
+          className="relative w-full aspect-square max-w-[240px] mx-auto rounded-xl border border-border bg-secondary/40 overflow-hidden select-none touch-none cursor-move"
+        >
+          {/* Centre guides */}
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border/70" />
+          <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70" />
+
+          {/* The element proxy */}
+          <div
+            className="absolute rounded-md border-2 border-primary bg-primary/15 flex items-center justify-center transition-[width,height] duration-75"
+            style={{
+              left: `${cx}%`,
+              top: `${cy}%`,
+              width: `${sizePct}%`,
+              height: `${sizePct}%`,
+              transform: "translate(-50%, -50%)",
+            }}
+          >
+            <span className="pointer-events-none text-[10px] font-bold text-primary">
+              {flat ? "◈" : "Aa"}
+            </span>
+            {withSize && (
+              <span
+                data-role="scale"
+                className="absolute -right-1.5 -bottom-1.5 w-4 h-4 rounded-full bg-primary border-2 border-white shadow-sm cursor-nwse-resize"
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Precise size row with live % */}
+      {withSize && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <Label className="text-xs text-muted-foreground">Tamaño</Label>
+            <span className="text-[11px] font-semibold text-primary tabular-nums">{Math.round(value.scale * 100)}%</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Achicar"
+              onClick={() => set({ scale: clampScale(Math.round((value.scale - 0.1) * 10) / 10) })}
+              className="w-7 h-7 shrink-0 grid place-items-center rounded-md border border-border text-muted-foreground hover:border-primary/50 hover:text-primary active:scale-95 transition-all"
+            >
+              <Minus className="w-3.5 h-3.5" />
+            </button>
+            <Slider
+              value={[value.scale * 100]}
+              onValueChange={([v]) => set({ scale: v / 100 })}
+              min={50}
+              max={150}
+              step={5}
+              className="flex-1"
+            />
+            <button
+              type="button"
+              aria-label="Agrandar"
+              onClick={() => set({ scale: clampScale(Math.round((value.scale + 0.1) * 10) / 10) })}
+              className="w-7 h-7 shrink-0 grid place-items-center rounded-md border border-border text-muted-foreground hover:border-primary/50 hover:text-primary active:scale-95 transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Orientation */}
       <div>
         <Label className="text-xs text-muted-foreground mb-2 block">Orientación</Label>
         <div className="grid grid-cols-2 gap-2">
@@ -194,7 +351,7 @@ function PlacementControls({
             <button
               key={o}
               onClick={() => set({ orientation: o })}
-              className={`flex items-center justify-center gap-2 p-2.5 border rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center justify-center gap-2 p-2.5 border rounded-lg text-sm font-medium transition-all active:scale-[0.97] ${
                 value.orientation === o
                   ? "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30"
                   : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
@@ -206,45 +363,6 @@ function PlacementControls({
           ))}
         </div>
       </div>
-
-      <div>
-        <Label className="text-xs text-muted-foreground mb-2 block">
-          {flat ? "Posición horizontal" : "Girar alrededor del producto"}
-        </Label>
-        <Slider
-          value={[value.u * 100]}
-          onValueChange={([v]) => set({ u: v / 100 })}
-          min={0}
-          max={100}
-          step={1}
-        />
-      </div>
-
-      <div>
-        <Label className="text-xs text-muted-foreground mb-2 block">
-          {flat ? "Posición vertical" : "Altura sobre la cara"}
-        </Label>
-        <Slider
-          value={[value.v * 100]}
-          onValueChange={([v]) => set({ v: v / 100 })}
-          min={0}
-          max={100}
-          step={1}
-        />
-      </div>
-
-      {withSize && (
-        <div>
-          <Label className="text-xs text-muted-foreground mb-2 block">Tamaño</Label>
-          <Slider
-            value={[value.scale * 100]}
-            onValueChange={([v]) => set({ scale: v / 100 })}
-            min={50}
-            max={150}
-            step={5}
-          />
-        </div>
-      )}
 
       <p className="text-xs text-muted-foreground">
         {flat
@@ -366,8 +484,11 @@ export default function Customizer() {
   const activeObjectId = activeMProduct?.objectId ?? (material.pens ? "boligrafo" : undefined);
   const is3DObject = !isDrinkware && !!activeObjectId;
   const activeObject = activeObjectId ? getObject(activeObjectId) : null;
-  // Uploading a custom image is a stainless-steel-only option.
-  const canUploadImage = materialId === "acero";
+  // Uploading a custom image is limited to stainless-steel drinkware; the steel
+  // opener and every other material only allow text or a preset icon.
+  const canUploadImage = isDrinkware && materialId === "acero";
+  // A leather-wrapped (forrado) drinkware chars like leather, not steel.
+  const drinkwareEngraveStyle = materialId === "cuero" ? "leather" : "steel";
 
   // Drinkware base product (drives the 3D preview, sizes, band)
   const productId = activeMProduct?.drinkwareProductId ?? DEFAULT_PRODUCT_ID;
@@ -379,8 +500,13 @@ export default function Customizer() {
   const [customHex, setCustomHex] = useState<string | null>(null);
   const [finish, setFinish] = useState(FINISHES[0].id);
   const [text, setText] = useState("");
+  // When on, a long name is word-wrapped into several engraved rows.
+  const [multiline, setMultiline] = useState(false);
   const [font, setFont] = useState(FONTS[0].id);
   const activeFont = FONTS.find(f => f.id === font) || FONTS[0];
+  // Text is long enough to offer wrapping; only then does the toggle take effect.
+  const showLineWrap = text.trim().length > LINE_MAX;
+  const engraveText = multiline && showLineWrap ? wrapEngraveText(text, LINE_MAX) : text;
   const [isOrdered, setIsOrdered] = useState(false);
   const [plan, setPlan] = useState<EngravingPlanId>(ENGRAVING_PLANS[0].id);
   const [customImage, setCustomImage] = useState<ProcessedImage | null>(null);
@@ -398,7 +524,7 @@ export default function Customizer() {
   const selectedIcon = ENGRAVING_ICONS.find(i => i.id === iconId) ?? null;
   const [simpleKind, setSimpleKind] = useState<KindId>("text");
   // Controlled so we can move off the "Imagen" tab when it's hidden.
-  const [drinkTab, setDrinkTab] = useState("shape");
+  const [drinkTab, setDrinkTab] = useState("color");
 
   const baseColor = COLORS.find(c => c.id === color) || COLORS[0];
   const activeColorHex = customHex ?? baseColor.hex;
@@ -448,7 +574,7 @@ export default function Customizer() {
     if (id !== "acero") {
       setCustomImage(null);
       setPlan(ENGRAVING_PLANS[0].id);
-      setDrinkTab(t => (t === "media" ? "shape" : t));
+      setDrinkTab(t => (t === "media" ? "color" : t));
     }
     // Acabado/color coherentes con el material.
     if (id === "cuero") {
@@ -485,13 +611,15 @@ export default function Customizer() {
   };
   const handleUploadImage = (img: ProcessedImage | null) => {
     setCustomImage(img);
-    if (img) setIconId(null);
+    // Images size by plan (no size slider), so drop any leftover icon scale.
+    if (img) { setIconId(null); setArtPlacement(p => ({ ...p, scale: 1 })); }
   };
 
   /** Send the whole configuration to WhatsApp so the shop can quote it directly. */
   const handleOrder = () => {
     const lines: string[] = [
-      "Hola! Quiero pedir un producto personalizado:",
+      "¡Hola! ¿Cómo están? 😊 Estuve armando esto en el personalizador y me encantaría concretarlo:",
+      "",
       `• Material: ${material.name}`,
     ];
 
@@ -509,7 +637,7 @@ export default function Customizer() {
       if (customImage) lines.push("• Imagen: (la envío en este chat)");
       lines.push(`• Precio: ${priceLabel}`);
     } else if (isDrinkware) {
-      lines.push(`• Producto: ${product.singular} ${activeSize.name} (${activeSize.label})`);
+      lines.push(`• Producto: ${product.singular}`);
       lines.push(`• Color: ${activeColorName}`);
       lines.push(`• Acabado: ${FINISHES.find(f => f.id === finish)?.name}`);
       lines.push(`• Técnica: ${activeTechnique.name}`);
@@ -529,6 +657,8 @@ export default function Customizer() {
       if (customImage) lines.push("• Imagen: (la envío en este chat)");
       lines.push(`• Precio: ${priceLabel}`);
     }
+
+    lines.push("", "¿Me confirman si está todo bien y cómo seguimos? ¡Muchas gracias!");
 
     window.open(whatsappUrl(lines.join("\n")), "_blank", "noopener,noreferrer");
     setIsOrdered(true);
@@ -551,14 +681,20 @@ export default function Customizer() {
   ];
 
   return (
-    <section id="customizer" className="py-16 px-6 bg-white border-b border-border">
+    <section id="customizer" className="py-20 md:py-28 px-6 bg-white border-b border-border">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-10">
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
-            Personalizador de Productos
+          <p className="text-[#8B1A2F] text-[11px] font-semibold uppercase tracking-[0.3em] mb-4">
+            El personalizador
+          </p>
+          <h2 className="font-serif font-light text-3xl md:text-5xl text-[#1A1614] mb-4 leading-[1.1]">
+            Cree su pieza
           </h2>
-          <p className="text-muted-foreground">Elegí el material, después el producto y personalizalo a tu gusto. Lo recibís en la puerta de tu casa.</p>
+          <p className="text-[#5f574d] font-light text-lg max-w-xl leading-relaxed">
+            Elija el material, luego el producto, y refínelo a su gusto. El diseño final lo coordinamos
+            con usted por WhatsApp.
+          </p>
         </div>
 
         {/* STEP 1 — MATERIAL */}
@@ -587,27 +723,17 @@ export default function Customizer() {
         {/* STEP 2 — PRODUCT (or pen-source toggle) */}
         <div className="mb-10">
           <Label className="text-sm font-medium text-foreground mb-3 block">
-            2 · {material.pens ? "Elegí quién pone el bolígrafo" : `Producto en ${material.name.toLowerCase()}`}
+            2 · {material.pens ? "Bolígrafo" : `Producto en ${material.name.toLowerCase()}`}
           </Label>
 
           {material.pens ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
-              {PEN_OPTIONS.map(o => {
-                const active = penSource === o.id;
-                return (
-                  <button
-                    key={o.id}
-                    onClick={() => setPenSource(o.id)}
-                    className={`p-4 border rounded-xl text-left transition-all ${active ? activeCard : idleCard}`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <PenLine className="w-4 h-4" />
-                      <span className="font-semibold text-sm">{o.label}</span>
-                    </span>
-                    <span className="block text-lg font-bold mt-1">{o.priceLabel}</span>
-                  </button>
-                );
-              })}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div className={`p-3 border rounded-xl flex flex-col items-center justify-end gap-2 ${activeCard}`}>
+                <span className="h-16 flex items-center justify-center">
+                  <PenLine className="w-9 h-9" />
+                </span>
+                <span className="font-medium text-sm text-center leading-tight">Bolígrafo</span>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -657,7 +783,7 @@ export default function Customizer() {
                     <Thermos3D
                       colorHex={activeColorHex}
                       finish={finish}
-                      text={text}
+                      text={engraveText}
                       fontClass=""
                       fontStyle={activeFont.style}
                       productId={productId}
@@ -667,15 +793,16 @@ export default function Customizer() {
                       textPlacement={textPlacement}
                       artPlacement={artPlacement}
                       colorPrint={effectiveTechnique === "eufy"}
+                      engraveStyle={drinkwareEngraveStyle}
                     />
                   </div>
 
-                  <p className="text-xs text-muted-foreground -mt-1 mb-1">Arrastra para girar</p>
+                  <p className="text-xs text-muted-foreground -mt-1 mb-1">Arrastre para girar</p>
 
                   {/* Summary badges */}
                   <div className="flex flex-wrap gap-2 justify-center px-4 pb-4">
                     <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground">
-                      {product.singular} {activeSize.name}
+                      {product.singular}
                     </span>
                     <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: activeColorHex }} />
@@ -692,7 +819,7 @@ export default function Customizer() {
                     <Object3D
                       objectId={activeObject.id}
                       colorHex={activeObject.colorable ? activeColorHex : undefined}
-                      text={text}
+                      text={engraveText}
                       fontStyle={activeFont.style}
                       customImageUrl={artUrl}
                       imageSize={artImageSize}
@@ -701,7 +828,7 @@ export default function Customizer() {
                     />
                   </div>
 
-                  <p className="text-xs text-muted-foreground -mt-1 mb-1">Arrastra para girar</p>
+                  <p className="text-xs text-muted-foreground -mt-1 mb-1">Arrastre para girar</p>
 
                   <div className="flex flex-wrap gap-2 justify-center px-4 pb-4">
                     <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground">
@@ -735,7 +862,7 @@ export default function Customizer() {
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground max-w-xs">
-                    Vista previa referencial. Coordinamos el diseño final por WhatsApp antes de producir.
+                    Vista previa referencial. El diseño final lo coordinamos con usted por WhatsApp antes de producir.
                   </p>
                 </div>
               )}
@@ -746,13 +873,33 @@ export default function Customizer() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-white/95 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-8 text-center rounded-2xl"
+                    transition={{ duration: 0.4 }}
+                    className="absolute inset-0 bg-[#1A1614]/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-8 text-center rounded-2xl"
                   >
-                    <div className="w-16 h-16 bg-primary text-primary-foreground rounded-full flex items-center justify-center mb-4 shadow-sm">
-                      <Check className="w-8 h-8" />
-                    </div>
-                    <h3 className="text-xl font-bold text-foreground mb-1">Te llevamos a WhatsApp</h3>
-                    <p className="text-sm text-muted-foreground">Te abrimos el chat con tu diseño ya cargado. Enviá el mensaje y coordinamos tu pedido.</p>
+                    <motion.div
+                      initial={{ scale: 0.6, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ type: "spring", stiffness: 260, damping: 18, delay: 0.1 }}
+                      className="w-16 h-16 rounded-full bg-[#8B1A2F] text-white flex items-center justify-center mb-6 ring-1 ring-white/20"
+                    >
+                      <Check className="w-8 h-8" strokeWidth={1.75} />
+                    </motion.div>
+                    <motion.h3
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.25, duration: 0.5 }}
+                      className="font-serif font-light text-2xl md:text-3xl text-white mb-2"
+                    >
+                      Su pieza está lista.
+                    </motion.h3>
+                    <motion.p
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.4, duration: 0.5 }}
+                      className="text-sm text-white/60 font-light max-w-xs leading-relaxed"
+                    >
+                      Le abrimos WhatsApp con su diseño ya cargado. Envíe el mensaje y coordinamos los detalles.
+                    </motion.p>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -763,22 +910,19 @@ export default function Customizer() {
           <div className="lg:col-span-8 bg-white rounded-2xl border border-border">
             {isDrinkware ? (
               <Tabs value={drinkTab} onValueChange={setDrinkTab} className="w-full">
-                <div className="border-b border-border px-6 pt-2">
-                  <TabsList className={`w-full grid ${canUploadImage ? "grid-cols-5" : "grid-cols-4"} bg-transparent h-12 p-0 gap-0`}>
-                    <TabsTrigger value="shape" className="h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                      <Box className="w-4 h-4 mr-1.5 hidden sm:inline" /> Forma
-                    </TabsTrigger>
-                    <TabsTrigger value="color" className="h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                <div className="border-b border-border px-4 sm:px-6 pt-2">
+                  <TabsList className="w-full flex bg-transparent h-12 p-0 gap-0 overflow-x-auto">
+                    <TabsTrigger value="color" className="flex-1 min-w-[76px] h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
                       <Palette className="w-4 h-4 mr-1.5 hidden sm:inline" /> Color
                     </TabsTrigger>
-                    <TabsTrigger value="text" className="h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                    <TabsTrigger value="text" className="flex-1 min-w-[76px] h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
                       <Type className="w-4 h-4 mr-1.5 hidden sm:inline" /> Texto
                     </TabsTrigger>
-                    <TabsTrigger value="icons" className="h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                    <TabsTrigger value="icons" className="flex-1 min-w-[76px] h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
                       <Shapes className="w-4 h-4 mr-1.5 hidden sm:inline" /> Íconos
                     </TabsTrigger>
                     {canUploadImage && (
-                      <TabsTrigger value="media" className="h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                      <TabsTrigger value="media" className="flex-1 min-w-[76px] h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
                         <ImageIcon className="w-4 h-4 mr-1.5 hidden sm:inline" /> Imagen
                       </TabsTrigger>
                     )}
@@ -786,59 +930,6 @@ export default function Customizer() {
                 </div>
 
                 <div className="p-6 min-h-[320px]">
-                  {/* SHAPE TAB */}
-                  <TabsContent value="shape" className="mt-0 space-y-6">
-                    <div>
-                      <Label className="text-sm font-medium text-foreground mb-3 block">Tipo de Producto</Label>
-                      <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
-                        {material.products.filter(mp => mp.drinkwareProductId).map(mp => {
-                          const dp = getProduct(mp.drinkwareProductId!);
-                          return (
-                            <button
-                              key={mp.id}
-                              onClick={() => handleSelectMaterialProduct(mp.id)}
-                              title={mp.desc}
-                              className={`p-3 border rounded-xl flex flex-col items-center justify-end gap-2 transition-all ${
-                                materialProductId === mp.id ? activeCard : idleCard
-                              }`}
-                            >
-                              <ProductGlyph product={dp} className="h-16 w-full" />
-                              <span className="font-medium text-sm">{mp.name}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-3">{product.desc}</p>
-                    </div>
-
-                    <div className="pt-4 border-t border-border">
-                      <Label className="text-sm font-medium text-foreground mb-3 block">
-                        Tamano del {product.singular}
-                      </Label>
-                      <div className="grid grid-cols-3 gap-3">
-                        {product.sizes.map(s => (
-                          <button
-                            key={s.id}
-                            onClick={() => setSize(s.id)}
-                            className={`p-4 border rounded-xl flex flex-col items-center justify-end gap-2 transition-all ${
-                              size === s.id ? activeCard : idleCard
-                            }`}
-                          >
-                            <div className="h-14 flex items-end justify-center">
-                              <ProductGlyph
-                                product={product}
-                                className="w-full"
-                                style={{ height: `${Math.round(28 + s.scale * 26)}px` }}
-                              />
-                            </div>
-                            <span className="font-medium text-sm leading-none">{s.name}</span>
-                            <span className="text-[11px] text-muted-foreground leading-none">{s.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </TabsContent>
-
                   {/* COLOR TAB */}
                   <TabsContent value="color" className="mt-0 space-y-6">
                     <div>
@@ -884,7 +975,7 @@ export default function Customizer() {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Cada color tiene variantes. Elegí la que mas te guste de la paleta, o marca el tono exacto con el selector.
+                        Cada color tiene variantes. Elija la que más le guste de la paleta, o marque el tono exacto con el selector.
                       </p>
                       <div className="flex items-center gap-3">
                         <label
@@ -960,10 +1051,11 @@ export default function Customizer() {
                         maxLength={30}
                       />
                       <p className="text-xs text-muted-foreground mt-1.5 text-right">{text.length}/30 caracteres</p>
+                      <LineWrapToggle show={showLineWrap} on={multiline} onToggle={() => setMultiline(v => !v)} />
                     </div>
 
                     <div className="pt-4 border-t border-border">
-                      <Label className="text-sm font-medium text-foreground mb-1 block">Ubicacion del Texto</Label>
+                      <Label className="text-sm font-medium text-foreground mb-1 block">Ubicación del Texto</Label>
                       <p className="text-xs text-muted-foreground mb-3">
                         Colocá el texto donde quieras alrededor del {product.singular.toLowerCase()}.
                       </p>
@@ -971,7 +1063,7 @@ export default function Customizer() {
                     </div>
 
                     <div className="pt-4 border-t border-border">
-                      <Label className="text-sm font-medium text-foreground mb-3 block">Elegí tu Tipografía</Label>
+                      <Label className="text-sm font-medium text-foreground mb-3 block">Elija su tipografía</Label>
                       <div className="grid grid-cols-2 gap-2 max-h-[340px] overflow-y-auto pr-1">
                         {FONTS.map((f, i) => (
                           <button
@@ -999,9 +1091,9 @@ export default function Customizer() {
                   {/* ICONS TAB */}
                   <TabsContent value="icons" className="mt-0 space-y-6">
                     <div>
-                      <Label className="text-sm font-medium text-foreground mb-1 block">Elegí un ícono</Label>
+                      <Label className="text-sm font-medium text-foreground mb-1 block">Elija un ícono</Label>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Sumá un ícono a tu {product.singular.toLowerCase()}. Tocá de nuevo para quitarlo.
+                        Sume un ícono a su {product.singular.toLowerCase()}. Toque de nuevo para quitarlo.
                       </p>
                       <IconPicker value={iconId} onChange={handlePickIcon} />
                     </div>
@@ -1023,7 +1115,7 @@ export default function Customizer() {
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Subí tu logo o tu foto. Le sacamos el fondo automaticamente y la grabamos sobre el {product.singular.toLowerCase()}.
+                        Suba su logo o su foto. Le quitamos el fondo automáticamente y la grabamos sobre el {product.singular.toLowerCase()}.
                       </p>
 
                       {activePlan.allowsImage ? (
@@ -1040,7 +1132,7 @@ export default function Customizer() {
 
                           {customImage && (
                             <div className="pt-4 mt-4 border-t border-border">
-                              <Label className="text-sm font-medium text-foreground mb-1 block">Ubicacion de la Imagen</Label>
+                              <Label className="text-sm font-medium text-foreground mb-1 block">Ubicación de la Imagen</Label>
                               <p className="text-xs text-muted-foreground mb-3">
                                 Movela y girala libremente sobre las caras del {product.singular.toLowerCase()}.
                               </p>
@@ -1052,7 +1144,7 @@ export default function Customizer() {
                         <div className="border border-dashed border-border rounded-xl p-6 text-center space-y-3">
                           <ImageIcon className="w-6 h-6 text-muted-foreground mx-auto" />
                           <p className="text-sm text-muted-foreground">
-                            El plan de solo nombres no incluye imagen. Elegí un plan con dibujo o logo para subir tu foto.
+                            El plan de solo nombres no incluye imagen. Elija un plan con dibujo o logo para subir su foto.
                           </p>
                           <div className="flex justify-center gap-2">
                             {ENGRAVING_PLANS.filter(p => p.allowsImage).map(p => (
@@ -1081,7 +1173,7 @@ export default function Customizer() {
                         <TechniqueSelector value={effectiveTechnique} onChange={setTechnique} />
                         {effectiveTechnique === "eufy" && (
                           <p className="text-xs text-muted-foreground mt-2">
-                            La impresión a todo color Eufy Make se cotiza por WhatsApp según el diseño.
+                            La impresión UV a todo color se cotiza por WhatsApp según el diseño.
                           </p>
                         )}
                       </>
@@ -1091,7 +1183,7 @@ export default function Customizer() {
                         <div>
                           <p className="text-sm font-semibold">Grabado láser</p>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            Este producto solo admite grabado láser monocromático. La impresión a color Eufy Make
+                            Este producto solo admite grabado láser monocromático. La impresión UV a color
                             está reservada al drinkware de acero con pintura electrostática.
                           </p>
                         </div>
@@ -1102,7 +1194,7 @@ export default function Customizer() {
                   {effectiveTechnique === "laser" && (
                     <div>
                       <Label className="text-sm font-medium mb-2 block">Plan de grabado</Label>
-                      <div className={`grid gap-2 ${canUploadImage ? "grid-cols-3" : "grid-cols-1"}`}>
+                      <div className={`grid gap-2 ${canUploadImage ? "grid-cols-1 min-[480px]:grid-cols-3" : "grid-cols-1"}`}>
                         {ENGRAVING_PLANS.filter(p => canUploadImage || !p.allowsImage).map((p) => (
                           <button
                             key={p.id}
@@ -1130,7 +1222,7 @@ export default function Customizer() {
                     onClick={handleOrder}
                     disabled={isOrdered}
                     size="lg"
-                    className="w-full h-12 text-base font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+                    className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
                   >
                     {isOrdered ? "Abriendo WhatsApp..." : ctaLabel}
                   </Button>
@@ -1139,13 +1231,10 @@ export default function Customizer() {
             ) : is3DObject && activeObject ? (
               /* MODELLED BLANK — laser-only personalization (wood, leather, acrylic, plastic, bare steel, pens) */
               <Tabs key={activeObject.id} defaultValue="text" className="w-full">
-                <div className="border-b border-border px-6 pt-2">
-                  <TabsList
-                    className="w-full grid bg-transparent h-12 p-0 gap-0"
-                    style={{ gridTemplateColumns: `repeat(${objectTabs.length}, minmax(0, 1fr))` }}
-                  >
+                <div className="border-b border-border px-4 sm:px-6 pt-2">
+                  <TabsList className="w-full flex bg-transparent h-12 p-0 gap-0 overflow-x-auto">
                     {objectTabs.map(({ key, label, Icon }) => (
-                      <TabsTrigger key={key} value={key} className="h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                      <TabsTrigger key={key} value={key} className="flex-1 min-w-[76px] h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
                         <Icon className="w-4 h-4 mr-1.5 hidden sm:inline" /> {label}
                       </TabsTrigger>
                     ))}
@@ -1154,7 +1243,7 @@ export default function Customizer() {
 
                 <div className="p-6 min-h-[320px]">
                   <p className="text-xs text-muted-foreground mb-5">
-                    {activeObject.desc} Probá cómo se vería con tu texto, un ícono o tu logo.
+                    {activeObject.desc} Vea cómo se vería con su texto, un ícono o su logo.
                   </p>
 
                   {/* COLOR TAB — colourable blanks only */}
@@ -1255,6 +1344,7 @@ export default function Customizer() {
                         maxLength={30}
                       />
                       <p className="text-xs text-muted-foreground mt-1.5 text-right">{text.length}/30 caracteres</p>
+                      <LineWrapToggle show={showLineWrap} on={multiline} onToggle={() => setMultiline(v => !v)} />
                     </div>
 
                     <div className="pt-4 border-t border-border">
@@ -1266,7 +1356,7 @@ export default function Customizer() {
                     </div>
 
                     <div className="pt-4 border-t border-border">
-                      <Label className="text-sm font-medium text-foreground mb-3 block">Elegí tu Tipografía</Label>
+                      <Label className="text-sm font-medium text-foreground mb-3 block">Elija su tipografía</Label>
                       <div className="grid grid-cols-2 gap-2 max-h-[340px] overflow-y-auto pr-1">
                         {FONTS.map((f, i) => (
                           <button
@@ -1294,9 +1384,9 @@ export default function Customizer() {
                   {/* ICONS TAB */}
                   <TabsContent value="icons" className="mt-0 space-y-6">
                     <div>
-                      <Label className="text-sm font-medium text-foreground mb-1 block">Elegí un ícono</Label>
+                      <Label className="text-sm font-medium text-foreground mb-1 block">Elija un ícono</Label>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Sumá un ícono a tu {activeObject.singular.toLowerCase()}. Tocá de nuevo para quitarlo.
+                        Sume un ícono a su {activeObject.singular.toLowerCase()}. Toque de nuevo para quitarlo.
                       </p>
                       <IconPicker value={iconId} onChange={handlePickIcon} />
                     </div>
@@ -1318,7 +1408,7 @@ export default function Customizer() {
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Subí tu logo o tu foto. Le sacamos el fondo automáticamente y la grabamos sobre la {activeObject.singular.toLowerCase()}.
+                        Suba su logo o su foto. Le quitamos el fondo automáticamente y la grabamos sobre la {activeObject.singular.toLowerCase()}.
                       </p>
                       <ImageUpload imageSize="large" value={customImage} onChange={handleUploadImage} />
 
@@ -1338,12 +1428,38 @@ export default function Customizer() {
 
                 {/* LASER-ONLY NOTE + ORDER */}
                 <div className="px-6 pb-6 pt-4 border-t border-border space-y-4">
+                  {/* Pen-source selection lives here (below), only for pens. */}
+                  {material.pens && (
+                    <div>
+                      <Label className="text-sm font-medium text-foreground mb-2 block">¿Quién pone el bolígrafo?</Label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {PEN_OPTIONS.map(o => {
+                          const active = penSource === o.id;
+                          return (
+                            <button
+                              key={o.id}
+                              type="button"
+                              onClick={() => setPenSource(o.id)}
+                              className={`flex items-center justify-between gap-2 p-3 border rounded-xl text-left transition-all active:scale-[0.98] ${active ? activeCard : idleCard}`}
+                            >
+                              <span className="flex items-center gap-2 min-w-0">
+                                <PenLine className="w-4 h-4 shrink-0" />
+                                <span className="font-medium text-sm truncate">{o.label}</span>
+                              </span>
+                              <span className="text-sm font-bold shrink-0">{o.priceLabel}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-start gap-2 p-3 border rounded-xl border-border bg-secondary/40">
                     <Zap className="w-4 h-4 mt-0.5 text-primary shrink-0" />
                     <div>
                       <p className="text-sm font-semibold">Grabado láser</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        Grabado monocromático permanente. La impresión a color Eufy Make solo está disponible en
+                        Grabado monocromático permanente. La impresión UV a color solo está disponible en
                         drinkware de acero con pintura electrostática.
                       </p>
                     </div>
@@ -1351,7 +1467,7 @@ export default function Customizer() {
 
                   {priceLabel === "A consultar" && (
                     <p className="text-xs text-muted-foreground">
-                      Este producto se cotiza según el diseño. Te pasamos el precio por WhatsApp al instante.
+                      Este producto se cotiza según el diseño. Le pasamos el precio por WhatsApp al instante.
                     </p>
                   )}
 
@@ -1359,7 +1475,7 @@ export default function Customizer() {
                     onClick={handleOrder}
                     disabled={isOrdered}
                     size="lg"
-                    className="w-full h-12 text-base font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+                    className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
                   >
                     {isOrdered ? "Abriendo WhatsApp..." : ctaLabel}
                   </Button>
@@ -1375,7 +1491,7 @@ export default function Customizer() {
                   <p className="text-xs text-muted-foreground">
                     {material.pens
                       ? `${activePen.label} — ${activePen.priceLabel}. Contanos qué querés grabar.`
-                      : `${material.name}. Personalizalo y coordinamos el diseño final por WhatsApp.`}
+                      : `${material.name}. Personalícelo y coordinamos el diseño final con usted por WhatsApp.`}
                   </p>
                 </div>
 
@@ -1415,8 +1531,8 @@ export default function Customizer() {
 
                 {simpleKind === "icons" && (
                   <div>
-                    <Label className="text-sm font-medium text-foreground mb-1 block">Elegí un ícono</Label>
-                    <p className="text-xs text-muted-foreground mb-3">Tocá de nuevo para quitarlo.</p>
+                    <Label className="text-sm font-medium text-foreground mb-1 block">Elija un ícono</Label>
+                    <p className="text-xs text-muted-foreground mb-3">Toque de nuevo para quitarlo.</p>
                     <IconPicker value={iconId} onChange={handlePickIcon} />
                   </div>
                 )}
@@ -1425,7 +1541,7 @@ export default function Customizer() {
                   <div>
                     <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
                     <p className="text-xs text-muted-foreground mb-3">
-                      Subí tu logo o foto y lo adaptamos al producto.
+                      Suba su logo o foto y lo adaptamos al producto.
                     </p>
                     <ImageUpload imageSize="large" value={customImage} onChange={handleUploadImage} />
                   </div>
@@ -1438,20 +1554,47 @@ export default function Customizer() {
                   </div>
                   {priceLabel === "A consultar" && (
                     <p className="text-xs text-muted-foreground">
-                      Este producto se cotiza según el diseño. Te pasamos el precio por WhatsApp al instante.
+                      Este producto se cotiza según el diseño. Le pasamos el precio por WhatsApp al instante.
                     </p>
                   )}
                   <Button
                     onClick={handleOrder}
                     disabled={isOrdered}
                     size="lg"
-                    className="w-full h-12 text-base font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+                    className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
                   >
                     {isOrdered ? "Abriendo WhatsApp..." : ctaLabel}
                   </Button>
                 </div>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Personalizar algo más — emphasized invite below the customizer */}
+        <div className="mt-16 md:mt-24">
+          <div className="relative overflow-hidden rounded-3xl bg-[#1A1614] px-8 py-14 md:px-14 md:py-16 text-center flex flex-col items-center">
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 h-px w-24 bg-[#8B1A2F]" />
+            <p className="text-[#d9a3ae] text-[11px] font-semibold uppercase tracking-[0.3em] mb-5">
+              A su medida
+            </p>
+            <h3 className="font-serif font-light text-3xl md:text-5xl text-white leading-[1.12] max-w-2xl mb-5">
+              ¿Busca algo que no aparece aquí?
+            </h3>
+            <p className="text-white/60 font-light text-base md:text-lg max-w-xl leading-relaxed mb-9">
+              Lo que ve en la página es apenas una parte de lo posible. Si imagina una pieza distinta —otro
+              material, otro formato, un pedido especial— la creamos con usted. Cuéntenos su idea y la
+              resolvemos juntos.
+            </p>
+            <a
+              href={whatsappUrl("¡Hola! ¿Qué tal? Quisiera personalizar algo que no vi en la página. ¿Me ayudan a resolverlo?")}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2.5 bg-[#8B1A2F] hover:bg-[#721527] text-white px-10 py-4 text-[11px] font-semibold uppercase tracking-[0.25em] transition-colors"
+            >
+              <MessageCircle className="w-4 h-4" strokeWidth={1.75} />
+              Escríbanos
+            </a>
           </div>
         </div>
       </div>

@@ -14,15 +14,15 @@ export function WhatsAppGlyph({ className }: { className?: string }) {
 export default function WhatsAppButton() {
   return (
     <a
-      href={whatsappUrl("Hola! Quiero consultar por un termo personalizado.")}
+      href={whatsappUrl("¡Hola! ¿Cómo están? Me gustaría personalizar un producto y quería hacerles una consulta 😊")}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label="Escribinos por WhatsApp"
-      className="group fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-[#25D366] pl-4 pr-4 py-3.5 text-white shadow-lg shadow-black/20 transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#25D366]"
+      aria-label="Escríbanos por WhatsApp"
+      className="group fixed bottom-5 right-5 z-50 flex items-center gap-2.5 rounded-full bg-[#1A1614] pl-4 pr-4 py-3.5 text-white ring-1 ring-white/10 shadow-lg shadow-black/25 transition-all hover:bg-[#8B1A2F] hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#8B1A2F]"
     >
-      <WhatsAppGlyph className="w-6 h-6 shrink-0" />
-      <span className="hidden sm:block max-w-0 overflow-hidden whitespace-nowrap text-sm font-semibold transition-[max-width] duration-300 group-hover:max-w-[10rem]">
-        Escribinos
+      <WhatsAppGlyph className="w-[22px] h-[22px] shrink-0" />
+      <span className="hidden sm:block max-w-0 overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-wide transition-[max-width] duration-300 group-hover:max-w-[10rem]">
+        Escríbanos
       </span>
     </a>
   );

@@ -5,8 +5,10 @@ import { GALLERY_IMAGES } from "@/lib/gallery-images";
 const INTERVAL_MS = 3500;
 
 /**
- * Panel de imagen 1024×1280 (relación 4:5) que va pasando entre las fotos
- * de trabajos ya realizados (carpeta "Creativa Studio Fotos").
+ * Panel de imagen cuadrado (1:1, igual que las fotos) que va pasando entre los
+ * trabajos ya realizados (carpeta "Creativa Studio Fotos"). Al coincidir la
+ * proporción del marco con la de las fotos, cada una llena el cuadro completo,
+ * todas se ven del mismo tamaño y sin bandas vacías.
  * Se muestra al lado del texto del hero, dividiendo la pantalla.
  */
 export default function HeroCarousel({ onImageChange }: { onImageChange?: (src: string) => void }) {
@@ -44,8 +46,9 @@ export default function HeroCarousel({ onImageChange }: { onImageChange?: (src: 
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
-      {/* Marco del panel — proporción 1024×1280 (4:5) */}
-      <div className="relative aspect-[1024/1280] w-full overflow-hidden rounded-2xl bg-black/40 ring-1 ring-white/10 shadow-2xl">
+      {/* Marco cuadrado — las fotos son 1:1, así que llenan el marco exacto,
+          se ven del mismo tamaño y sin espacios vacíos. */}
+      <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-neutral-900 ring-1 ring-white/10 shadow-2xl">
         <AnimatePresence mode="sync">
           <motion.img
             key={current.src}

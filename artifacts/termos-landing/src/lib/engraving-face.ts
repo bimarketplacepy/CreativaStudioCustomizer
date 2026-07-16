@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { EngraveStyle } from "./objects";
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "./placement";
+import { engraveLines, fillLines, measureLinesWidth, LINE_HEIGHT } from "./engraving-text";
 
 /**
  * Engraving for a single flat face (wood board, leather wallet, acrylic disc,
@@ -154,7 +155,7 @@ export function makeFaceMaps({
   const [mark, mk] = newCanvas(W, H);
 
   if (artMask && imageSize !== "none") {
-    const maxDim = Math.min(W, H) * (imageSize === "large" ? 0.5 : 0.3);
+    const maxDim = Math.min(W, H) * (imageSize === "large" ? 0.5 : 0.3) * artPlacement.scale;
     const ratio = Math.min(maxDim / artMask.width, maxDim / artMask.height);
     const dw = artMask.width * ratio;
     const dh = artMask.height * ratio;
@@ -164,28 +165,20 @@ export function makeFaceMaps({
   }
 
   if (text) {
-    const fontSize = Math.round(H * 0.2 * textPlacement.scale);
+    const fontSize = Math.round(H * 0.15 * textPlacement.scale);
     const font = `900 ${fontSize}px ${fontFamily}`;
+    const lineHeight = fontSize * LINE_HEIGHT;
     mk.font = font;
-    const textW = mk.measureText(text).width;
-    drawPlaced(mk, W, H, textPlacement, textW / 2, fontSize * 0.6, () => {
+    const lines = engraveLines(text);
+    const textW = measureLinesWidth(mk, lines);
+    drawPlaced(mk, W, H, textPlacement, textW / 2, (lines.length * lineHeight) / 2, () => {
       mk.font = font;
       mk.textAlign = "center";
       mk.textBaseline = "middle";
       mk.fillStyle = "#ffffff";
-      mk.fillText(text, 0, 0);
+      fillLines(mk, lines, lineHeight);
     });
   }
-
-  // Brand mark — a shallow burn pinned to the bottom-right of the face.
-  mk.save();
-  mk.font = `500 ${Math.round(H * 0.052)}px Inter, system-ui, sans-serif`;
-  mk.textAlign = "right";
-  mk.textBaseline = "middle";
-  mk.fillStyle = "rgba(255,255,255,0.5)";
-  mk.letterSpacing = "0.14em";
-  mk.fillText("CREATIVA STUDIO", W - W * 0.04, H - H * 0.07);
-  mk.restore();
 
   // ── 2. Colour overlay (RGB = ink, A = coverage) ────────────────────────────
   const [ink, ic] = newCanvas(W, H);

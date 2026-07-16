@@ -31,7 +31,8 @@
       "Bash(cp /tmp/claude-1000/creativa-fotos/*.jpeg galeria/)",
       "Bash(pnpm typecheck *)",
       "Bash(bun /tmp/claude-1000/check.ts)",
-      "Bash(bun _check.ts)"
+      "Bash(bun _check.ts)",
+      "Bash(git -C /home/runner/workspace diff --stat -- artifacts/termos-landing)"
     ]
   }
 }

@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import Hero from "@/components/hero";
 import Customizer from "@/components/customizer";
 import PersonalizationInfo from "@/components/personalization-info";
-import Features from "@/components/features";
 import PricingEngraving from "@/components/pricing-engraving";
 import Gallery from "@/components/gallery";
 import Footer from "@/components/footer";
@@ -12,7 +11,6 @@ export default function Home() {
   return (
     <div className="min-h-[100dvh] w-full flex flex-col overflow-x-hidden">
       <Hero />
-      <Features />
       <PersonalizationInfo />
       <Customizer />
       <PricingEngraving />

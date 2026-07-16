@@ -11,7 +11,6 @@ export type ObjectId =
   | "billetera"
   | "tabla"
   | "cajita"
-  | "acrilico"
   | "boligrafo"
   | "abridor";
 
@@ -63,7 +62,7 @@ export const OBJECTS: Record<ObjectId, ObjectDef> = {
   conservadora: {
     id: "conservadora",
     singular: "Conservadora",
-    desc: "Conservadora de plástico rotomoldeado, lista para grabado láser en el frente.",
+    desc: "Conservadora rígida de plástico, rectangular con tapa y manijas.",
     size: [1.18, 0.82, 0.74],
     baseColor: "#c3a878",
     accentColor: "#20232a",
@@ -77,32 +76,34 @@ export const OBJECTS: Record<ObjectId, ObjectDef> = {
     colorable: true,
   },
 
-  // Bellroy-style slim card wallet: landscape, caramel leather, spine fold on left, open card pocket on right.
+  // Bellroy Hide & Seek bifold: slim landscape leather billfold, rounded corners,
+  // visible perimeter stitching. Closed: 86 × 117 × 13 mm (H × W × D) → modelled
+  // landscape, width 117 : height 86 : depth 13.
   billetera: {
     id: "billetera",
     singular: "Billetera",
-    desc: "Billetera slim de cuero caramelo, grabada a láser en la tapa frontal.",
-    size: [0.96, 0.66, 0.08],
-    baseColor: "#b06030",
-    accentColor: "#7c3e18",
-    roughness: 0.80,
+    desc: "Billetera de cuero tipo bifold, delgada y de esquinas redondeadas.",
+    size: [0.94, 0.69, 0.104],
+    baseColor: "#4a3423",
+    accentColor: "#d9c4a0",
+    roughness: 0.82,
     metalness: 0.0,
-    clearcoat: 0.10,
+    clearcoat: 0.08,
     engrave: "leather",
-    face: { normal: "z", w: 1.60, h: 1.06, center: [0, 0, 0.081] },
-    restPitch: 0.04,
-    fit: 1.0,
+    face: { normal: "z", w: 1.5, h: 1.02, center: [0, 0, 0.125] },
+    restPitch: 0.06,
+    fit: 1.08,
     colorable: true,
   },
 
-  // Wide, flat bamboo cutting board with an inset border groove on the top face.
+  // Wide, flat walnut-tone cutting board with an inset border on the top face.
   tabla: {
     id: "tabla",
     singular: "Tabla",
-    desc: "Tabla de cortar de bambú claro, plana y ancha, grabada en la cara superior.",
+    desc: "Tabla de cortar de madera, plana y ancha.",
     size: [1.5, 0.14, 0.8],
-    baseColor: "#c99a57",
-    accentColor: "#a9803f",
+    baseColor: "#8a5a30",
+    accentColor: "#6f461f",
     roughness: 0.7,
     metalness: 0.0,
     clearcoat: 0.12,
@@ -115,8 +116,8 @@ export const OBJECTS: Record<ObjectId, ObjectDef> = {
   // Closed pine box (~21×14×8 cm): wide, shallow, lid seam + gold clasp.
   cajita: {
     id: "cajita",
-    singular: "Cajita",
-    desc: "Cajita de madera de pino rectangular y cerrada (21×8×14 cm), grabada en la tapa.",
+    singular: "Caja",
+    desc: "Caja de madera rectangular con tapa.",
     size: [1.05, 0.42, 0.7],
     baseColor: "#6e3c22",
     accentColor: "#c9a24b",
@@ -129,37 +130,19 @@ export const OBJECTS: Record<ObjectId, ObjectDef> = {
     fit: 1.05,
   },
 
-  // Thick polished clear acrylic disc on a small stand — edges catch the light.
-  acrilico: {
-    id: "acrilico",
-    singular: "Acrílico",
-    desc: "Pieza de acrílico transparente grueso y pulido, con grabado esmerilado.",
-    size: [1.15, 1.15, 0.09],
-    baseColor: "#dfe7ee",
-    accentColor: "#1c1e22",
-    roughness: 0.05,
-    metalness: 0.0,
-    clearcoat: 1.0,
-    engrave: "acrylic",
-    face: { normal: "z", w: 1.7, h: 1.7, center: [0, 0, 0.091] },
-    restPitch: 0.0,
-    fit: 1.12,
-    colorable: true,
-  },
-
-  // Matte black anodized metal pen with silver clip and tip.
+  // Matte black anodized metal pen: barrel, metal grip cone, tip, cap + clip.
   boligrafo: {
     id: "boligrafo",
     singular: "Bolígrafo",
-    desc: "Bolígrafo de metal anodizado negro mate con detalles plateados, grabado en el barril.",
-    size: [1.3, 0.085, 0.085],
+    desc: "Bolígrafo de metal, con cuerpo cilíndrico.",
+    size: [1.3, 0.09, 0.09],
     baseColor: "#1b1c1f",
     accentColor: "#c7ccd2",
     roughness: 0.62,
     metalness: 0.55,
     clearcoat: 0.15,
     engrave: "steel",
-    face: { normal: "z", w: 1.35, h: 0.17, center: [0.05, 0, 0.086] },
+    face: { normal: "z", w: 0.9, h: 0.17, center: [0, 0, 0.092] },
     restPitch: 0.0,
     fit: 1.0,
     colorable: true,
@@ -169,7 +152,7 @@ export const OBJECTS: Record<ObjectId, ObjectDef> = {
   abridor: {
     id: "abridor",
     singular: "Abridor",
-    desc: "Abridor de botellas de acero inoxidable, grabado a láser en la cara derecha.",
+    desc: "Abridor de botellas de metal, plano y alargado.",
     size: [0.80, 0.52, 0.052],
     baseColor: "#c2c8ce",
     accentColor: "#9aa0a8",
@@ -177,7 +160,7 @@ export const OBJECTS: Record<ObjectId, ObjectDef> = {
     metalness: 0.96,
     clearcoat: 0.25,
     engrave: "steel",
-    face: { normal: "z", w: 0.90, h: 0.72, center: [0.28, 0, 0.053] },
+    face: { normal: "z", w: 0.74, h: 0.66, center: [0.34, 0, 0.053] },
     restPitch: 0.0,
     fit: 1.0,
   },

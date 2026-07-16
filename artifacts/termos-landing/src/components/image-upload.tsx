@@ -24,7 +24,7 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
     setError(null);
 
     if (!file.type.startsWith("image/")) {
-      setError("Subí un archivo de imagen valido (PNG o JPG).");
+      setError("Suba un archivo de imagen válido (PNG o JPG).");
       return;
     }
     if (file.size > MAX_FILE_BYTES) {
@@ -37,7 +37,7 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
       const processed = await fileToProcessedSvg(file);
       onChange(processed);
     } catch {
-      setError("No se pudo procesar la imagen. Proba con otra.");
+      setError("No se pudo procesar la imagen. Pruebe con otra.");
     } finally {
       setIsProcessing(false);
     }
@@ -47,8 +47,8 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
     <div>
       <p className="text-xs text-muted-foreground mb-3">
         {imageSize === "large"
-          ? "Subí tu logo o foto. Si tiene un fondo liso se lo sacamos automaticamente, y lo grabamos en tamaño grande."
-          : "Subí tu dibujo o foto. Si tiene un fondo liso se lo sacamos automaticamente, y lo grabamos en tamaño chico."}
+          ? "Suba su logo o foto. Si tiene un fondo liso se lo quitamos automáticamente, y lo grabamos en tamaño grande."
+          : "Suba su dibujo o foto. Si tiene un fondo liso se lo quitamos automáticamente, y lo grabamos en tamaño chico."}
       </p>
 
       {!value ? (
@@ -80,7 +80,7 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
           ) : (
             <>
               <ImagePlus className="w-6 h-6 text-muted-foreground" />
-              <span className="text-sm font-medium text-foreground">Arrastra una imagen o hace click para subir</span>
+              <span className="text-sm font-medium text-foreground">Arrastrá una imagen o hacé clic para subir</span>
               <span className="text-xs text-muted-foreground">PNG o JPG, hasta 8MB</span>
             </>
           )}
@@ -103,7 +103,7 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
             <p className="text-xs text-muted-foreground">
               {value.backgroundRemoved
                 ? `Fondo removido y lista para grabar (${imageSize === "large" ? "tamaño grande" : "tamaño chico"}).`
-                : `No encontramos un fondo liso, asi que grabamos la imagen completa (${imageSize === "large" ? "tamaño grande" : "tamaño chico"}).`}
+                : `No encontramos un fondo liso, así que grabamos la imagen completa (${imageSize === "large" ? "tamaño grande" : "tamaño chico"}).`}
             </p>
           </div>
           <button

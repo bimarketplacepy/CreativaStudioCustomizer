@@ -1,16 +1,27 @@
 import * as THREE from "three";
 import type { ProductDef } from "./products";
 import { bandRange, DEFAULT_ART_PLACEMENT, type Placement } from "./placement";
+import { engraveLines, fillLines, measureLinesWidth, LINE_HEIGHT } from "./engraving-text";
 
 /** Bare stainless steel, revealed where the laser ablates the powder coat. */
 const STEEL_LIGHT = "#e6eaee";
 const STEEL_MID   = "#b9c0c7";
 const STEEL_DARK  = "#848d96";
-/** The exposed steel is frosted by the beam, never mirror-polished. */
-const ENGRAVED_ROUGHNESS = 0.34;
-const ENGRAVED_METALNESS = 0.95;
 /** Texture pixels of blur used to bevel the walls of the engraved groove. */
 const GROOVE_BEVEL = 2.2;
+
+/**
+ * How the laser reads on the drinkware surface. Powder-coated steel reveals
+ * bright frosted metal; a leather-wrapped (forrado) piece chars to a dark
+ * burn; wood chars to a deep brown. `burn === null` means the steel sheen.
+ */
+export type EngraveStyle = "steel" | "leather" | "wood";
+
+const ENGRAVE_APPEARANCE: Record<EngraveStyle, { roughness: number; metalness: number; haloAlpha: number; burn: string | null }> = {
+  steel:   { roughness: 0.34, metalness: 0.95, haloAlpha: 0.50, burn: null },
+  leather: { roughness: 0.90, metalness: 0.00, haloAlpha: 0.60, burn: "#241109" },
+  wood:    { roughness: 0.80, metalness: 0.00, haloAlpha: 0.55, burn: "#2b1708" },
+};
 
 export const TEXTURE_W = 1024;
 export const TEXTURE_H = 2048;
@@ -143,6 +154,8 @@ export interface EngravingInput {
    */
   colorPrint?: boolean;
   artImage?: HTMLImageElement | null;
+  /** Steel reveal (default), leather char (forrado) or wood char. */
+  engraveStyle?: EngraveStyle;
 }
 
 /** Printed text/brand ink when the piece is colour-printed rather than engraved. */
@@ -169,6 +182,7 @@ export function makeBodyMaps({
   anisotropy = 1,
   colorPrint = false,
   artImage = null,
+  engraveStyle = "steel",
 }: EngravingInput): BodyMaps {
   const W = TEXTURE_W, H = TEXTURE_H;
   const m = bandMetrics(product, W, H);
@@ -220,7 +234,7 @@ export function makeBodyMaps({
     if (artImage && imageSize !== "none") {
       const naturalW = artImage.naturalWidth || artImage.width || 1;
       const naturalH = artImage.naturalHeight || artImage.height || 1;
-      const maxDim = W * (imageSize === "large" ? 0.34 : 0.19);
+      const maxDim = W * (imageSize === "large" ? 0.34 : 0.19) * artPlacement.scale;
       const ratio = Math.min(maxDim / naturalW, maxDim / naturalH);
       const dw = naturalW * ratio;
       const dh = naturalH * ratio;
@@ -230,27 +244,20 @@ export function makeBodyMaps({
     }
 
     if (text) {
-      const fontSize = Math.round(W * 0.13 * textPlacement.scale);
+      const fontSize = Math.round(W * 0.10 * textPlacement.scale);
       const font = `900 ${fontSize}px ${fontFamily}`;
+      const lineHeight = fontSize * LINE_HEIGHT;
       ctx.font = font;
-      const textW = ctx.measureText(text).width;
-      drawPlaced(ctx, m, W, textPlacement, textW / 2, fontSize * 0.6, () => {
+      const lines = engraveLines(text);
+      const textW = measureLinesWidth(ctx, lines);
+      drawPlaced(ctx, m, W, textPlacement, textW / 2, (lines.length * lineHeight) / 2, () => {
         ctx.font = font;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillStyle = PRINT_INK;
-        ctx.fillText(text, 0, 0);
+        fillLines(ctx, lines, lineHeight);
       });
     }
-
-    ctx.save();
-    ctx.font = `500 ${Math.round(W * 0.040)}px Inter, system-ui, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "rgba(0,0,0,0.30)";
-    ctx.letterSpacing = "0.15em";
-    ctx.fillText("CREATIVA STUDIO", W / 2, m.botPx - (m.botPx - m.topPx) * 0.07);
-    ctx.restore();
 
     // Print sits flush on the coating: keep the base finish, no groove.
     const [rough, rctx] = newCanvas();
@@ -279,7 +286,7 @@ export function makeBodyMaps({
   const [mark, mk] = newCanvas();
 
   if (artMask && imageSize !== "none") {
-    const maxDim = W * (imageSize === "large" ? 0.34 : 0.19);
+    const maxDim = W * (imageSize === "large" ? 0.34 : 0.19) * artPlacement.scale;
     const ratio = Math.min(maxDim / artMask.width, maxDim / artMask.height);
     const dw = artMask.width * ratio;
     const dh = artMask.height * ratio;
@@ -291,58 +298,55 @@ export function makeBodyMaps({
   if (text) {
     const fontSize = Math.round(W * 0.13 * textPlacement.scale);
     const font = `900 ${fontSize}px ${fontFamily}`;
+    const lineHeight = fontSize * LINE_HEIGHT;
     mk.font = font;
-    const textW = mk.measureText(text).width;
-    drawPlaced(mk, m, W, textPlacement, textW / 2, fontSize * 0.6, () => {
+    const lines = engraveLines(text);
+    const textW = measureLinesWidth(mk, lines);
+    drawPlaced(mk, m, W, textPlacement, textW / 2, (lines.length * lineHeight) / 2, () => {
       mk.font = font;
       mk.textAlign = "center";
       mk.textBaseline = "middle";
       mk.fillStyle = "#ffffff";
-      mk.fillText(text, 0, 0);
+      fillLines(mk, lines, lineHeight);
     });
   }
 
-  // Brand mark — a shallower burn, pinned near the bottom of the band
-  mk.save();
-  mk.font = `500 ${Math.round(W * 0.040)}px Inter, system-ui, sans-serif`;
-  mk.textAlign = "center";
-  mk.textBaseline = "middle";
-  mk.fillStyle = "rgba(255,255,255,0.55)";
-  mk.letterSpacing = "0.15em";
-  mk.fillText("CREATIVA STUDIO", W / 2, m.botPx - (m.botPx - m.topPx) * 0.07);
-  mk.restore();
-
-  // The chipped rim first, then the steel that the beam laid bare on top of it.
+  // The chipped/charred rim first, then the mark the beam laid bare on top of it.
+  const app = ENGRAVE_APPEARANCE[engraveStyle];
   const halo = grooveHalo(mark);
-  ctx.globalAlpha = 0.5;
+  ctx.globalAlpha = app.haloAlpha;
   ctx.drawImage(halo, 0, 0);
   ctx.globalAlpha = 1;
   release(halo);
 
-  const steel = maskedFill(mark, (c) => {
-    const sheen = c.createLinearGradient(0, 0, W, 0);
-    sheen.addColorStop(0.00, STEEL_DARK);
-    sheen.addColorStop(0.30, STEEL_MID);
-    sheen.addColorStop(0.48, STEEL_LIGHT);
-    sheen.addColorStop(0.66, STEEL_MID);
-    sheen.addColorStop(1.00, STEEL_DARK);
-    return sheen;
+  // Steel reveals a frosted sheen; leather/wood char to a flat dark burn.
+  const markFill = maskedFill(mark, (c) => {
+    if (!app.burn) {
+      const sheen = c.createLinearGradient(0, 0, W, 0);
+      sheen.addColorStop(0.00, STEEL_DARK);
+      sheen.addColorStop(0.30, STEEL_MID);
+      sheen.addColorStop(0.48, STEEL_LIGHT);
+      sheen.addColorStop(0.66, STEEL_MID);
+      sheen.addColorStop(1.00, STEEL_DARK);
+      return sheen;
+    }
+    return app.burn;
   });
-  ctx.drawImage(steel, 0, 0);
-  release(steel);
+  ctx.drawImage(markFill, 0, 0);
+  release(markFill);
 
   // ── Data maps ──────────────────────────────────────────────────────────────
   const [rough, rctx] = newCanvas();
   rctx.fillStyle = grey(finish.roughness);
   rctx.fillRect(0, 0, W, H);
-  const roughMark = maskedFill(mark, () => grey(ENGRAVED_ROUGHNESS));
+  const roughMark = maskedFill(mark, () => grey(app.roughness));
   rctx.drawImage(roughMark, 0, 0);
   release(roughMark);
 
   const [metal, mtctx] = newCanvas();
   mtctx.fillStyle = grey(finish.metalness);
   mtctx.fillRect(0, 0, W, H);
-  const metalMark = maskedFill(mark, () => grey(ENGRAVED_METALNESS));
+  const metalMark = maskedFill(mark, () => grey(app.metalness));
   mtctx.drawImage(metalMark, 0, 0);
   release(metalMark);
 

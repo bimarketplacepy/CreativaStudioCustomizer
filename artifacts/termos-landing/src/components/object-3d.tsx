@@ -6,6 +6,7 @@ import { getObject, type ObjectDef } from "@/lib/objects";
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
 import { makeFaceMaps } from "@/lib/engraving-face";
+import { makeLeatherGrain } from "@/lib/leather-texture";
 
 class WebGLErrorBoundary extends Component<
   { fallback: ReactNode; children: ReactNode },
@@ -40,6 +41,123 @@ function frame(obj: ObjectDef) {
   return { camZ, camY: maxFull * 0.12 };
 }
 
+type BodyMat = { color: string; roughness: number; metalness: number; clearcoat: number };
+
+/** Trace a rounded rectangle onto a shape/path (clockwise). */
+function roundRectPath(ctx: THREE.Shape | THREE.Path, x0: number, y0: number, x1: number, y1: number, r: number) {
+  ctx.moveTo(x0 + r, y0);
+  ctx.lineTo(x1 - r, y0);
+  ctx.quadraticCurveTo(x1, y0, x1, y0 + r);
+  ctx.lineTo(x1, y1 - r);
+  ctx.quadraticCurveTo(x1, y1, x1 - r, y1);
+  ctx.lineTo(x0 + r, y1);
+  ctx.quadraticCurveTo(x0, y1, x0, y1 - r);
+  ctx.lineTo(x0, y0 + r);
+  ctx.quadraticCurveTo(x0, y0, x0 + r, y0);
+}
+
+/**
+ * Steel opener plate extruded from a shape with a REAL see-through cutout — the
+ * bottle-opener opening (with a cap tooth at the top), so the background shows
+ * through it. The right side stays solid for the engraving.
+ */
+function AbridorPlate({ obj, body }: { obj: ObjectDef; body: BodyMat }) {
+  const [hx, hy, hz] = obj.size;
+  const geo = useMemo(() => {
+    const shape = new THREE.Shape();
+    roundRectPath(shape, -hx, -hy, hx, hy, 0.09);
+
+    const xL = -hx * 0.72, xR = -hx * 0.1, yB = -hy * 0.56, yT = hy * 0.56, r = 0.05;
+    const xc = (xL + xR) / 2, tw = 0.07, td = hy * 0.36;
+    const hole = new THREE.Path();
+    hole.moveTo(xL + r, yB);
+    hole.lineTo(xR - r, yB);
+    hole.quadraticCurveTo(xR, yB, xR, yB + r);
+    hole.lineTo(xR, yT - r);
+    hole.quadraticCurveTo(xR, yT, xR - r, yT);
+    // top edge with a downward cap tooth in the middle
+    hole.lineTo(xc + tw, yT);
+    hole.lineTo(xc + tw, yT - td);
+    hole.quadraticCurveTo(xc, yT - td - 0.05, xc - tw, yT - td);
+    hole.lineTo(xc - tw, yT);
+    hole.lineTo(xL + r, yT);
+    hole.quadraticCurveTo(xL, yT, xL, yT - r);
+    hole.lineTo(xL, yB + r);
+    hole.quadraticCurveTo(xL, yB, xL + r, yB);
+    shape.holes.push(hole);
+
+    const g = new THREE.ExtrudeGeometry(shape, {
+      depth: hz * 2, bevelEnabled: false, curveSegments: 16,
+    });
+    g.translate(0, 0, -hz);
+    g.computeVertexNormals();
+    return g;
+  }, [hx, hy, hz]);
+  useEffect(() => () => geo.dispose(), [geo]);
+
+  return (
+    <mesh geometry={geo} castShadow receiveShadow>
+      <meshPhysicalMaterial {...body} />
+    </mesh>
+  );
+}
+
+/**
+ * Bellroy Hide & Seek bifold, closed: a slim leather billfold with softly
+ * rounded corners and a visible perimeter stitch on the front cover. The body
+ * uses a procedural leather grain (bump + roughness mottling, no clearcoat) so
+ * it reads as matte full-grain leather. Colour stays tintable — the grain maps
+ * are greyscale detail only; the stitch thread keeps its own thread colour.
+ */
+function BilleteraBlank({ obj, baseColor }: { obj: ObjectDef; baseColor: string }) {
+  const [hx, hy, hz] = obj.size;
+  const grain = useMemo(() => makeLeatherGrain(), []);
+  useEffect(() => () => grain.dispose(), [grain]);
+
+  // Matte leather: high roughness, zero metal/clearcoat, damped reflections.
+  const leather = {
+    color: baseColor,
+    roughness: 0.95,
+    metalness: 0,
+    clearcoat: 0,
+    bumpMap: grain.bumpMap,
+    bumpScale: 0.008,
+    roughnessMap: grain.roughnessMap,
+    envMapIntensity: 0.35,
+  };
+  const stitch = { color: obj.accentColor, roughness: 0.55, metalness: 0, clearcoat: 0.05 };
+
+  const frontZ = hz + 0.006;   // stitch sits a hair proud of the front face
+  const sx = hx - 0.12;        // perimeter-stitch inset from the edges
+  const sy = hy - 0.12;
+  const tT = 0.018;            // stitch thread thickness
+  const tD = 0.012;            // stitch relief depth
+
+  return (
+    <group>
+      {/* Slim closed bifold body with soft rounded corners */}
+      <RoundedBox args={[hx * 2, hy * 2, hz * 2]} radius={0.11} smoothness={8} castShadow receiveShadow>
+        <meshPhysicalMaterial {...leather} />
+      </RoundedBox>
+
+      {/* Perimeter stitching on the front cover — horizontal runs (top/bottom) */}
+      {[sy, -sy].map((y, i) => (
+        <mesh key={`h${i}`} position={[0, y, frontZ]}>
+          <boxGeometry args={[sx * 2, tT, tD]} />
+          <meshPhysicalMaterial {...stitch} />
+        </mesh>
+      ))}
+      {/* Perimeter stitching — vertical runs (left/right); corners meet the runs */}
+      {[sx, -sx].map((x, i) => (
+        <mesh key={`v${i}`} position={[x, 0, frontZ]}>
+          <boxGeometry args={[tT, sy * 2, tD]} />
+          <meshPhysicalMaterial {...stitch} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 /** The shop-shaped blank, built from primitives per product id. */
 function Blank({ obj, baseColor }: { obj: ObjectDef; baseColor: string }) {
   const [hx, hy, hz] = obj.size;
@@ -67,22 +185,7 @@ function Blank({ obj, baseColor }: { obj: ObjectDef; baseColor: string }) {
       );
 
     case "billetera":
-      return (
-        <group>
-          {/* Main body — slim landscape rounded rectangle */}
-          <RoundedBox args={[hx * 2, hy * 2, hz * 2]} radius={0.07} smoothness={5} castShadow receiveShadow>
-            <meshPhysicalMaterial {...body} />
-          </RoundedBox>
-          {/* Spine fold — rounded leather edge on the left (hinge/fold side) */}
-          <RoundedBox args={[hx * 0.12, hy * 1.86, hz * 2.18]} radius={0.05} smoothness={3} position={[-hx, 0, 0]} castShadow>
-            <meshPhysicalMaterial color={obj.accentColor} roughness={0.85} metalness={0} clearcoat={0.05} />
-          </RoundedBox>
-          {/* Card-pocket strip — thinner edge on the right (open side where cards are inserted) */}
-          <RoundedBox args={[hx * 0.08, hy * 1.60, hz * 2.12]} radius={0.03} smoothness={3} position={[hx, 0, 0]} castShadow>
-            <meshPhysicalMaterial color={obj.accentColor} roughness={0.85} metalness={0} clearcoat={0.05} />
-          </RoundedBox>
-        </group>
-      );
+      return <BilleteraBlank obj={obj} baseColor={baseColor} />;
 
     case "tabla":
       return (
@@ -116,78 +219,50 @@ function Blank({ obj, baseColor }: { obj: ObjectDef; baseColor: string }) {
         </group>
       );
 
-    case "acrilico":
-      return (
-        <group>
-          {/* Thick clear disc — circular faces to camera */}
-          <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
-            <cylinderGeometry args={[hx, hx, hz * 2, 72]} />
-            <meshPhysicalMaterial
-              color={baseColor}
-              transmission={0.92}
-              thickness={hz * 2}
-              roughness={0.04}
-              metalness={0}
-              ior={1.49}
-              clearcoat={1}
-              transparent
-              opacity={0.62}
-              envMapIntensity={2}
-            />
-          </mesh>
-          {/* Small display stand */}
-          {[-hx * 0.42, hx * 0.42].map((x, i) => (
-            <mesh key={i} position={[x, -hx - 0.12, -0.02]} rotation={[0.2, 0, 0]} castShadow>
-              <boxGeometry args={[0.05, 0.4, 0.05]} />
-              <meshPhysicalMaterial color={obj.accentColor} roughness={0.4} metalness={0.3} />
-            </mesh>
-          ))}
-        </group>
-      );
-
-    case "boligrafo":
+    case "boligrafo": {
+      const metal = { color: obj.accentColor, roughness: 0.22, metalness: 0.95, clearcoat: 0.5 };
+      const r = 0.088; // barrel radius
       return (
         <group rotation={[0, 0, Math.PI / 2]}>
-          {/* Barrel */}
-          <mesh castShadow>
-            <cylinderGeometry args={[hx * 0.065, hx * 0.062, hx * 2, 40]} />
+          {/* Barrel — the anodized body, engraving area */}
+          <mesh position={[0, 0.2, 0]} castShadow>
+            <cylinderGeometry args={[r, r, 1.7, 48]} />
             <meshPhysicalMaterial {...body} />
           </mesh>
-          {/* Cone nib (silver) */}
-          <mesh position={[0, -hx * 1.06, 0]} castShadow>
-            <coneGeometry args={[hx * 0.062, hx * 0.16, 32]} />
-            <meshPhysicalMaterial color={obj.accentColor} roughness={0.22} metalness={0.95} clearcoat={0.5} />
+          {/* Back knock cap + rounded end (metal) */}
+          <mesh position={[0, 1.12, 0]} castShadow>
+            <cylinderGeometry args={[r * 1.02, r * 1.02, 0.16, 48]} />
+            <meshPhysicalMaterial {...metal} />
           </mesh>
-          {/* Top cap (silver) */}
-          <mesh position={[0, hx * 1.02, 0]} castShadow>
-            <cylinderGeometry args={[hx * 0.07, hx * 0.07, hx * 0.12, 32]} />
-            <meshPhysicalMaterial color={obj.accentColor} roughness={0.22} metalness={0.95} clearcoat={0.5} />
+          <mesh position={[0, 1.2, 0]} castShadow>
+            <sphereGeometry args={[r * 1.02, 24, 16]} />
+            <meshPhysicalMaterial {...metal} />
           </mesh>
-          {/* Clip (silver) */}
-          <RoundedBox args={[0.03, hx * 0.5, 0.05]} radius={0.012} smoothness={2} position={[0, hx * 0.7, hx * 0.075]} castShadow>
-            <meshPhysicalMaterial color={obj.accentColor} roughness={0.22} metalness={0.95} clearcoat={0.5} />
+          {/* Center metal band */}
+          <mesh position={[0, -0.66, 0]} castShadow>
+            <cylinderGeometry args={[r * 1.02, r * 1.02, 0.06, 48]} />
+            <meshPhysicalMaterial {...metal} />
+          </mesh>
+          {/* Grip section — tapered metal cone toward the tip */}
+          <mesh position={[0, -0.86, 0]} castShadow>
+            <cylinderGeometry args={[r, 0.05, 0.4, 48]} />
+            <meshPhysicalMaterial {...metal} />
+          </mesh>
+          {/* Writing tip cone (points to the front) */}
+          <mesh position={[0, -1.16, 0]} rotation={[Math.PI, 0, 0]} castShadow>
+            <coneGeometry args={[0.05, 0.22, 32]} />
+            <meshPhysicalMaterial {...metal} />
+          </mesh>
+          {/* Clip near the back (metal) */}
+          <RoundedBox args={[0.028, 0.52, 0.05]} radius={0.012} smoothness={2} position={[0, 0.78, r + 0.02]} castShadow>
+            <meshPhysicalMaterial {...metal} />
           </RoundedBox>
         </group>
       );
+    }
 
     case "abridor":
-      return (
-        <group>
-          {/* Main plate — landscape 1.54:1 rounded rectangle */}
-          <RoundedBox args={[hx * 2, hy * 2, hz * 2]} radius={0.09} smoothness={5} castShadow receiveShadow>
-            <meshPhysicalMaterial {...body} />
-          </RoundedBox>
-          {/* Opener cutout: left ~42% of plate, full height (overflow ensures clean edge through rounded corners) */}
-          <RoundedBox args={[hx * 0.84, hy * 1.40, hz * 2.6]} radius={0.07} smoothness={3} position={[-hx * 0.58, 0, 0]}>
-            <meshPhysicalMaterial color="#1e2328" roughness={0.6} metalness={0.2} />
-          </RoundedBox>
-          {/* Bottle-cap hook notch: protrudes into the cutout from the right wall, lower portion */}
-          <mesh position={[-hx * 0.22, -hy * 0.20, hz + 0.004]}>
-            <boxGeometry args={[hx * 0.26, hy * 0.46, 0.04]} />
-            <meshPhysicalMaterial color="#1e2328" roughness={0.6} metalness={0.2} />
-          </mesh>
-        </group>
-      );
+      return <AbridorPlate obj={obj} body={body} />;
 
     default:
       return null;
@@ -284,12 +359,14 @@ function ObjectMesh({
 
   useFrame((_, delta) => {
     if (!groupRef.current || isDragging.current) return;
+    // Idle auto-spin only while blank; hold still once personalizing (still draggable).
+    const hasContent = !!text || (!!customImageUrl && imageSize !== "none");
     if (Math.abs(velYaw.current) > 0.001) {
       groupRef.current.rotation.y += velYaw.current * delta;
       velYaw.current *= 0.9;
     } else {
       velYaw.current = 0;
-      groupRef.current.rotation.y += delta * 0.35;
+      if (!hasContent) groupRef.current.rotation.y += delta * 0.35;
     }
     if (Math.abs(velPitch.current) > 0.001) {
       const np = groupRef.current.rotation.x + velPitch.current * delta;
@@ -370,9 +447,10 @@ function ThreeCanvas({ obj, ...props }: Object3DProps & { obj: ObjectDef }) {
   const { camY } = frame(obj);
   return (
     <Canvas
-      shadows
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-      style={{ background: "transparent", cursor: "grab" }}
+      // touch-action none: a drag that starts on the product rotates it instead
+      // of scrolling the page. To scroll, the finger must start outside the canvas.
+      style={{ background: "transparent", cursor: "grab", touchAction: "none" }}
     >
       <Rig obj={obj} />
       <Suspense fallback={null}>
@@ -387,17 +465,20 @@ function ThreeCanvas({ obj, ...props }: Object3DProps & { obj: ObjectDef }) {
           textPlacement={props.textPlacement ?? DEFAULT_TEXT_PLACEMENT}
           artPlacement={props.artPlacement ?? DEFAULT_ART_PLACEMENT}
         />
+        {/* Single, stable ground shadow — re-renders each frame, no real-time
+            shadow map, so no self-shadow flicker as the object rotates/tilts. */}
         <ContactShadows
           position={[0, -obj.size[1] - 0.3, 0]}
           opacity={0.5}
           scale={Math.max(5, obj.size[0] * 7)}
-          blur={2.4}
-          resolution={512}
+          blur={2.6}
+          resolution={1024}
+          frames={Infinity}
           far={4}
           color="#000000"
         />
       </Suspense>
-      <directionalLight position={[4, 6, 4]} intensity={1.6} castShadow />
+      <directionalLight position={[4, 6, 4]} intensity={1.6} />
       <directionalLight position={[-4, 2, -3]} intensity={0.5} color="#aaccff" />
       <directionalLight position={[-3, 4, -6]} intensity={1.1} color="#ffffff" />
       <ambientLight intensity={0.3} />

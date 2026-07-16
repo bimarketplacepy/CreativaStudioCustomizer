@@ -1,13 +1,13 @@
 export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
-export type HandleStyle = "cap-d" | "cap-arch" | "body" | "none";
+export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "none";
 
 export interface ProductSize {
   id: string;
   /** Short label shown on the size button, e.g. "20oz". */
   name: string;
-  /** Secondary line, e.g. "Estandar". */
+  /** Secondary line, e.g. "Estándar". */
   label: string;
   /** Uniform scale applied to the product profile. */
   scale: number;
@@ -37,7 +37,7 @@ export const PRODUCTS: ProductDef[] = [
     name: "Vasos",
     singular: "Vaso",
     // Stanley Classic Pint Tumbler — short conical tumbler, wider at top, sliding lid
-    desc: "Vaso termico conico con tapa deslizable.",
+    desc: "Vaso térmico cónico con tapa deslizable.",
     cap: "lid",
     handle: "none",
     profile: [
@@ -50,7 +50,7 @@ export const PRODUCTS: ProductDef[] = [
     band: [-0.90, 0.92],
     sizes: [
       { id: "vaso-12", name: "12oz", label: "Chico",   scale: 0.84 },
-      { id: "vaso-20", name: "20oz", label: "Clasico", scale: 1.00 },
+      { id: "vaso-20", name: "20oz", label: "Clásico", scale: 1.00 },
       { id: "vaso-30", name: "30oz", label: "Grande",  scale: 1.16 },
     ],
   },
@@ -58,21 +58,22 @@ export const PRODUCTS: ProductDef[] = [
     id: "termo",
     name: "Termos",
     singular: "Termo",
-    // Stanley Classic Vacuum Bottle — tall cylinder, pronounced neck, large fold handle
-    desc: "Termo clasico de vacio con cuello y asa plegable lateral.",
+    // Stanley Mate System 1.2 L — tall slim vacuum bottle for mate: ~10.2 cm
+    // diameter × 30 cm tall (height:diameter ≈ 2.9:1), long straight body, screw
+    // cap and a rigid side D-handle proportioned to the slim body.
+    desc: "Termo alto y esbelto, con cuello, tapa a rosca y mango lateral.",
     cap: "screw",
-    handle: "cap-d",
+    handle: "body-d",
     profile: [
-      [0.00, -1.92], [0.08, -1.92],
-      [0.48, -1.88], [0.64, -1.76],
-      [0.68, -1.58], [0.68,  0.82],
-      [0.66,  1.00], [0.58,  1.20],
-      [0.44,  1.38], [0.38,  1.52],
-      [0.36,  1.62], [0.34,  1.70],
+      [0.00, -1.45], [0.11, -1.45],
+      [0.43, -1.41], [0.51, -1.31],
+      [0.51, -1.15], [0.51,  0.80],
+      [0.50,  0.95], [0.45,  1.05],
+      [0.38,  1.12], [0.35,  1.15],
     ],
-    band: [-1.40, 0.78],
+    band: [-1.10, 0.72],
     sizes: [
-      { id: "termo-20", name: "20oz", label: "Estandar", scale: 0.88 },
+      { id: "termo-20", name: "20oz", label: "Estándar", scale: 0.88 },
       { id: "termo-32", name: "32oz", label: "Grande",   scale: 1.00 },
       { id: "termo-40", name: "40oz", label: "XL",       scale: 1.14 },
     ],
@@ -81,22 +82,23 @@ export const PRODUCTS: ProductDef[] = [
     id: "hoppie",
     name: "Hoppies",
     singular: "Hoppie",
-    // Stanley IceFlow Flip Straw — straight cylindrical body, subtle lower waist, chrome band, carry handle on lid
-    desc: "Hoppie IceFlow con cuerpo cilindrico, cintura suave en la base y asa en la tapa.",
+    // Stanley Flip Straw Tumbler 887ml — tapered tumbler: narrow base that fits a
+    // cup holder, widening to the top, with a flip-straw lid and a rotating handle.
+    desc: "Vaso cónico, más angosto en la base y más ancho arriba, con tapa de sorbete y asa superior.",
     cap: "flip",
     handle: "cap-arch",
     profile: [
-      [0.00, -1.35], [0.08, -1.35],
-      [0.30, -1.28], [0.46, -1.14],
-      [0.50, -0.90], [0.48, -0.50],
-      [0.50, -0.10], [0.54,  0.30],
-      [0.54,  0.80], [0.54,  1.10],
-      [0.54,  1.25],
+      [0.00, -1.35], [0.11, -1.35],
+      [0.37, -1.30], [0.41, -1.19],
+      [0.43, -1.02], [0.46, -0.70],
+      [0.50, -0.25], [0.54,  0.28],
+      [0.58,  0.78], [0.60,  1.08],
+      [0.60,  1.22],
     ],
-    band: [-0.54, 1.08],
+    band: [-0.66, 1.00],
     sizes: [
       { id: "hoppie-20", name: "20oz", label: "Chico",   scale: 0.86 },
-      { id: "hoppie-30", name: "30oz", label: "Clasico", scale: 1.00 },
+      { id: "hoppie-30", name: "30oz", label: "Clásico", scale: 1.00 },
       { id: "hoppie-40", name: "40oz", label: "Grande",  scale: 1.14 },
     ],
   },
@@ -105,7 +107,7 @@ export const PRODUCTS: ProductDef[] = [
     name: "Jugs",
     singular: "Jug",
     // Stanley IceMonster / Adventure — wide squat water jug, carabiner handle on cap
-    desc: "Bidon termico ancho de gran capacidad con asa.",
+    desc: "Bidón térmico ancho de gran capacidad con asa.",
     cap: "screw",
     handle: "cap-d",
     profile: [
@@ -128,7 +130,7 @@ export const PRODUCTS: ProductDef[] = [
     name: "Guampas",
     singular: "Guampa",
     // Stanley Mate Cup — short wide barrel, concave waist mid-body, slight rim flare, stepped lid
-    desc: "Guampa termica ancha con cintura cóncava y borde levemente acampanado.",
+    desc: "Guampa térmica ancha con cintura cóncava y borde levemente acampanado.",
     cap: "lid",
     handle: "none",
     profile: [
@@ -174,8 +176,8 @@ export const PRODUCTS: ProductDef[] = [
     id: "botella",
     name: "Botellas",
     singular: "Botella",
-    // Botella de whisky tipo decanter (aprox. redonda del Johnnie Walker Swing, ref. botella.jpeg)
-    desc: "Botella de whisky de cristal, cuerpo bombé con cuello corto y tapa.",
+    // Botella de vidrio tipo decanter (aprox. redonda del Johnnie Walker Swing, ref. botella.jpeg)
+    desc: "Botella de vidrio, cuerpo bombé con cuello corto y tapa.",
     cap: "screw",
     handle: "none",
     profile: [

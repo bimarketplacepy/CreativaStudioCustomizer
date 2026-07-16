@@ -1,104 +1,69 @@
 import React from "react";
-import { Type, Shapes, ImageIcon, Layers, Zap, Sparkles, Info, MessageCircle } from "lucide-react";
-import { whatsappUrl } from "@/lib/contact";
+import { Type, Shapes, ImageIcon, Layers, Zap, Sparkles } from "lucide-react";
 
 /** What can be personalized — shown above the customizer to set expectations. */
 const WHAT = [
-  { icon: Type, title: "Texto y nombres", desc: "Nombres, apellidos, frases o fechas en la tipografía que elijas." },
-  { icon: Shapes, title: "Íconos y símbolos", desc: "Sumá un ícono de nuestra galería a tu diseño." },
-  { icon: ImageIcon, title: "Logos y fotos", desc: "Subí tu logo o una foto y la adaptamos al producto." },
+  { icon: Type, title: "Texto y nombres", desc: "Nombres, apellidos, frases o fechas en la tipografía que elija." },
+  { icon: Shapes, title: "Íconos y símbolos", desc: "Sume un ícono de nuestra galería a su diseño." },
+  { icon: ImageIcon, title: "Logos y fotos", desc: "Suba su logo o una foto y la adaptamos a la pieza." },
   { icon: Layers, title: "Muchos materiales", desc: "Acero, cristal, madera, cuero, acrílico, plástico y bolígrafos." },
 ];
 
 const TECHNIQUES = [
-  { icon: Zap, title: "Grabado láser", desc: "Monocromático y permanente. Disponible en todos los materiales." },
-  { icon: Sparkles, title: "Eufy Make (UV DTF)", desc: "Impresión a todo color, solo en drinkware de acero con pintura electrostática." },
+  { icon: Zap, title: "Grabado láser", desc: "El acabado clásico y atemporal: su diseño marcado a láser, para siempre. Disponible en todos los materiales." },
+  { icon: Sparkles, title: "Impresión a todo color", desc: "¿Prefiere su logo o foto con todos sus colores? Los reproducimos vivos y con detalle sobre vasos y termos de acero." },
 ];
-
-const consultaMsg =
-  "Hola! Vi el personalizador en la web y quiero consultar por una personalización específica.";
 
 export default function PersonalizationInfo() {
   return (
-    <section id="personalizaciones" className="py-16 px-6 bg-secondary/30 border-b border-border">
+    <section id="personalizaciones" className="py-12 md:py-28 px-4 sm:px-6 bg-white border-b border-border">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-10 max-w-2xl">
-          <p className="text-primary text-xs font-semibold uppercase tracking-[0.2em] mb-2">
+        <div className="mb-7 md:mb-14 max-w-2xl">
+          <p className="text-[#8B1A2F] text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.25em] sm:tracking-[0.3em] mb-2 md:mb-4">
             Posibilidades
           </p>
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-3">
-            ¿Qué podés personalizar?
+          <h2 className="font-serif font-light text-[1.6rem] leading-[1.15] md:text-5xl text-[#1A1614] mb-2.5 md:mb-5 md:leading-[1.1]">
+            ¿Qué puede personalizar?
           </h2>
-          <p className="text-muted-foreground">
-            Estos son algunos ejemplos de lo que se puede grabar o imprimir. En el personalizador de abajo
-            podés probar cómo quedaría tu producto con tu texto, un ícono o tu logo.
+          <p className="text-[#5f574d] leading-relaxed font-light text-sm sm:text-base md:text-lg">
+            Algunos ejemplos de lo que se puede grabar o imprimir. En el personalizador de abajo podrá
+            ver cómo queda su pieza con su texto, un ícono o su logo.
           </p>
         </div>
 
         {/* What can be personalized */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-5 mb-2.5 sm:mb-5">
           {WHAT.map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="bg-white border border-border rounded-2xl p-5">
-              <div className="w-10 h-10 rounded-xl bg-[#f5eaec] text-primary flex items-center justify-center mb-3">
-                <Icon className="w-5 h-5" />
+            <div key={title} className="bg-[#faf7f2] border border-[#ece4d8] rounded-xl sm:rounded-2xl p-3.5 sm:p-6">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white text-[#8B1A2F] border border-[#ece4d8] flex items-center justify-center mb-2.5 sm:mb-4">
+                <Icon className="w-4 h-4 sm:w-[18px] sm:h-[18px]" strokeWidth={1.5} />
               </div>
-              <h3 className="font-semibold text-foreground mb-1">{title}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
+              <h3 className="font-medium text-[13px] sm:text-base text-[#1A1614] mb-1 sm:mb-1.5 leading-snug">{title}</h3>
+              <p className="text-[11px] sm:text-sm text-[#7a7266] leading-relaxed font-light">{desc}</p>
             </div>
           ))}
         </div>
 
         {/* Techniques */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-5">
           {TECHNIQUES.map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="bg-white border border-border rounded-2xl p-5 flex items-start gap-3">
-              <div className="w-10 h-10 shrink-0 rounded-xl bg-[#f5eaec] text-primary flex items-center justify-center">
-                <Icon className="w-5 h-5" />
+            <div key={title} className="bg-[#faf7f2] border border-[#ece4d8] rounded-xl sm:rounded-2xl p-3.5 sm:p-6 flex items-start gap-3 sm:gap-4">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 shrink-0 rounded-full bg-white text-[#8B1A2F] border border-[#ece4d8] flex items-center justify-center">
+                <Icon className="w-4 h-4 sm:w-[18px] sm:h-[18px]" strokeWidth={1.5} />
               </div>
               <div>
-                <h3 className="font-semibold text-foreground mb-1">{title}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
+                <h3 className="font-medium text-[13px] sm:text-base text-[#1A1614] mb-1 sm:mb-1.5 leading-snug">{title}</h3>
+                <p className="text-[11px] sm:text-sm text-[#7a7266] leading-relaxed font-light">{desc}</p>
               </div>
             </div>
           ))}
         </div>
 
-        {/* "Want something else?" + disclaimer */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-white border border-border rounded-2xl p-6 flex flex-col">
-            <div className="flex items-center gap-2 mb-2">
-              <MessageCircle className="w-5 h-5 text-primary" />
-              <h3 className="font-semibold text-foreground">¿Buscás algo que no está acá?</h3>
-            </div>
-            <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-              Los productos y ejemplos que ves son solo algunas de las personalizaciones posibles. Si querés
-              algo específico que no aparece en la página, escribinos y lo resolvemos juntos.
-            </p>
-            <a
-              href={whatsappUrl(consultaMsg)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-auto inline-flex items-center justify-center gap-2 h-11 px-6 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors self-start"
-            >
-              <MessageCircle className="w-4 h-4" />
-              Consultar por WhatsApp
-            </a>
-          </div>
-
-          <div className="bg-[#fdf6f0] border border-[#e7cdbd] rounded-2xl p-6">
-            <div className="flex items-center gap-2 mb-2">
-              <Info className="w-5 h-5 text-primary" />
-              <h3 className="font-semibold text-foreground">Importante — esto es un simulador</h3>
-            </div>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Esta página <span className="font-semibold text-foreground">solo sirve para simular</span> cómo se
-              vería tu producto personalizado. <span className="font-semibold text-foreground">No es una tienda
-              online</span>: acá no se procesan compras ni pagos, y las opciones mostradas son ejemplos de
-              personalizaciones posibles. Para concretar tu pedido tenés que contactarte por WhatsApp con los
-              botones indicados.
-            </p>
-          </div>
-        </div>
+        {/* Discreet closing note — replaces the loud alert box. */}
+        <p className="mt-6 md:mt-10 text-[10px] sm:text-xs text-[#9c9488] leading-relaxed max-w-3xl font-light">
+          Esta página permite simular cómo se vería su pieza personalizada; no procesa compras ni pagos, y las
+          opciones son ejemplos de lo posible.
+        </p>
       </div>
     </section>
   );

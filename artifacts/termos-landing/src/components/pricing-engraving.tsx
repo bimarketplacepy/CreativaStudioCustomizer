@@ -1,44 +1,45 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { PenTool } from "lucide-react";
 import { ENGRAVING_BASE, ENGRAVING_PLANS } from "@/lib/engraving-plans";
 
 export default function PricingEngraving() {
   return (
-    <section id="precios" className="bg-[#2a2a2a] py-24 px-6">
+    <section id="precios" className="bg-[#1A1614] py-24 md:py-32 px-6">
       <motion.div
-        className="max-w-3xl mx-auto flex flex-col items-center text-center"
+        className="max-w-2xl mx-auto"
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
-        transition={{ duration: 0.5 }}
+        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
       >
-        <PenTool className="w-10 h-10 text-white mb-4" strokeWidth={1.5} />
-        <h2 className="text-2xl md:text-3xl font-black uppercase tracking-wide text-white mb-3">
-          Precios de Grabados
-        </h2>
-        <p className="text-white/40 text-sm mb-14">
-          {ENGRAVING_BASE} incluido en todos los planes. El valor del producto se cotiza aparte.
-        </p>
+        <div className="text-center mb-16">
+          <p className="text-white/40 text-[11px] font-semibold uppercase tracking-[0.35em] mb-5">
+            Tarifas
+          </p>
+          <h2 className="font-serif font-light text-3xl md:text-4xl text-white/95 mb-4">
+            El grabado
+          </h2>
+          <p className="text-white/50 text-sm font-light leading-relaxed">
+            {ENGRAVING_BASE} incluido en todos los planes. El valor de la pieza se cotiza aparte.
+          </p>
+        </div>
 
-        <div className="w-full flex flex-col gap-12">
+        <div className="flex flex-col">
           {ENGRAVING_PLANS.map((plan, idx) => (
             <motion.div
               key={plan.id}
-              className="flex flex-col items-center gap-5"
-              initial={{ opacity: 0, y: 15 }}
-              whileInView={{ opacity: 1, y: 0 }}
+              className="flex items-baseline justify-between gap-6 py-5 border-b border-white/10 first:border-t"
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
               viewport={{ once: true }}
-              transition={{ duration: 0.45, delay: idx * 0.1 }}
+              transition={{ duration: 0.5, delay: idx * 0.08 }}
             >
-              <p className="text-xs sm:text-sm font-bold uppercase tracking-[0.15em] text-white leading-relaxed">
+              <p className="text-white/75 text-sm md:text-base font-light leading-snug">
                 {plan.shortLabel}
               </p>
-              <div className="border-2 border-[#8B1A2F] rounded-full px-8 py-3">
-                <span className="text-xl sm:text-2xl font-black text-white tracking-wide">
-                  {plan.priceLabel}
-                </span>
-              </div>
+              <span className="shrink-0 font-serif text-lg md:text-xl text-white/90 tracking-wide tabular-nums">
+                {plan.priceLabel}
+              </span>
             </motion.div>
           ))}
         </div>

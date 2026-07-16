@@ -5,15 +5,15 @@ import { WhatsAppGlyph } from "./whatsapp-button";
 
 /** Every support topic opens WhatsApp with the question already framed. */
 const SUPPORT_LINKS = [
-  { label: "Preguntas frecuentes", message: "Hola! Tengo una consulta sobre los grabados." },
-  { label: "Retiro en el local", message: "Hola! Queria consultar por el retiro en el local." },
-  { label: "Cambios y devoluciones", message: "Hola! Queria consultar por cambios y devoluciones." },
-  { label: "Contacto", message: "Hola! Queria hacerles una consulta." },
+  { label: "Preguntas frecuentes", message: "¡Hola! ¿Cómo están? Tengo una duda sobre los grabados y me encantaría que me orienten 😊" },
+  { label: "Retiro en el local", message: "¡Hola! ¿Qué tal? Quería consultarles cómo es el retiro en el local. ¡Gracias!" },
+  { label: "Cambios y devoluciones", message: "¡Hola! ¿Cómo va? Tengo una consulta sobre cambios y devoluciones, ¿me ayudan?" },
+  { label: "Contacto", message: "¡Hola! ¿Cómo están? Me gustaría hacerles una consulta cuando puedan 😊" },
 ];
 
 export default function Footer() {
   return (
-    <footer className="bg-white border-t border-border pt-12 pb-6 px-6">
+    <footer id="contacto" className="bg-white border-t border-border pt-12 pb-6 px-6">
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-10 mb-10">
         <div className="md:col-span-2">
           <img
@@ -22,7 +22,7 @@ export default function Footer() {
             className="h-8 object-contain mb-4"
           />
           <p className="text-sm text-muted-foreground max-w-xs leading-relaxed mb-5">
-            La tienda online de personalizacion de Creativa Studio.
+            El personalizador online de Creativa Studio. Diseñá y personalizá tu producto a tu gusto, tal como lo imaginás.
           </p>
           <div className="space-y-2 text-sm text-muted-foreground">
             <a
@@ -49,12 +49,21 @@ export default function Footer() {
         </div>
 
         <div>
-          <h4 className="font-semibold text-foreground mb-4 text-sm">Tienda</h4>
+          <h4 className="font-semibold text-foreground mb-4 text-sm">Explorar</h4>
           <ul className="space-y-2.5 text-sm text-muted-foreground">
+            <li><a href="#personalizaciones" className="hover:text-primary transition-colors">Qué personalizamos</a></li>
             <li><a href="#customizer" className="hover:text-primary transition-colors">Personalizador</a></li>
-            <li><a href="#" className="hover:text-primary transition-colors">Catalogo</a></li>
-            <li><a href="#" className="hover:text-primary transition-colors">Accesorios</a></li>
-            <li><a href="#" className="hover:text-primary transition-colors">Regalos corporativos</a></li>
+            <li><a href="#precios" className="hover:text-primary transition-colors">Precios de grabado</a></li>
+            <li>
+              <a
+                href={whatsappUrl("¡Hola! ¿Qué tal? Me interesan los regalos corporativos personalizados y me encantaría que me cuenten un poco más.")}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-primary transition-colors"
+              >
+                Regalos corporativos
+              </a>
+            </li>
           </ul>
         </div>
 
@@ -81,35 +90,23 @@ export default function Footer() {
         <p className="text-xs text-muted-foreground">
           &copy; {new Date().getFullYear()} MarketPlace Paraguay. Todos los derechos reservados.
         </p>
-        <div className="flex gap-3">
-          <a
-            href={whatsappUrl()}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-2 text-xs font-semibold text-white transition-transform hover:scale-105"
-          >
-            <WhatsAppGlyph className="w-4 h-4" />
-            WhatsApp
-          </a>
-          <a
-            href={INSTAGRAM_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-white transition-transform hover:scale-105"
-            style={{ background: "linear-gradient(45deg, #F58529, #DD2A7B, #8134AF)" }}
-          >
-            <Instagram className="w-4 h-4" />
-            Instagram
-          </a>
-          <a
-            href={FACEBOOK_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 rounded-full bg-[#1877F2] px-4 py-2 text-xs font-semibold text-white transition-transform hover:scale-105"
-          >
-            <Facebook className="w-4 h-4" />
-            Facebook
-          </a>
+        <div className="flex gap-2.5">
+          {[
+            { href: whatsappUrl(), label: "WhatsApp", Icon: WhatsAppGlyph },
+            { href: INSTAGRAM_URL, label: "Instagram", Icon: Instagram },
+            { href: FACEBOOK_URL, label: "Facebook", Icon: Facebook },
+          ].map(({ href, label, Icon }) => (
+            <a
+              key={label}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={label}
+              className="grid h-9 w-9 place-items-center rounded-full border border-border text-muted-foreground transition-colors hover:border-[#8B1A2F] hover:text-[#8B1A2F]"
+            >
+              <Icon className="w-4 h-4" />
+            </a>
+          ))}
         </div>
       </div>
     </footer>

@@ -5,7 +5,8 @@ import * as THREE from "three";
 import { getProduct, getSize, resampledProfile, type ProductDef } from "@/lib/products";
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
-import { makeBodyMaps } from "@/lib/engraving-maps";
+import { makeBodyMaps, type EngraveStyle } from "@/lib/engraving-maps";
+import { engraveLines, fillLines, LINE_HEIGHT } from "@/lib/engraving-text";
 
 class WebGLErrorBoundary extends Component<
   { fallback: ReactNode; children: ReactNode },
@@ -32,6 +33,8 @@ interface Thermos3DProps {
   artPlacement?: Placement;
   /** Eufy Make (UV DTF): print the artwork in colour instead of engraving it. */
   colorPrint?: boolean;
+  /** How the laser reads: steel reveal (default), leather char or wood char. */
+  engraveStyle?: EngraveStyle;
 }
 
 /** Everything the meshes and the camera rig need, derived from the product profile. */
@@ -84,14 +87,78 @@ function fitCamera(sil: Silhouette) {
   return { fov: FOV, camY: centerY, camZ: Math.max(fitByHeight, fitByWidth), shadowY: sil.bottomY };
 }
 
+/**
+ * Detailed flip-straw lid for the Hoppie (Stanley Flip Straw Tumbler 887ml):
+ * a stepped lid seated on the body, a hinged flip spout with the straw
+ * mouthpiece poking out, and a rotating carry-handle arch across the top.
+ * Replaces the generic cylinder cap + torus handle for this product.
+ */
+function HoppieLid({ sil }: { sil: Silhouette }) {
+  const s = sil.scale;
+  const { neckY, neckR, capR } = sil;
+
+  const lid = { color: "#1c1c1e", roughness: 0.55, metalness: 0.2, clearcoat: 0.35, clearcoatRoughness: 0.25, envMapIntensity: 1.2 };
+  const accent = { color: "#0f0f10", roughness: 0.5, metalness: 0.25, clearcoat: 0.4, clearcoatRoughness: 0.2, envMapIntensity: 1.2 };
+
+  const collarY = neckY + 0.05 * s;
+  const bodyY = neckY + 0.17 * s;
+  const topY = neckY + 0.27 * s;
+
+  return (
+    <group>
+      {/* Collar seating on the body rim */}
+      <mesh position={[0, collarY, 0]} castShadow>
+        <cylinderGeometry args={[capR, neckR * 1.02, 0.10 * s, 64]} />
+        <meshPhysicalMaterial {...lid} />
+      </mesh>
+      {/* Lid body */}
+      <mesh position={[0, bodyY, 0]} castShadow>
+        <cylinderGeometry args={[capR * 0.98, capR, 0.16 * s, 64]} />
+        <meshPhysicalMaterial {...lid} />
+      </mesh>
+      {/* Domed top plate */}
+      <mesh position={[0, topY, 0]} castShadow>
+        <cylinderGeometry args={[capR * 0.86, capR * 0.98, 0.06 * s, 64]} />
+        <meshPhysicalMaterial {...lid} />
+      </mesh>
+
+      {/* Flip-spout hinge block near the +X edge */}
+      <mesh position={[capR * 0.4, topY + 0.03 * s, 0]} castShadow>
+        <boxGeometry args={[capR * 0.5, 0.10 * s, capR * 0.52]} />
+        <meshPhysicalMaterial {...accent} />
+      </mesh>
+      {/* Flip nozzle (the spout you flip up to drink), angled outward */}
+      <group position={[capR * 0.5, topY + 0.06 * s, 0]} rotation={[0, 0, -0.5]}>
+        <mesh position={[0, 0.11 * s, 0]} castShadow>
+          <cylinderGeometry args={[0.085 * s, 0.10 * s, 0.22 * s, 24]} />
+          <meshPhysicalMaterial {...accent} />
+        </mesh>
+        {/* Straw mouthpiece tip protruding from the nozzle */}
+        <mesh position={[0, 0.25 * s, 0]} castShadow>
+          <cylinderGeometry args={[0.05 * s, 0.055 * s, 0.11 * s, 20]} />
+          <meshPhysicalMaterial color="#3a3a3d" roughness={0.4} metalness={0.1} clearcoat={0.3} />
+        </mesh>
+      </group>
+
+      {/* Rotating carry handle: half-torus arch across the top (front↔back),
+          seated opposite the spout so the two never collide. */}
+      <mesh position={[-capR * 0.12, topY + 0.02 * s, 0]} rotation={[0, Math.PI / 2, 0]} castShadow>
+        <torusGeometry args={[capR * 0.5, 0.055 * s, 12, 40, Math.PI]} />
+        <meshPhysicalMaterial {...lid} />
+      </mesh>
+    </group>
+  );
+}
+
 function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
-  textPlacement, artPlacement, colorPrint,
+  textPlacement, artPlacement, colorPrint, engraveStyle,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
   customImageUrl: string | null; imageSize: "none" | "small" | "large";
   textPlacement: Placement; artPlacement: Placement; colorPrint: boolean;
+  engraveStyle: EngraveStyle;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
@@ -114,26 +181,53 @@ function ThermosMesh({
     return new THREE.CylinderGeometry(sil.capR, sil.capR * 0.94, sil.capH, 64);
   }, [product.cap, sil]);
 
-  // Handles are toruses buried halfway into the body they spring from, so the
-  // depth test clips the inner half and leaves a D or an arch.
+  // Handles. Most are toruses buried halfway into the body/cap they spring from,
+  // so the depth test clips the inner half and leaves a D or an arch. The termo
+  // uses a rigid "D" grip mounted on the body wall (classic mate-thermos style):
+  // a matte-plastic tube anchored at two points on the body.
   const handle = useMemo(() => {
     switch (product.handle) {
       case "cap-d":
-        return { r: sil.capR * 0.42, tube: sil.capR * 0.11, position: [sil.capR, sil.neckY + sil.capH / 2, 0] as const };
+        return { kind: "torus" as const, mat: "metal" as const, r: sil.capR * 0.42, tube: sil.capR * 0.11, position: [sil.capR, sil.neckY + sil.capH / 2, 0] as [number, number, number] };
       case "cap-arch":
         // A carry loop rising off the lid: sunk into the cap, not the wall.
-        return { r: sil.capR * 0.62, tube: sil.capR * 0.09, position: [0, sil.topY, 0] as const };
+        return { kind: "torus" as const, mat: "metal" as const, r: sil.capR * 0.62, tube: sil.capR * 0.09, position: [0, sil.topY, 0] as [number, number, number] };
       case "body":
-        return { r: sil.maxR * 0.58, tube: sil.maxR * 0.10, position: [sil.maxR, 0.05 * sil.scale, 0] as const };
+        return { kind: "torus" as const, mat: "metal" as const, r: sil.maxR * 0.58, tube: sil.maxR * 0.10, position: [sil.maxR, 0.05 * sil.scale, 0] as [number, number, number] };
+      case "body-d":
+        return { kind: "d-grip" as const, mat: "plastic" as const, position: [0, 0, 0] as [number, number, number] };
       default:
         return null;
     }
   }, [product.handle, sil]);
 
-  const handleGeo = useMemo(
-    () => (handle ? new THREE.TorusGeometry(handle.r, handle.tube, 12, 32) : null),
-    [handle]
-  );
+  const handleGeo = useMemo(() => {
+    if (!handle) return null;
+    if (handle.kind === "d-grip") {
+      // Rigid D grip on the +X body wall. The path starts inside the wall
+      // (buried, so it reads as anchored), bows out, runs down the outside,
+      // and returns into the wall at a second anchor — a "D" with the body
+      // itself as the flat side, leaving a finger gap to grip.
+      const s = sil.scale;
+      const R = sil.maxR;
+      const out = R + 0.36 * s;   // how far the grip stands off the slim body
+      const yT = 0.55 * s;        // upper anchor height (centred on the tall body)
+      const yB = -0.85 * s;       // lower anchor height
+      const curve = new THREE.CatmullRomCurve3(
+        [
+          new THREE.Vector3(R * 0.86, yT, 0),
+          new THREE.Vector3(out, yT - 0.10 * s, 0),
+          new THREE.Vector3(out, yB + 0.10 * s, 0),
+          new THREE.Vector3(R * 0.86, yB, 0),
+        ],
+        false,
+        "catmullrom",
+        0.5
+      );
+      return new THREE.TubeGeometry(curve, 48, 0.075 * s, 16, false);
+    }
+    return new THREE.TorusGeometry(handle.r, handle.tube, 12, 32);
+  }, [handle, sil]);
 
   // Thin metal collar ring at the neck seam (screw caps only)
   const collarGeo = useMemo(() => {
@@ -190,11 +284,11 @@ function ThermosMesh({
     () => makeBodyMaps({
       product, colorHex, finish: matProps, isGradientFinish: finish === "gradient",
       text, textPlacement, fontFamily, artMask, imageSize, artPlacement,
-      anisotropy: maxAnisotropy, colorPrint, artImage: customImageEl,
+      anisotropy: maxAnisotropy, colorPrint, artImage: customImageEl, engraveStyle,
     }),
     // fontReady triggers re-creation once the font is actually loaded
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [product, colorHex, matProps, finish, text, textPlacement, fontFamily, fontReady, artMask, imageSize, artPlacement, maxAnisotropy, colorPrint, customImageEl]
+    [product, colorHex, matProps, finish, text, textPlacement, fontFamily, fontReady, artMask, imageSize, artPlacement, maxAnisotropy, colorPrint, customImageEl, engraveStyle]
   );
 
   // Four textures per rebuild, and a rebuild lands on every keystroke.
@@ -249,6 +343,9 @@ function ThermosMesh({
     if (!groupRef.current) return;
     if (isDragging.current) return;
 
+    // Idle auto-spin only while the piece is blank; freeze once the customer is
+    // placing text/icon/image so they can position it calmly (still draggable).
+    const hasContent = !!text || (!!customImageUrl && imageSize !== "none");
     const hasYawInertia   = Math.abs(velYaw.current) > 0.001;
     const hasPitchInertia = Math.abs(velPitch.current) > 0.001;
 
@@ -257,7 +354,7 @@ function ThermosMesh({
       velYaw.current *= 0.90;
     } else {
       velYaw.current = 0;
-      groupRef.current.rotation.y += delta * 0.55;
+      if (!hasContent) groupRef.current.rotation.y += delta * 0.55;
     }
 
     if (hasPitchInertia) {
@@ -298,17 +395,26 @@ function ThermosMesh({
         />
       </mesh>
 
+      {/* Hoppie gets a bespoke detailed flip-straw lid; everything else uses the
+          generic cap + handle below. */}
+      {product.id === "hoppie" && <HoppieLid sil={sil} />}
+
       {/* Cap / lid */}
-      {capGeo && (
+      {capGeo && product.id !== "hoppie" && (
         <mesh geometry={capGeo} position={[0, capCenterY, 0]} castShadow>
           <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
         </mesh>
       )}
 
       {/* Handle: buried halfway so the depth test hides the inner half */}
-      {handleGeo && handle && (
+      {handleGeo && handle && product.id !== "hoppie" && (
         <mesh geometry={handleGeo} position={handle.position} castShadow>
-          <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
+          {handle.mat === "plastic" ? (
+            // Matte plastic — no metal, no clearcoat sheen. Colour matches the body.
+            <meshPhysicalMaterial color={colorHex} roughness={0.9} metalness={0.0} clearcoat={0.04} clearcoatRoughness={0.9} envMapIntensity={0.6} />
+          ) : (
+            <meshPhysicalMaterial color={colorHex} roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
+          )}
         </mesh>
       )}
 
@@ -501,7 +607,7 @@ function FallbackCanvas({
         if (art.facing > 0) {
           const naturalW = customImg.naturalWidth || customImg.width || 1;
           const naturalH = customImg.naturalHeight || customImg.height || 1;
-          const maxDim = bW * (imageSize === "large" ? 0.62 : 0.36);
+          const maxDim = bW * (imageSize === "large" ? 0.62 : 0.36) * artPlacement.scale;
           const ratio = Math.min(maxDim / naturalW, maxDim / naturalH);
           const dw = naturalW * ratio;
           const dh = naturalH * ratio;
@@ -522,18 +628,20 @@ function FallbackCanvas({
           ctx.beginPath(); ctx.rect(left, top, bW, visH); ctx.clip();
           ctx.translate(tp.x, tp.y);
           ctx.rotate(tp.rot);
-          const fs = Math.max(12, Math.floor(bW * 0.25 * textPlacement.scale));
+          const fs = Math.max(12, Math.floor(bW * 0.19 * textPlacement.scale));
           ctx.font = `900 ${fs}px Inter, sans-serif`;
           ctx.textAlign="center"; ctx.textBaseline="middle";
           ctx.globalAlpha = Math.max(0, Math.min(1, tp.facing+0.25));
+          const lines = engraveLines(text);
+          const lh = fs * LINE_HEIGHT;
           ctx.fillStyle = "rgba(0,0,0,0.55)";
-          ctx.fillText(text, 0, -Math.max(1, fs * 0.035));
+          fillLines(ctx, lines, lh, -Math.max(1, fs * 0.035));
           const steel = ctx.createLinearGradient(0, -fs / 2, 0, fs / 2);
           steel.addColorStop(0, "#8f979f");
           steel.addColorStop(0.45, "#e6eaee");
           steel.addColorStop(1, "#9aa2aa");
           ctx.fillStyle = steel;
-          ctx.fillText(text, 0, 0); ctx.restore();
+          fillLines(ctx, lines, lh); ctx.restore();
         }
       }
       // Shadow — offset below the rounded bottom
@@ -599,9 +707,10 @@ function ThreeCanvas({ product, sil, ...props }: Thermos3DProps & { product: Pro
   const { shadowY } = fitCamera(sil);
   return (
     <Canvas
-      shadows
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-      style={{ background: "transparent", cursor: "grab" }}
+      // touch-action none: a drag that starts on the product rotates it instead
+      // of scrolling the page. To scroll, the finger must start outside the canvas.
+      style={{ background: "transparent", cursor: "grab", touchAction: "none" }}
     >
       <Rig sil={sil} />
 
@@ -620,20 +729,25 @@ function ThreeCanvas({ product, sil, ...props }: Thermos3DProps & { product: Pro
           textPlacement={props.textPlacement ?? DEFAULT_TEXT_PLACEMENT}
           artPlacement={props.artPlacement ?? DEFAULT_ART_PLACEMENT}
           colorPrint={props.colorPrint ?? false}
+          engraveStyle={props.engraveStyle ?? "steel"}
         />
 
+        {/* Single, stable ground shadow. Re-renders every frame so it tracks the
+            spin, and stays anchored to the floor plane — no real-time shadow map,
+            so no self-shadow acne / flicker on the rotating body. */}
         <ContactShadows
           position={[0, shadowY, 0]}
-          opacity={0.55}
+          opacity={0.5}
           scale={Math.max(5, sil.maxR * 7)}
-          blur={2.2}
-          resolution={512}
-          far={3}
+          blur={2.6}
+          resolution={1024}
+          frames={Infinity}
+          far={4}
           color="#000000"
         />
       </Suspense>
 
-      <directionalLight position={[4, 6, 4]} intensity={1.6} castShadow />
+      <directionalLight position={[4, 6, 4]} intensity={1.6} />
       <directionalLight position={[-4, 2, -3]} intensity={0.5} color="#aaccff" />
       <directionalLight position={[0, -2, -5]} intensity={0.3} color="#ffeecc" />
       {/* Rim light: separates the silhouette from the background and rakes across

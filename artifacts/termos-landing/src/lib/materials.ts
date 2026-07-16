@@ -1,7 +1,7 @@
 import type { ProductId } from "./products";
 import type { ObjectId } from "./objects";
 
-export type MaterialId = "acero" | "cuero" | "madera" | "acrilico" | "boligrafos" | "cristal" | "plastico";
+export type MaterialId = "acero" | "cuero" | "madera" | "boligrafos" | "cristal" | "plastico";
 
 export interface MaterialProduct {
   id: string;
@@ -43,7 +43,7 @@ export const MATERIALS: MaterialDef[] = [
       { id: "vaso",    name: "Vaso",    drinkwareProductId: "vaso" },
       { id: "hoppie",  name: "Hoppie",  drinkwareProductId: "hoppie" },
       { id: "guampa",  name: "Guampa",  drinkwareProductId: "guampa" },
-      { id: "abridor", name: "Abridor", desc: "Abridor de botellas de acero, grabado a láser.", objectId: "abridor" },
+      { id: "abridor", name: "Abridor", desc: "Abridor de botellas de metal, plano y alargado.", objectId: "abridor" },
     ],
   },
   {
@@ -54,26 +54,17 @@ export const MATERIALS: MaterialDef[] = [
     products: [
       { id: "guampa-cuero", name: "Guampa forrada",  desc: "Guampa forrada en cuero.", drinkwareProductId: "guampa" },
       { id: "termo-cuero",  name: "Termo forrado",    desc: "Termo forrado en cuero.",  drinkwareProductId: "termo" },
-      { id: "billetera",    name: "Billetera",        desc: "Billetera de cuero de primera calidad grabada.", objectId: "billetera" },
+      { id: "billetera",    name: "Billetera",        desc: "Billetera de cuero tipo bifold.", objectId: "billetera" },
     ],
   },
   {
     id: "madera",
     name: "Madera",
     icon: "tree",
-    desc: "Tablas y cajitas de madera personalizadas.",
+    desc: "Tablas y cajas de madera personalizadas.",
     products: [
-      { id: "tabla",  name: "Tabla",  desc: "Tabla de cortar de bambú claro, plana y ancha.", objectId: "tabla" },
-      { id: "cajita", name: "Cajita", desc: "Cajita de pino rectangular cerrada (21×8×14 cm).", objectId: "cajita" },
-    ],
-  },
-  {
-    id: "acrilico",
-    name: "Acrílico",
-    icon: "square",
-    desc: "Piezas de acrílico transparente grueso y pulido.",
-    products: [
-      { id: "acrilico", name: "Producto de acrílico", desc: "Pieza de acrílico transparente grabada a láser.", objectId: "acrilico" },
+      { id: "tabla",  name: "Tabla", desc: "Tabla de cortar de madera, plana y ancha.", objectId: "tabla" },
+      { id: "cajita", name: "Caja",  desc: "Caja de madera rectangular con tapa.", objectId: "cajita" },
     ],
   },
   {
@@ -88,19 +79,18 @@ export const MATERIALS: MaterialDef[] = [
     id: "cristal",
     name: "Cristal",
     icon: "wine",
-    desc: "Botellas de whisky, copas y más en cristal.",
+    desc: "Copas de cristal personalizadas.",
     products: [
-      { id: "botella-whisky", name: "Botella de whisky", desc: "Botella de whisky en cristal.", drinkwareProductId: "botella" },
-      { id: "copa",           name: "Copa",              desc: "Copa de cristal grabada.",       drinkwareProductId: "copa" },
+      { id: "copa", name: "Copa", desc: "Copa de cristal con pie y tallo.", drinkwareProductId: "copa" },
     ],
   },
   {
     id: "plastico",
     name: "Plástico",
     icon: "cooler",
-    desc: "Conservadoras de plástico rotomoldeado personalizadas.",
+    desc: "Conservadoras de plástico personalizadas.",
     products: [
-      { id: "conservadora", name: "Conservadora", desc: "Conservadora de plástico grabada a láser en el frente.", objectId: "conservadora" },
+      { id: "conservadora", name: "Conservadora", desc: "Conservadora de plástico rectangular con tapa.", objectId: "conservadora" },
     ],
   },
 ];
@@ -125,11 +115,13 @@ export function getMaterial(id: string): MaterialDef {
 }
 
 /**
- * Eufy Make (UV DTF, full colour) is only offered on powder-coated steel
- * drinkware — the pieces that carry an electrostatic paint layer. Bare steel
- * (abridores), lined pieces (forrados), glass (copas, botellas), wood, leather,
- * acrylic, plastic and pens are all laser-engraving only.
+ * UV print (full colour) is only offered on powder-coated steel drinkware — the
+ * pieces that carry an electrostatic paint layer. Bare steel (abridores), lined
+ * pieces (forrados), glass (copas, botellas), wood, leather, acrylic, plastic
+ * and pens are all laser-engraving only. The steel guampa is engraving-only too.
  */
 export function allowsColorPrint(materialId: string, product?: MaterialProduct): boolean {
-  return materialId === "acero" && !!product?.drinkwareProductId;
+  return materialId === "acero"
+    && !!product?.drinkwareProductId
+    && product.drinkwareProductId !== "guampa";
 }

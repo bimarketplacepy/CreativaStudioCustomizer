@@ -9,7 +9,11 @@ export interface Placement {
   /** 0–1 down the engravable band. 0 = top of the band, 1 = bottom. */
   v: number;
   orientation: Orientation;
-  /** Relative size multiplier. Only text is resizable; art size is fixed by the plan. */
+  /**
+   * Relative size multiplier. Applies to text and to art (icons): the size
+   * slider scales the rendered mark. For uploaded images the base size is set by
+   * the plan (small/dibujo vs large/logo) and scale stays at its default 1.
+   */
   scale: number;
 }
 

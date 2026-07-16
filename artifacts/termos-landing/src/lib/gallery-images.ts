@@ -1,7 +1,7 @@
 /**
  * Ejemplos de trabajos ya realizados, alojados en la carpeta
  * "Creativa Studio Fotos" del App Storage y copiados a /public/galeria.
- * Se usan en el carrusel del hero ("Diseñe su propia pieza exclusiva").
+ * Se usan en el carrusel del hero ("Personalice su propia pieza exclusiva").
  */
 export interface GalleryImage {
   /** Archivo dentro de /public/galeria. */
@@ -22,7 +22,7 @@ export const GALLERY_IMAGES: GalleryImage[] = [
   { src: `${BASE}/hoppiedisenouv.jpeg`,   caption: "Hoppie con diseño UV" },
   { src: `${BASE}/minihoppie.jpeg`,       caption: "Mini hoppie" },
   { src: `${BASE}/jugs.jpeg`,             caption: "Jug térmico grabado" },
-  { src: `${BASE}/botella.jpeg`,          caption: "Botella de whisky grabada" },
+  { src: `${BASE}/botella.jpeg`,          caption: "Botella grabada" },
   { src: `${BASE}/copas.jpeg`,            caption: "Copas de cristal grabadas" },
   { src: `${BASE}/vasos.jpeg`,            caption: "Vasos personalizados" },
   { src: `${BASE}/vasos2.jpeg`,           caption: "Vasos personalizados" },
@@ -38,7 +38,7 @@ export const GALLERY_IMAGES: GalleryImage[] = [
   { src: `${BASE}/petaca.jpeg`,           caption: "Petaca grabada" },
   { src: `${BASE}/billeteras.jpeg`,       caption: "Billeteras de cuero" },
   { src: `${BASE}/tablamadera.jpeg`,      caption: "Tabla de madera grabada" },
-  { src: `${BASE}/cajitamadera.jpeg`,     caption: "Cajita de madera" },
+  { src: `${BASE}/cajitamadera.jpeg`,     caption: "Caja de madera" },
   { src: `${BASE}/tronco.jpeg`,           caption: "Pieza de madera" },
   { src: `${BASE}/tronco2.jpeg`,          caption: "Pieza de madera" },
   { src: `${BASE}/acriclico.jpeg`,        caption: "Pieza de acrílico" },
