@@ -8,7 +8,7 @@ import { Slider } from "@/components/ui/slider";
 import {
   Check, Palette, Type, Box, Pipette, ImageIcon, MoveHorizontal, MoveVertical,
   Shapes, Zap, Sparkles, Wallet, TreePine, Square, PenLine, Wine, CupSoda, Snowflake, MessageCircle,
-  Minus, Plus, Move, WrapText,
+  Minus, Plus, Move,
 } from "lucide-react";
 import Thermos3D from "./thermos-3d";
 import Object3D from "./object-3d";
@@ -22,36 +22,39 @@ import {
   MATERIALS, DEFAULT_MATERIAL_ID, getMaterial, allowsColorPrint, PEN_OPTIONS, type MaterialId,
 } from "@/lib/materials";
 import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
-import { wrapEngraveText } from "@/lib/engraving-text";
 import { whatsappUrl } from "@/lib/contact";
 
-/**
- * Past this many characters a single engraved line starts to look cramped, so
- * we offer the "varias líneas" toggle and wrap words at this same width.
- */
-const LINE_MAX = 14;
+/** Text scale bounds. Capped low so a name never blows out past the band. */
+const TEXT_SCALE_MIN = 0.3;
+const TEXT_SCALE_MAX = 1.2;
 
-/** Toggle that appears once the text is long enough to benefit from wrapping. */
-function LineWrapToggle({ show, on, onToggle }: { show: boolean; on: boolean; onToggle: () => void }) {
-  if (!show) return null;
+/**
+ * Text size control: a single sliding dot (same slider as the placement pad's
+ * "Tamaño"). Bound to the text placement scale — as the text grows, the engraving
+ * auto-wraps long rows onto the line below, Instagram-style. Small (a) on the
+ * left, large (A) on the right.
+ */
+function TextSizeSlider({ scale, onScale }: { scale: number; onScale: (s: number) => void }) {
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={`mt-3 w-full flex items-center gap-3 p-3 border rounded-lg text-left transition-all active:scale-[0.99] ${on ? activeCard : idleCard}`}
-    >
-      <span className={`relative w-9 h-5 rounded-full shrink-0 transition-colors ${on ? "bg-primary" : "bg-muted-foreground/30"}`}>
-        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${on ? "left-[18px]" : "left-0.5"}`} />
-      </span>
-      <span className="min-w-0">
-        <span className="flex items-center gap-1.5 text-sm font-medium">
-          <WrapText className="w-3.5 h-3.5" /> Dividir en varias líneas
+    <div className="mt-3 pt-3 border-t border-border">
+      <Label className="text-xs text-muted-foreground mb-2 block">Tamaño del texto</Label>
+      <div className="flex items-center gap-3">
+        <span className="shrink-0 text-[11px] font-bold text-muted-foreground leading-none">a</span>
+        <Slider
+          value={[scale * 100]}
+          onValueChange={([v]) => onScale(v / 100)}
+          min={Math.round(TEXT_SCALE_MIN * 100)}
+          max={Math.round(TEXT_SCALE_MAX * 100)}
+          step={5}
+          className="flex-1"
+          aria-label="Tamaño del texto"
+        />
+        <span className="shrink-0 text-lg font-bold text-muted-foreground leading-none">A</span>
+        <span className="shrink-0 w-10 text-right text-[11px] font-semibold text-primary tabular-nums">
+          {Math.round(scale * 100)}%
         </span>
-        <span className="block text-xs text-muted-foreground mt-0.5">
-          Tu texto es largo. Repartilo en varios renglones para que se grabe más grande y se lea mejor.
-        </span>
-      </span>
-    </button>
+      </div>
+    </div>
   );
 }
 
@@ -230,7 +233,7 @@ function PlacementControls({
   const mode = useRef<null | "move" | "scale">(null);
 
   const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
-  const clampScale = (n: number) => Math.max(0.5, Math.min(1.5, n));
+  const clampScale = (n: number) => Math.max(0.3, Math.min(1.5, n));
   const set = (patch: Partial<Placement>) => onChange({ ...value, ...patch });
 
   const applyPointer = (e: React.PointerEvent) => {
@@ -326,7 +329,7 @@ function PlacementControls({
             <Slider
               value={[value.scale * 100]}
               onValueChange={([v]) => set({ scale: v / 100 })}
-              min={50}
+              min={30}
               max={150}
               step={5}
               className="flex-1"
@@ -500,13 +503,8 @@ export default function Customizer() {
   const [customHex, setCustomHex] = useState<string | null>(null);
   const [finish, setFinish] = useState(FINISHES[0].id);
   const [text, setText] = useState("");
-  // When on, a long name is word-wrapped into several engraved rows.
-  const [multiline, setMultiline] = useState(false);
   const [font, setFont] = useState(FONTS[0].id);
   const activeFont = FONTS.find(f => f.id === font) || FONTS[0];
-  // Text is long enough to offer wrapping; only then does the toggle take effect.
-  const showLineWrap = text.trim().length > LINE_MAX;
-  const engraveText = multiline && showLineWrap ? wrapEngraveText(text, LINE_MAX) : text;
   const [isOrdered, setIsOrdered] = useState(false);
   const [plan, setPlan] = useState<EngravingPlanId>(ENGRAVING_PLANS[0].id);
   const [customImage, setCustomImage] = useState<ProcessedImage | null>(null);
@@ -783,7 +781,7 @@ export default function Customizer() {
                     <Thermos3D
                       colorHex={activeColorHex}
                       finish={finish}
-                      text={engraveText}
+                      text={text}
                       fontClass=""
                       fontStyle={activeFont.style}
                       productId={productId}
@@ -819,7 +817,7 @@ export default function Customizer() {
                     <Object3D
                       objectId={activeObject.id}
                       colorHex={activeObject.colorable ? activeColorHex : undefined}
-                      text={engraveText}
+                      text={text}
                       fontStyle={activeFont.style}
                       customImageUrl={artUrl}
                       imageSize={artImageSize}
@@ -1051,7 +1049,10 @@ export default function Customizer() {
                         maxLength={30}
                       />
                       <p className="text-xs text-muted-foreground mt-1.5 text-right">{text.length}/30 caracteres</p>
-                      <LineWrapToggle show={showLineWrap} on={multiline} onToggle={() => setMultiline(v => !v)} />
+                      <TextSizeSlider
+                        scale={textPlacement.scale}
+                        onScale={(s) => setTextPlacement(p => ({ ...p, scale: s }))}
+                      />
                     </div>
 
                     <div className="pt-4 border-t border-border">
@@ -1059,7 +1060,7 @@ export default function Customizer() {
                       <p className="text-xs text-muted-foreground mb-3">
                         Colocá el texto donde quieras alrededor del {product.singular.toLowerCase()}.
                       </p>
-                      <PlacementControls value={textPlacement} onChange={setTextPlacement} withSize />
+                      <PlacementControls value={textPlacement} onChange={setTextPlacement} />
                     </div>
 
                     <div className="pt-4 border-t border-border">
@@ -1344,7 +1345,10 @@ export default function Customizer() {
                         maxLength={30}
                       />
                       <p className="text-xs text-muted-foreground mt-1.5 text-right">{text.length}/30 caracteres</p>
-                      <LineWrapToggle show={showLineWrap} on={multiline} onToggle={() => setMultiline(v => !v)} />
+                      <TextSizeSlider
+                        scale={textPlacement.scale}
+                        onScale={(s) => setTextPlacement(p => ({ ...p, scale: s }))}
+                      />
                     </div>
 
                     <div className="pt-4 border-t border-border">
@@ -1352,7 +1356,7 @@ export default function Customizer() {
                       <p className="text-xs text-muted-foreground mb-3">
                         Colocá el texto donde quieras sobre la {activeObject.singular.toLowerCase()}.
                       </p>
-                      <PlacementControls value={textPlacement} onChange={setTextPlacement} withSize flat />
+                      <PlacementControls value={textPlacement} onChange={setTextPlacement} flat />
                     </div>
 
                     <div className="pt-4 border-t border-border">

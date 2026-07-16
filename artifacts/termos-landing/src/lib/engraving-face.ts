@@ -1,7 +1,10 @@
 import * as THREE from "three";
 import type { EngraveStyle } from "./objects";
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "./placement";
-import { engraveLines, fillLines, measureLinesWidth, LINE_HEIGHT } from "./engraving-text";
+import { wrapToWidth, fillLines, measureLinesWidth, LINE_HEIGHT } from "./engraving-text";
+
+/** Text wraps once a row passes this fraction of the face width. */
+const TEXT_WRAP_FRAC = 0.82;
 
 /**
  * Engraving for a single flat face (wood board, leather wallet, acrylic disc,
@@ -169,7 +172,7 @@ export function makeFaceMaps({
     const font = `900 ${fontSize}px ${fontFamily}`;
     const lineHeight = fontSize * LINE_HEIGHT;
     mk.font = font;
-    const lines = engraveLines(text);
+    const lines = wrapToWidth(mk, text, W * TEXT_WRAP_FRAC);
     const textW = measureLinesWidth(mk, lines);
     drawPlaced(mk, W, H, textPlacement, textW / 2, (lines.length * lineHeight) / 2, () => {
       mk.font = font;

@@ -17,7 +17,9 @@ export interface Placement {
   scale: number;
 }
 
-export const DEFAULT_TEXT_PLACEMENT: Placement = { u: 0.5, v: 0.5, orientation: "horizontal", scale: 1 };
+// Text starts small (~45%): a full-size name overflows the little mobile preview,
+// and it's easier to scale up from here than to hunt the slider down.
+export const DEFAULT_TEXT_PLACEMENT: Placement = { u: 0.5, v: 0.5, orientation: "horizontal", scale: 0.45 };
 export const DEFAULT_ART_PLACEMENT: Placement = { u: 0.5, v: 0.28, orientation: "horizontal", scale: 1 };
 
 /**

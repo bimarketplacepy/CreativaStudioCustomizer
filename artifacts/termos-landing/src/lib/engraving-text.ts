@@ -8,31 +8,50 @@
 /** Vertical spacing between engraved rows, as a multiple of the font size. */
 export const LINE_HEIGHT = 1.12;
 
-/** Split engraving text into its rows (the customer's line breaks). */
-export function engraveLines(text: string): string[] {
-  return text.split("\n");
-}
-
 /**
- * Greedy word-wrap for the "varias líneas" option: pack words into rows of at
- * most `maxChars`, joined by "\n" so the renderers stack them. A single word
- * longer than the limit keeps its own row rather than being cut mid-word.
+ * Word-wrap `text` into rows that each fit within `maxWidth` px at the context's
+ * current font — the Instagram editor behaviour: as the font grows, fewer words
+ * fit per row and the text spills onto the next line automatically. Explicit
+ * "\n" breaks are honoured, and a single word wider than the margin is hard-
+ * broken so it never overflows.
  */
-export function wrapEngraveText(text: string, maxChars: number): string {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let cur = "";
-  for (const w of words) {
-    const next = cur ? `${cur} ${w}` : w;
-    if (cur && next.length > maxChars) {
-      lines.push(cur);
-      cur = w;
-    } else {
-      cur = next;
+export function wrapToWidth(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number
+): string[] {
+  if (!text) return [];
+  const fits = (s: string) => ctx.measureText(s).width <= maxWidth;
+
+  const rows: string[] = [];
+  // Break a word that is itself wider than the margin; returns the tail that fits.
+  const hardBreak = (word: string): string => {
+    let w = word;
+    while (w.length > 1 && !fits(w)) {
+      let cut = 1;
+      while (cut < w.length && fits(w.slice(0, cut + 1))) cut++;
+      rows.push(w.slice(0, cut));
+      w = w.slice(cut);
     }
+    return w;
+  };
+
+  for (const segment of text.split("\n")) {
+    let line = "";
+    for (const word of segment.split(" ")) {
+      if (word === "") continue;
+      if (!line) {
+        line = hardBreak(word);
+      } else if (fits(`${line} ${word}`)) {
+        line = `${line} ${word}`;
+      } else {
+        rows.push(line);
+        line = hardBreak(word);
+      }
+    }
+    rows.push(line);
   }
-  if (cur) lines.push(cur);
-  return lines.join("\n");
+  return rows.length ? rows : [text];
 }
 
 /** Widest row in canvas pixels at the context's current font. */

@@ -6,7 +6,7 @@ import { getProduct, getSize, resampledProfile, type ProductDef } from "@/lib/pr
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
 import { makeBodyMaps, type EngraveStyle } from "@/lib/engraving-maps";
-import { engraveLines, fillLines, LINE_HEIGHT } from "@/lib/engraving-text";
+import { wrapToWidth, fillLines, LINE_HEIGHT } from "@/lib/engraving-text";
 
 class WebGLErrorBoundary extends Component<
   { fallback: ReactNode; children: ReactNode },
@@ -632,7 +632,7 @@ function FallbackCanvas({
           ctx.font = `900 ${fs}px Inter, sans-serif`;
           ctx.textAlign="center"; ctx.textBaseline="middle";
           ctx.globalAlpha = Math.max(0, Math.min(1, tp.facing+0.25));
-          const lines = engraveLines(text);
+          const lines = wrapToWidth(ctx, text, bW * 0.9);
           const lh = fs * LINE_HEIGHT;
           ctx.fillStyle = "rgba(0,0,0,0.55)";
           fillLines(ctx, lines, lh, -Math.max(1, fs * 0.035));

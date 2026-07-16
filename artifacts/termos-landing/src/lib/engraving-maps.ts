@@ -1,7 +1,10 @@
 import * as THREE from "three";
 import type { ProductDef } from "./products";
 import { bandRange, DEFAULT_ART_PLACEMENT, type Placement } from "./placement";
-import { engraveLines, fillLines, measureLinesWidth, LINE_HEIGHT } from "./engraving-text";
+import { wrapToWidth, fillLines, measureLinesWidth, LINE_HEIGHT } from "./engraving-text";
+
+/** Text wraps once a row passes this fraction of the wrap-around circumference. */
+const TEXT_WRAP_FRAC = 0.5;
 
 /** Bare stainless steel, revealed where the laser ablates the powder coat. */
 const STEEL_LIGHT = "#e6eaee";
@@ -248,7 +251,7 @@ export function makeBodyMaps({
       const font = `900 ${fontSize}px ${fontFamily}`;
       const lineHeight = fontSize * LINE_HEIGHT;
       ctx.font = font;
-      const lines = engraveLines(text);
+      const lines = wrapToWidth(ctx, text, W * TEXT_WRAP_FRAC);
       const textW = measureLinesWidth(ctx, lines);
       drawPlaced(ctx, m, W, textPlacement, textW / 2, (lines.length * lineHeight) / 2, () => {
         ctx.font = font;
@@ -300,7 +303,7 @@ export function makeBodyMaps({
     const font = `900 ${fontSize}px ${fontFamily}`;
     const lineHeight = fontSize * LINE_HEIGHT;
     mk.font = font;
-    const lines = engraveLines(text);
+    const lines = wrapToWidth(mk, text, W * TEXT_WRAP_FRAC);
     const textW = measureLinesWidth(mk, lines);
     drawPlaced(mk, m, W, textPlacement, textW / 2, (lines.length * lineHeight) / 2, () => {
       mk.font = font;
