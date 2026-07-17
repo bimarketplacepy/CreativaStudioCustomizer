@@ -29,6 +29,12 @@ export interface ObjectFace {
   h: number;
   /** World-space centre of that rectangle. */
   center: [number, number, number];
+  /**
+   * Set on cylindrical bodies (the pen barrel): the overlay bends around the
+   * X axis with this radius instead of being a flat plane, so the mark hugs
+   * the curved surface and never floats outside the silhouette when rotated.
+   */
+  curveRadius?: number;
 }
 
 export interface ObjectDef {
@@ -97,7 +103,8 @@ export const OBJECTS: Record<ObjectId, ObjectDef> = {
     metalness: 0.0,
     clearcoat: 0.08,
     engrave: "leather",
-    face: { normal: "z", w: 1.5, h: 1.02, center: [0, 0, 0.125] },
+    // Área grabable amplia: casi toda la cara frontal admite el texto/ícono.
+    face: { normal: "z", w: 1.72, h: 1.26, center: [0, 0, 0.125] },
     restPitch: 0.06,
     fit: 1.08,
     colorable: true,
@@ -149,7 +156,9 @@ export const OBJECTS: Record<ObjectId, ObjectDef> = {
     metalness: 0.55,
     clearcoat: 0.15,
     engrave: "steel",
-    face: { normal: "z", w: 0.9, h: 0.17, center: [0, 0, 0.092] },
+    // curveRadius: the mark wraps around the barrel (r=0.088) instead of
+    // sitting on a flat plane that pokes out of the silhouette when rotated.
+    face: { normal: "z", w: 0.9, h: 0.17, center: [0, 0, 0.092], curveRadius: 0.092 },
     restPitch: 0.0,
     fit: 1.0,
     colorable: true,
@@ -157,21 +166,26 @@ export const OBJECTS: Record<ObjectId, ObjectDef> = {
     markScale: 2.2,
   },
 
-  // Flat stainless-steel bottle opener: landscape 1.54:1 ratio, left-side cutout (~42% width), right-side engravable face.
+  // Bar-blade bottle opener (speed opener): an elongated polished-steel paddle —
+  // rounded head with a hang hole on the left, gently waisted body, and the
+  // cap-opening mouth on the rounded right end. Engraving lives on the flat
+  // body between the two holes.
   abridor: {
     id: "abridor",
     singular: "Abridor",
     desc: "Abridor de botellas de metal, plano y alargado.",
-    size: [0.80, 0.52, 0.052],
+    size: [1.05, 0.30, 0.028],
     baseColor: "#c2c8ce",
     accentColor: "#9aa0a8",
     roughness: 0.30,
     metalness: 0.96,
     clearcoat: 0.25,
     engrave: "steel",
-    face: { normal: "z", w: 0.74, h: 0.66, center: [0.34, 0, 0.053] },
+    // z: por delante del frente real de la placa (hz 0.028 + bisel ≈0.010).
+    face: { normal: "z", w: 0.92, h: 0.34, center: [-0.08, 0, 0.041] },
     restPitch: 0.0,
     fit: 1.0,
+    markScale: 1.4,
   },
 };
 

@@ -578,11 +578,17 @@ function drawEngravingMark(
 
 export interface GlassMaps {
   /**
-   * White-on-transparent coverage of the design. On the frosted overlay mesh it
-   * drives both the colour (milky white) and the alpha, so the sandblasted mark
-   * only shows where text/art actually is.
+   * Colour of the mark: crisp white core with a soft slate rim. The rim gives
+   * the frost the edge contrast a real sandblasted engraving has — pure white
+   * frost disappears against the light glass.
    */
   frostMap: THREE.CanvasTexture;
+  /**
+   * Coverage (luminance = alpha) of core + rim. Separate from the colour map:
+   * with a single map the dark rim would also read as low alpha and erase
+   * itself, so colour and opacity have to travel on different textures.
+   */
+  alphaMap: THREE.CanvasTexture;
   dispose: () => void;
 }
 
@@ -616,8 +622,37 @@ export function makeGlassEngraving(opts: {
     artPlacement: opts.artPlacement,
     singleFace: opts.singleFace,
   });
-  const frostMap = new THREE.CanvasTexture(mark);
+
+  // Colour map: a soft slate rim under the crisp white core. The rim gives the
+  // mark the edge contrast a real sandblasted engraving has.
+  const [frost, fk] = newCanvas();
+  fk.save();
+  fk.shadowColor = "rgba(52, 64, 76, 1)";
+  fk.shadowBlur = 9;
+  fk.drawImage(mark, 0, 0);
+  fk.drawImage(mark, 0, 0); // extra passes deepen the rim
+  fk.drawImage(mark, 0, 0);
+  fk.restore();
+  fk.drawImage(mark, 0, 0); // crisp white core on top
+
+  // Alpha map: same coverage (core + rim) but drawn in white, so the rim keeps
+  // full opacity. Luminance drives alpha — black background = fully clear.
+  const [alpha, ak] = newCanvas();
+  ak.fillStyle = "#000000";
+  ak.fillRect(0, 0, W, H);
+  ak.save();
+  ak.shadowColor = "rgba(255, 255, 255, 1)";
+  ak.shadowBlur = 9;
+  ak.drawImage(mark, 0, 0);
+  ak.drawImage(mark, 0, 0);
+  ak.drawImage(mark, 0, 0);
+  ak.restore();
+  ak.drawImage(mark, 0, 0);
+
+  const frostMap = new THREE.CanvasTexture(frost);
   frostMap.colorSpace = THREE.SRGBColorSpace;
   frostMap.anisotropy = opts.anisotropy ?? 1;
-  return { frostMap, dispose: () => frostMap.dispose() };
+  const alphaMap = new THREE.CanvasTexture(alpha);
+  alphaMap.anisotropy = opts.anisotropy ?? 1;
+  return { frostMap, alphaMap, dispose: () => { frostMap.dispose(); alphaMap.dispose(); } };
 }

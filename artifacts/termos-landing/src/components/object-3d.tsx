@@ -63,37 +63,73 @@ function roundRectPath(ctx: THREE.Shape | THREE.Path, x0: number, y0: number, x1
 }
 
 /**
- * Steel opener plate extruded from a shape with a REAL see-through cutout — the
- * bottle-opener opening (with a cap tooth at the top), so the background shows
- * through it. The right side stays solid for the engraving.
+ * Bar-blade bottle opener (speed opener), modelled after the classic
+ * promotional flat opener: an elongated polished paddle with
+ *   - a rounded head on the left carrying a small hang hole,
+ *   - a gently waisted body (concave sides),
+ *   - a rounded right end with the REAL see-through cap-opening mouth
+ *     (rounded rectangle with a cap tooth), so the background shows through.
+ * The flat body between the holes is the engraving area.
  */
 function AbridorPlate({ obj, body }: { obj: ObjectDef; body: BodyMat }) {
   const [hx, hy, hz] = obj.size;
   const geo = useMemo(() => {
-    const shape = new THREE.Shape();
-    roundRectPath(shape, -hx, -hy, hx, hy, 0.09);
+    // Head (left) and tail (right) cap circles + waisted top/bottom edges.
+    const rHead = hy * 0.93;              // left cap radius
+    const rTail = hy;                     // right cap radius (slightly bigger)
+    const xHead = -hx + rHead;            // left cap centre
+    const xTail = hx - rTail;             // right cap centre
+    const waist = hy * 0.72;              // half-width at the waist
+    const xMid = (xHead + xTail) / 2;
 
-    const xL = -hx * 0.72, xR = -hx * 0.1, yB = -hy * 0.56, yT = hy * 0.56, r = 0.05;
-    const xc = (xL + xR) / 2, tw = 0.07, td = hy * 0.36;
-    const hole = new THREE.Path();
-    hole.moveTo(xL + r, yB);
-    hole.lineTo(xR - r, yB);
-    hole.quadraticCurveTo(xR, yB, xR, yB + r);
-    hole.lineTo(xR, yT - r);
-    hole.quadraticCurveTo(xR, yT, xR - r, yT);
-    // top edge with a downward cap tooth in the middle
-    hole.lineTo(xc + tw, yT);
-    hole.lineTo(xc + tw, yT - td);
-    hole.quadraticCurveTo(xc, yT - td - 0.05, xc - tw, yT - td);
-    hole.lineTo(xc - tw, yT);
-    hole.lineTo(xL + r, yT);
-    hole.quadraticCurveTo(xL, yT, xL, yT - r);
-    hole.lineTo(xL, yB + r);
-    hole.quadraticCurveTo(xL, yB, xL + r, yB);
-    shape.holes.push(hole);
+    const shape = new THREE.Shape();
+    // Left cap: semicircle from top tangent to bottom tangent.
+    shape.absarc(xHead, 0, rHead, Math.PI / 2, (3 * Math.PI) / 2, false);
+    // Bottom edge: sweeps in to the waist, then out to the right cap.
+    shape.quadraticCurveTo(xMid, -waist, xTail, -rTail);
+    // Right cap: semicircle bottom → top.
+    shape.absarc(xTail, 0, rTail, (3 * Math.PI) / 2, Math.PI / 2, false);
+    // Top edge back to the left cap.
+    shape.quadraticCurveTo(xMid, waist, xHead, rHead);
+
+    // Hang hole near the head end.
+    const hang = new THREE.Path();
+    hang.absarc(xHead - rHead * 0.30, rHead * 0.28, hy * 0.17, 0, Math.PI * 2, true);
+    shape.holes.push(hang);
+
+    // Cap-opening mouth on the tail: rounded rect with a tooth reaching in
+    // from the outer (right) edge — the lip that grips the bottle cap.
+    const mW = rTail * 0.78;              // half-width of the mouth (x)
+    const mH = rTail * 0.52;              // half-height (y)
+    const mX = xTail + rTail * 0.02;      // mouth centre x
+    const r = mH * 0.35;
+    const tw = mH * 0.34;                 // tooth half-height
+    const td = mW * 0.62;                 // tooth depth (reaches left)
+    const xl = mX - mW, xr = mX + mW, yb = -mH, yt = mH;
+    const mouth = new THREE.Path();
+    mouth.moveTo(xl + r, yb);
+    mouth.lineTo(xr - r, yb);
+    mouth.quadraticCurveTo(xr, yb, xr, yb + r);
+    // Right edge with the cap tooth pointing INTO the mouth (leftwards).
+    mouth.lineTo(xr, -tw);
+    mouth.lineTo(xr - td, -tw * 0.6);
+    mouth.quadraticCurveTo(xr - td - r * 0.5, 0, xr - td, tw * 0.6);
+    mouth.lineTo(xr, tw);
+    mouth.lineTo(xr, yt - r);
+    mouth.quadraticCurveTo(xr, yt, xr - r, yt);
+    mouth.lineTo(xl + r, yt);
+    mouth.quadraticCurveTo(xl, yt, xl, yt - r);
+    mouth.lineTo(xl, yb + r);
+    mouth.quadraticCurveTo(xl, yb, xl + r, yb);
+    shape.holes.push(mouth);
 
     const g = new THREE.ExtrudeGeometry(shape, {
-      depth: hz * 2, bevelEnabled: false, curveSegments: 16,
+      depth: hz * 2,
+      bevelEnabled: true,
+      bevelThickness: hz * 0.35,
+      bevelSize: hz * 0.35,
+      bevelSegments: 2,
+      curveSegments: 24,
     });
     g.translate(0, 0, -hz);
     g.computeVertexNormals();
@@ -305,6 +341,18 @@ function ObjectMesh({
     if (groupRef.current) groupRef.current.rotation.x = obj.restPitch;
   }, [obj.restPitch]);
 
+  // A design just became active: swing the engraving face back to the camera
+  // (the idle spin may have left the piece at any yaw). Matches the drinkware
+  // single-face behaviour — the customer always sees the mark appear on the
+  // product, never floating at an odd angle or hidden on the far side.
+  useEffect(() => {
+    if (!designActive || !groupRef.current) return;
+    groupRef.current.rotation.y = 0;
+    groupRef.current.rotation.x = obj.restPitch;
+    velYaw.current = 0;
+    velPitch.current = 0;
+  }, [designActive, obj.restPitch]);
+
   const [fontReady, setFontReady] = useState(0);
   useEffect(() => {
     if (!fontFamily) return;
@@ -417,13 +465,34 @@ function ObjectMesh({
   const c = obj.face.center;
   const faceRot: [number, number, number] = obj.face.normal === "y" ? [-Math.PI / 2, 0, 0] : [0, 0, 0];
 
+  // Cylindrical faces (pen barrel): bend the overlay plane around the X axis so
+  // the mark hugs the curved surface. A flat plane in front of a cylinder pokes
+  // out of the product's silhouette as soon as the piece rotates.
+  const curveR = obj.face.curveRadius;
+  const overlayGeo = useMemo(() => {
+    if (!curveR) return new THREE.PlaneGeometry(obj.face.w, obj.face.h);
+    const geo = new THREE.PlaneGeometry(obj.face.w, obj.face.h, 1, 32);
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const phi = pos.getY(i) / curveR; // arc length preserved: y → angle
+      pos.setY(i, curveR * Math.sin(phi));
+      pos.setZ(i, curveR * Math.cos(phi));
+    }
+    geo.computeVertexNormals();
+    return geo;
+  }, [obj.face.w, obj.face.h, curveR]);
+  useEffect(() => () => overlayGeo.dispose(), [overlayGeo]);
+
   return (
     <group ref={groupRef}>
       <Blank obj={obj} baseColor={baseColor} />
 
-      {/* Engraving overlay — a hair in front of the face */}
-      <mesh position={[c[0], c[1], c[2]]} rotation={faceRot}>
-        <planeGeometry args={[obj.face.w, obj.face.h]} />
+      {/* Engraving overlay — a hair in front of the face (or wrapped around it) */}
+      <mesh
+        position={curveR ? [c[0], 0, 0] : [c[0], c[1], c[2]]}
+        rotation={faceRot}
+        geometry={overlayGeo}
+      >
         <meshPhysicalMaterial
           map={maps.map}
           transparent
@@ -484,7 +553,7 @@ function ThreeCanvas({ obj, onContextLost, onContextRestored, ...props }: Object
   const { camY } = frame(obj);
   return (
     <Canvas
-      dpr={[1, 1.5]}
+      dpr={[1.5, 2]}
       // preserveDrawingBuffer: keep the last frame readable for PNG capture.
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
       onCreated={({ gl, invalidate }) => {

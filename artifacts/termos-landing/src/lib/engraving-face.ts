@@ -176,12 +176,26 @@ export function makeFaceMaps({
   }
 
   if (text) {
-    const fontSize = Math.round(H * 0.15 * markScale * textPlacement.scale);
-    const font = `900 ${fontSize}px ${fontFamily}`;
-    const lineHeight = fontSize * (textPlacement.lineHeight ?? LINE_HEIGHT);
+    // Auto-shrink: if the laid-out block overflows the face (tall stacks on the
+    // short pen barrel, very long names), scale the font down until it fits —
+    // the mark must always stay inside the engravable face, never clipped.
+    let fontSize = Math.round(H * 0.15 * markScale * textPlacement.scale);
+    let font = `900 ${fontSize}px ${fontFamily}`;
+    let lineHeight = fontSize * (textPlacement.lineHeight ?? LINE_HEIGHT);
     mk.font = font;
-    const lines = layoutText(mk, text, textPlacement.layout ?? "auto", W * TEXT_WRAP_FRAC);
-    const textW = measureLinesWidth(mk, lines);
+    let lines = layoutText(mk, text, textPlacement.layout ?? "auto", W * TEXT_WRAP_FRAC);
+    let textW = measureLinesWidth(mk, lines);
+    for (let i = 0; i < 4; i++) {
+      const blockH = lines.length * lineHeight;
+      const fit = Math.min((W - 12) / Math.max(1, textW), (H - 12) / Math.max(1, blockH));
+      if (fit >= 1) break;
+      fontSize = Math.max(8, Math.floor(fontSize * fit));
+      font = `900 ${fontSize}px ${fontFamily}`;
+      lineHeight = fontSize * (textPlacement.lineHeight ?? LINE_HEIGHT);
+      mk.font = font;
+      lines = layoutText(mk, text, textPlacement.layout ?? "auto", W * TEXT_WRAP_FRAC);
+      textW = measureLinesWidth(mk, lines);
+    }
     drawPlaced(mk, W, H, textPlacement, textW / 2, (lines.length * lineHeight) / 2, () => {
       mk.font = font;
       mk.textBaseline = "middle";

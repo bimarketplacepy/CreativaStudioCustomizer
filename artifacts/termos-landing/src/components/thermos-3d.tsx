@@ -597,9 +597,9 @@ function ThermosMesh({
               <meshPhysicalMaterial
                 color="#ffffff"
                 map={glassFrost.frostMap}
-                alphaMap={glassFrost.frostMap}
+                alphaMap={glassFrost.alphaMap}
                 transparent
-                opacity={0.72}
+                opacity={0.95}
                 roughness={0.92}
                 metalness={0}
                 envMapIntensity={0.8}
@@ -955,7 +955,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
     <Canvas
       // Cap the pixel ratio so high-DPI phones don't render 3–4× the pixels of a
       // transmission/glass scene (keeps it smooth and eases GPU memory pressure).
-      dpr={[1, 1.5]}
+      dpr={[1.5, 2]}
       // preserveDrawingBuffer keeps the last frame readable so we can capture a
       // PNG of the finished piece (canvas.toDataURL) for the WhatsApp summary.
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}

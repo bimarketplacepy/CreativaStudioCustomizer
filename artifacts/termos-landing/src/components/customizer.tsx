@@ -34,7 +34,7 @@ import {
   clampPlacementToFrontArea, type MarkHalfExtents,
 } from "@/lib/face-area";
 import {
-  MATERIALS, DEFAULT_MATERIAL_ID, getMaterial, allowsColorPrint, PEN_OPTIONS, type MaterialId,
+  MATERIALS, DEFAULT_MATERIAL_ID, getMaterial, allowsColorPrint, type MaterialId,
 } from "@/lib/materials";
 import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
 import { whatsappUrl } from "@/lib/contact";
@@ -1024,8 +1024,6 @@ export default function Customizer() {
   const canEufy = allowsColorPrint(materialId, activeMProduct);
   const effectiveTechnique: TechniqueId = canEufy ? technique : "laser";
   const activeTechnique = TECHNIQUES.find(t => t.id === effectiveTechnique) || TECHNIQUES[0];
-  const [penSource, setPenSource] = useState<"own" | "shop">("shop");
-  const activePen = PEN_OPTIONS.find(p => p.id === penSource) || PEN_OPTIONS[0];
   const [iconId, setIconId] = useState<string | null>(null);
   const selectedIcon = ENGRAVING_ICONS.find(i => i.id === iconId) ?? null;
   const [simpleKind, setSimpleKind] = useState<KindId>("text");
@@ -1249,9 +1247,11 @@ export default function Customizer() {
     try {
       const sw = canvas.width, sh = canvas.height;
       if (!sw || !sh) return null;
-      // Upscale the captured frame so the longest side reaches ~1080px (never
-      // downscale below native). Gives WhatsApp a decently sized preview.
-      const TARGET = 1080;
+      // Upscale the captured frame so the longest side reaches ~1600px (never
+      // downscale below native). With the canvas rendering at dpr ≥1.5 the
+      // buffer is already large, so the upscale factor stays small and the
+      // downloaded image keeps real detail.
+      const TARGET = 1600;
       const factor = Math.max(1, TARGET / Math.max(sw, sh));
       const ow = Math.round(sw * factor);
       const oh = Math.round(sh * factor);
@@ -1294,6 +1294,9 @@ export default function Customizer() {
 
   const handleSelectMaterial = (id: MaterialId) => {
     setMaterialId(id);
+    // La captura anterior pertenece a otro producto: nunca ofrecer descargarla.
+    setPreviewImg(null);
+    previewImgRef.current = null;
     const m = getMaterial(id);
     const first = m.products[0];
     setMaterialProductId(first?.id ?? "");
@@ -1308,21 +1311,24 @@ export default function Customizer() {
       setPlan(ENGRAVING_PLANS[0].id);
       setDrinkTab(t => (t === "media" ? "color" : t));
     }
-    // Acabado/color coherentes con el material.
+    // Acabado/color coherentes con el material. Todo producto arranca en Mate
+    // por defecto; sólo cuero y cristal fijan su propio acabado.
     if (id === "cuero") {
       setFinish("cuero");
       handleSelectColor("c6"); // Café Chocolate
     } else if (id === "cristal") {
       setFinish("glossy");
       handleSelectColor("c8"); // Blanco Perla
-    } else if (finish === "cuero") {
-      // "Cuero" solo existe en material cuero; al salir volvemos a Mate.
+    } else {
       setFinish("matte");
     }
   };
 
   const handleSelectMaterialProduct = (id: string) => {
     setMaterialProductId(id);
+    // Ídem: la captura del producto anterior deja de ser válida.
+    setPreviewImg(null);
+    previewImgRef.current = null;
     const mp = material.products.find(p => p.id === id);
     if (mp?.drinkwareProductId) {
       const dp = getProduct(mp.drinkwareProductId);
@@ -1519,6 +1525,36 @@ export default function Customizer() {
     </div>
   );
 
+  // Bloque de acciones compartido por TODOS los productos: CTA de WhatsApp +
+  // "Descargar imagen" debajo (cuando hay una captura del diseño disponible).
+  const renderOrderActions = () => (
+    <>
+      <Button
+        onClick={handleOrder}
+        disabled={isOrdered}
+        size="lg"
+        className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+      >
+        {isOrdered ? "Abriendo WhatsApp..." : ctaLabel}
+      </Button>
+
+      {previewImg && (
+        <button
+          type="button"
+          onClick={() => downloadDataUrl(previewImg, "mi-diseno.png")}
+          className="w-full inline-flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+        >
+          <Download className="w-4 h-4" /> Descargar imagen
+        </button>
+      )}
+
+      <p className="text-xs text-muted-foreground text-center leading-relaxed">
+        Te abrimos WhatsApp para seguir con tu pedido. Si querés, descargá la imagen de tu diseño
+        y sumala al chat.
+      </p>
+    </>
+  );
+
   // Mini-preview 3D pegajoso del wizard móvil (Paso 1 y Paso 2 "Estilo"): una
   // vista compacta del producto elegido que se actualiza en vivo. Los pasos del
   // wizard son mutuamente excluyentes, así que nunca hay dos canvas WebGL
@@ -1629,29 +1665,7 @@ export default function Customizer() {
         </dl>
       </div>
 
-      <Button
-        onClick={handleOrder}
-        disabled={isOrdered}
-        size="lg"
-        className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-      >
-        {isOrdered ? "Abriendo WhatsApp..." : ctaLabel}
-      </Button>
-
-      {previewImg && (
-        <button
-          type="button"
-          onClick={() => downloadDataUrl(previewImg, "mi-diseno.png")}
-          className="w-full inline-flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
-        >
-          <Download className="w-4 h-4" /> Descargar imagen
-        </button>
-      )}
-
-      <p className="text-xs text-muted-foreground text-center leading-relaxed">
-        Te abrimos WhatsApp para seguir con tu pedido. Si querés, descargá la imagen de tu diseño
-        y sumala al chat.
-      </p>
+      {renderOrderActions()}
     </div>
   );
 
@@ -2349,31 +2363,6 @@ export default function Customizer() {
 
                 {/* LASER-ONLY NOTE + ORDER */}
                 <div className="px-6 pb-6 pt-4 border-t border-border space-y-4">
-                  {/* Pen-source selection lives here (below), only for pens. */}
-                  {material.pens && (
-                    <div>
-                      <Label className="text-sm font-medium text-foreground mb-2 block">¿Quién pone el bolígrafo?</Label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {PEN_OPTIONS.map(o => {
-                          const active = penSource === o.id;
-                          return (
-                            <button
-                              key={o.id}
-                              type="button"
-                              onClick={() => setPenSource(o.id)}
-                              className={`flex items-center justify-between gap-2 p-3 border rounded-xl text-left transition-all active:scale-[0.98] ${active ? activeCard : idleCard}`}
-                            >
-                              <span className="flex items-center gap-2 min-w-0">
-                                <PenLine className="w-4 h-4 shrink-0" />
-                                <span className="font-medium text-sm truncate">{o.label}</span>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
                   <div className="flex items-start gap-2 p-3 border rounded-xl border-border bg-secondary/40">
                     <Zap className="w-4 h-4 mt-0.5 text-primary shrink-0" />
                     <div>
@@ -2385,14 +2374,7 @@ export default function Customizer() {
                     </div>
                   </div>
 
-                  <Button
-                    onClick={handleOrder}
-                    disabled={isOrdered}
-                    size="lg"
-                    className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-                  >
-                    {isOrdered ? "Abriendo WhatsApp..." : ctaLabel}
-                  </Button>
+                  {renderOrderActions()}
                 </div>
               </Tabs>
             ) : (
@@ -2404,7 +2386,7 @@ export default function Customizer() {
                   </Label>
                   <p className="text-xs text-muted-foreground">
                     {material.pens
-                      ? `${activePen.label}. Contanos qué querés grabar.`
+                      ? "Contanos qué querés grabar."
                       : `${material.name}. Personalícelo y coordinamos el diseño final con usted por WhatsApp.`}
                   </p>
                 </div>
@@ -2462,14 +2444,7 @@ export default function Customizer() {
                 )}
 
                 <div className="pt-2 border-t border-border space-y-3">
-                  <Button
-                    onClick={handleOrder}
-                    disabled={isOrdered}
-                    size="lg"
-                    className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-                  >
-                    {isOrdered ? "Abriendo WhatsApp..." : ctaLabel}
-                  </Button>
+                  {renderOrderActions()}
                 </div>
               </div>
             )}
