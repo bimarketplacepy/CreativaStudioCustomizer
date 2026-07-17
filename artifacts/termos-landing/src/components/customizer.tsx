@@ -38,7 +38,7 @@ import {
 } from "@/lib/materials";
 import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
 import { whatsappUrl } from "@/lib/contact";
-import { shareDesignToWhatsApp, downloadDataUrl } from "@/lib/share";
+import { downloadDataUrl } from "@/lib/share";
 import { Download } from "lucide-react";
 
 /** Text scale bounds. Capped low so a name never blows out past the band. */
@@ -1226,6 +1226,20 @@ export default function Customizer() {
 
   const NUDGE_STEP = 0.06;
 
+  // ── Snap-to-design para la captura ──────────────────────────────────────────
+  // El visor grande registra acá una función que gira la pieza para que un u de
+  // textura quede mirando a cámara. Antes de capturar la imagen del resumen la
+  // usamos para que el área personalizada salga completa en la foto.
+  const thermosSnapRef = useRef<((u: number) => void) | null>(null);
+
+  // u que debe quedar de frente: el centro de la cara frontal en "una cara", o
+  // la posición real del diseño activo en modo libre.
+  const designFaceU = singleFace
+    ? FRONT_FACE.uCenter
+    : activeDesignKind === "art" ? artPlacement.u
+    : activeDesignKind === "text" ? textPlacement.u
+    : FRONT_FACE.uCenter;
+
   // ── Preview capture ─────────────────────────────────────────────────────────
   // Grab a PNG of the live 3D canvas (preserveDrawingBuffer keeps the last frame
   // readable). Returns null if the canvas isn't mounted (e.g. mobile Step 4).
@@ -1334,69 +1348,29 @@ export default function Customizer() {
     if (img) { setIconId(null); setArtPlacement(p => ({ ...p, scale: 1 })); }
   };
 
-  /** Build the WhatsApp message body describing the whole configuration. */
-  const buildOrderMessage = (): string => {
-    const lines: string[] = [
-      "¡Hola! ¿Cómo están? 😊 Estuve armando esto en el personalizador y me encantaría concretarlo:",
-      "",
-      `• Material: ${material.name}`,
-    ];
+  /** Mensaje simple del CTA: el detalle del diseño se conversa en el chat. */
+  const ORDER_MESSAGE =
+    "¡Hola! 😊 Estuve personalizando un producto en la página y me gustaría seguir con el pedido.";
 
-    if (material.pens) {
-      lines.push(`• Grabado de bolígrafos: ${activePen.label}`);
-      lines.push("• Técnica: Grabado láser");
-      if (text) lines.push(`• Texto: "${text}" en ${activeFont.name}`);
-      if (selectedIcon) lines.push(`• Ícono: ${selectedIcon.name}`);
-      if (customImage) lines.push("• Imagen: (la envío en este chat)");
-    } else if (is3DObject) {
-      lines.push(`• Producto: ${activeMProduct?.name ?? activeObject?.singular ?? "producto"}`);
-      lines.push("• Técnica: Grabado láser");
-      lines.push(text ? `• Texto: "${text}" en ${activeFont.name}, ${textPlacement.orientation}` : "• Sin texto");
-      if (selectedIcon) lines.push(`• Ícono: ${selectedIcon.name}`);
-      if (customImage) lines.push("• Imagen: (la envío en este chat)");
-    } else if (isDrinkware) {
-      lines.push(`• Producto: ${product.singular}`);
-      lines.push(`• Color: ${activeColorName}`);
-      lines.push(`• Acabado: ${FINISHES.find(f => f.id === finish)?.name}`);
-      lines.push(`• Técnica: ${activeTechnique.name}`);
-      if (isColorPrint) lines.push(`• Color del texto/diseño: ${textColor.toUpperCase()}`);
-      lines.push(text ? `• Texto: "${text}" en ${activeFont.name}, ${textPlacement.orientation}` : "• Sin texto");
-      if (selectedIcon) lines.push(`• Ícono: ${selectedIcon.name}`);
-      lines.push(
-        activePlan.allowsImage
-          ? `• Imagen: ${activePlan.imageSize === "large" ? "logo" : "dibujo"} ${customImage ? "(la envío en este chat)" : "(la envío en breve)"}`
-          : "• Sin imagen"
-      );
-      lines.push(`• Ubicación del diseño: ${singleFace ? "Cara frontal (área fija)" : "Libre (360°)"}`);
-    } else {
-      lines.push(`• Producto: ${activeMProduct?.name ?? "producto"}`);
-      lines.push(`• Personalización: ${KINDS.find(k => k.id === simpleKind)?.name}`);
-      if (text) lines.push(`• Texto: "${text}"`);
-      if (selectedIcon) lines.push(`• Ícono: ${selectedIcon.name}`);
-      if (customImage) lines.push("• Imagen: (la envío en este chat)");
-    }
-
-    lines.push("", "¿Me confirman si está todo bien y cómo seguimos? ¡Muchas gracias!");
-    return lines.join("\n");
-  };
-
-  /** Capture the design, then send it to WhatsApp with the preview image. */
-  const handleOrder = async () => {
-    // Fresh capture if the canvas is on screen (desktop / design step); otherwise
-    // reuse the snapshot taken during Step 3 (mobile Step 4 has no live canvas).
-    const img = capturePreview() ?? previewImgRef.current;
-    if (img) { setPreviewImg(img); previewImgRef.current = img; }
+  /** Abre WhatsApp con el mensaje simple. La imagen del diseño no viaja sola:
+   *  el cliente puede descargarla con el botón de abajo y adjuntarla al chat. */
+  const handleOrder = () => {
+    // window.open debe salir sincrónico al click (bloqueadores de pop-ups).
     setIsOrdered(true);
-    try {
-      await shareDesignToWhatsApp({ message: buildOrderMessage(), dataUrl: img });
-    } finally {
-      setTimeout(() => setIsOrdered(false), 5000);
-    }
+    window.open(whatsappUrl(ORDER_MESSAGE), "_blank", "noopener");
+    // Con el canvas en pantalla (desktop / paso de diseño): girar el diseño de
+    // frente, esperar el repintado y refrescar la captura para "Descargar imagen".
+    thermosSnapRef.current?.(designFaceU);
+    setTimeout(() => {
+      const img = capturePreview() ?? previewImgRef.current;
+      if (img) { setPreviewImg(img); previewImgRef.current = img; }
+    }, 150);
+    setTimeout(() => setIsOrdered(false), 5000);
   };
 
   // Precios viven únicamente en la sección "Tarifas"; el CTA del personalizador
   // nunca muestra montos.
-  const ctaLabel = "Enviar mi diseño por WhatsApp";
+  const ctaLabel = "Continuar por WhatsApp";
 
   // Tabs shown in the modelled-blank panel: Color only if tintable, Imagen only
   // on stainless steel.
@@ -1545,6 +1519,73 @@ export default function Customizer() {
     </div>
   );
 
+  // Mini-preview 3D pegajoso del wizard móvil (Paso 1 y Paso 2 "Estilo"): una
+  // vista compacta del producto elegido que se actualiza en vivo. Los pasos del
+  // wizard son mutuamente excluyentes, así que nunca hay dos canvas WebGL
+  // montados a la vez (este o el grande del paso de Diseño, jamás ambos).
+  const renderMiniPreview = () => (
+    <div className="sticky top-0 z-30">
+      <div className="relative bg-secondary/30 rounded-2xl border border-border overflow-hidden shadow-lg shadow-black/5">
+        {isGlass ? (
+          <div className="absolute inset-0 rounded-2xl" style={{ background: "radial-gradient(circle at 50% 38%, #eef2f6 0%, #d3dae2 55%, #aeb8c4 100%)" }} />
+        ) : (
+          <div className="absolute inset-0 opacity-[0.07] transition-colors duration-500 rounded-2xl" style={{ backgroundColor: isDrinkware ? activeColorHex : "#C1121F" }} />
+        )}
+        <div className="relative z-10" style={{ height: "32vh", minHeight: 210, maxHeight: 320 }}>
+          {isDrinkware ? (
+            <Thermos3D
+              colorHex={activeColorHex}
+              finish={finish}
+              text={text}
+              fontClass=""
+              fontStyle={activeFont.style}
+              productId={productId}
+              sizeId={size}
+              customImageUrl={artUrl}
+              imageSize={artImageSize}
+              textPlacement={textPlacement}
+              artPlacement={artPlacement}
+              colorPrint={effectiveTechnique === "eufy"}
+              textColor={textColor}
+              engraveStyle={drinkwareEngraveStyle}
+              singleFace={singleFace}
+              showGuides={false}
+              frontFaceU={FRONT_FACE.uCenter}
+              glass={isGlass}
+            />
+          ) : is3DObject && activeObject ? (
+            <Object3D
+              objectId={activeObject.id}
+              colorHex={activeObject.colorable ? activeColorHex : undefined}
+              text={text}
+              fontStyle={activeFont.style}
+              customImageUrl={artUrl}
+              imageSize={artImageSize}
+              textPlacement={textPlacement}
+              artPlacement={artPlacement}
+            />
+          ) : (
+            // Sin modelo 3D: tarjeta referencial con el glifo del material.
+            <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-6 text-center">
+              <div className="w-20 h-20 rounded-2xl bg-white border border-border flex items-center justify-center text-primary shadow-sm">
+                <MaterialGlyph className="w-10 h-10" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {material.pens ? "Bolígrafos" : activeMProduct?.name}
+                </p>
+                <p className="text-xs text-muted-foreground">{material.name}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      <p className="text-center text-xs text-muted-foreground mt-1">
+        {isDrinkware || is3DObject ? "Vista en vivo · arrastre para girar" : "Vista previa referencial"}
+      </p>
+    </div>
+  );
+
   // Paso 4 — Resumen: imagen del diseño + detalle legible + envío por WhatsApp.
   // (Sin planes ni precios: eso vive en la sección "Tarifas".)
   const drinkSummaryRows = (): [string, string][] => {
@@ -1608,8 +1649,8 @@ export default function Customizer() {
       )}
 
       <p className="text-xs text-muted-foreground text-center leading-relaxed">
-        Te abrimos WhatsApp con el resumen y la imagen de tu diseño. En computadora, si la imagen no se adjunta
-        sola, descargala y sumala al chat.
+        Te abrimos WhatsApp para seguir con tu pedido. Si querés, descargá la imagen de tu diseño
+        y sumala al chat.
       </p>
     </div>
   );
@@ -1709,10 +1750,15 @@ export default function Customizer() {
 
         {/* Mobile Step 1 — Producto: material + product as scrollable chips. */}
         {isMobile && mobileStep === 1 && (
-          <motion.div key="wiz-1" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-8 pb-28">
-            <MaterialChips materials={MATERIALS} value={materialId} onChange={handleSelectMaterial} />
-            <ProductChips material={material} value={materialProductId} onChange={handleSelectMaterialProduct} />
-            {material.desc && <p className="text-xs text-muted-foreground">{material.desc}</p>}
+          <motion.div key="wiz-1" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-6 pb-28">
+            {/* Vista 3D en vivo del producto elegido — se actualiza al cambiar
+                material/producto, así se ve qué se está eligiendo. */}
+            {renderMiniPreview()}
+            <div className="space-y-8">
+              <MaterialChips materials={MATERIALS} value={materialId} onChange={handleSelectMaterial} />
+              <ProductChips material={material} value={materialProductId} onChange={handleSelectMaterialProduct} />
+              {material.desc && <p className="text-xs text-muted-foreground">{material.desc}</p>}
+            </div>
           </motion.div>
         )}
 
@@ -1720,41 +1766,10 @@ export default function Customizer() {
             grabado vive ahora en el Paso 3, bajo "Texto Personalizado". */}
         {isMobile && isDrinkware && mobileStep === 2 && (
           <motion.div key="wiz-2" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-5 pb-28">
-            {/* Live mini-preview — a compact, sticky 3D of the product that updates
+            {/* Live mini-preview — the same compact, sticky 3D as Step 1, updating
                 as the colour changes. Only ONE 3D canvas is ever mounted at a time
-                (this one on Step 2, the big one on Step 3), so no second renderer. */}
-            <div className="sticky top-0 z-30">
-              <div className="relative bg-secondary/30 rounded-2xl border border-border overflow-hidden shadow-lg shadow-black/5">
-                {isGlass ? (
-                  <div className="absolute inset-0 rounded-2xl" style={{ background: "radial-gradient(circle at 50% 38%, #eef2f6 0%, #d3dae2 55%, #aeb8c4 100%)" }} />
-                ) : (
-                  <div className="absolute inset-0 opacity-[0.07] transition-colors duration-500 rounded-2xl" style={{ backgroundColor: activeColorHex }} />
-                )}
-                <div className="relative z-10" style={{ height: "32vh", minHeight: 210, maxHeight: 320 }}>
-                  <Thermos3D
-                    colorHex={activeColorHex}
-                    finish={finish}
-                    text={text}
-                    fontClass=""
-                    fontStyle={activeFont.style}
-                    productId={productId}
-                    sizeId={size}
-                    customImageUrl={artUrl}
-                    imageSize={artImageSize}
-                    textPlacement={textPlacement}
-                    artPlacement={artPlacement}
-                    colorPrint={effectiveTechnique === "eufy"}
-                    textColor={textColor}
-                    engraveStyle={drinkwareEngraveStyle}
-                    singleFace={singleFace}
-                    showGuides={false}
-                    frontFaceU={FRONT_FACE.uCenter}
-                    glass={isGlass}
-                  />
-                </div>
-              </div>
-              <p className="text-center text-xs text-muted-foreground mt-1">Vista en vivo · arrastre para girar</p>
-            </div>
+                (the wizard steps are exclusive), so no second renderer. */}
+            {renderMiniPreview()}
             {renderDrinkColor()}
           </motion.div>
         )}
@@ -1813,6 +1828,7 @@ export default function Customizer() {
                       onDesignMove={onDesignMove}
                       onDesignDragStart={beginDesignDrag}
                       onDesignDragEnd={endDesignDrag}
+                      snapToURef={thermosSnapRef}
                     />
                     {/* Floating position control — over the visor, on the side that
                         least covers the piece (left for the termo, whose D-grip is on
@@ -1949,7 +1965,7 @@ export default function Customizer() {
                       transition={{ delay: 0.4, duration: 0.5 }}
                       className="text-sm text-white/60 font-light max-w-xs leading-relaxed"
                     >
-                      Le abrimos WhatsApp con su diseño ya cargado. Envíe el mensaje y coordinamos los detalles.
+                      Le abrimos WhatsApp para continuar con su pedido. Envíe el mensaje y coordinamos los detalles.
                     </motion.p>
                   </motion.div>
                 )}
@@ -2478,11 +2494,18 @@ export default function Customizer() {
             total={wizardLabels.length}
             onBack={() => setMobileStep(s => Math.max(1, s - 1))}
             onNext={() => {
-              // Leaving the design step: snapshot the live canvas so Step 4 (which
-              // has no 3D canvas on mobile) can show and send the preview image.
+              // Leaving the design step: swing the personalized area to face the
+              // camera, wait for the repaint, THEN snapshot the live canvas — so
+              // the Step 4 image always shows the design completely, no matter
+              // how the user left the piece rotated.
               if (mobileStep === designStepIndex) {
-                const img = capturePreview();
-                if (img) { setPreviewImg(img); previewImgRef.current = img; }
+                thermosSnapRef.current?.(designFaceU);
+                setTimeout(() => {
+                  const img = capturePreview();
+                  if (img) { setPreviewImg(img); previewImgRef.current = img; }
+                  setMobileStep(s => Math.min(wizardLabels.length, s + 1));
+                }, 150);
+                return;
               }
               setMobileStep(s => Math.min(wizardLabels.length, s + 1));
             }}

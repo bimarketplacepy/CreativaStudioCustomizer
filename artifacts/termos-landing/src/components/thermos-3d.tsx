@@ -59,6 +59,12 @@ interface Thermos3DProps {
   onDesignDragStart?: () => void;
   /** A design drag ended. */
   onDesignDragEnd?: () => void;
+  /**
+   * Imperative snap hook: the parent stores here a fn that rotates the piece so
+   * the given texture-u faces the camera (upright, no inertia). Used before
+   * capturing the summary snapshot, so the personalized area is fully visible.
+   */
+  snapToURef?: React.MutableRefObject<((u: number) => void) | null>;
 }
 
 /** Everything the meshes and the camera rig need, derived from the product profile. */
@@ -242,7 +248,7 @@ function FrontFaceGuide({ sil }: { sil: Silhouette }) {
 function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
   textPlacement, artPlacement, colorPrint, textColor, engraveStyle, singleFace, showGuides, frontFaceU, glass,
-  designActive, onDesignMove, onDesignDragStart, onDesignDragEnd,
+  designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, snapToURef,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
@@ -254,6 +260,7 @@ function ThermosMesh({
   onDesignMove?: (dxFrac: number, dyFrac: number) => void;
   onDesignDragStart?: () => void;
   onDesignDragEnd?: () => void;
+  snapToURef?: React.MutableRefObject<((u: number) => void) | null>;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
@@ -509,6 +516,20 @@ function ThermosMesh({
     velYaw.current = 0;
     velPitch.current = 0;
   }, [singleFace, frontFaceU]);
+
+  // Expose the same "swing u to camera" move imperatively, so the parent can
+  // face the personalized area right before capturing the summary snapshot.
+  useEffect(() => {
+    if (!snapToURef) return;
+    snapToURef.current = (u: number) => {
+      if (!groupRef.current) return;
+      groupRef.current.rotation.y = -u * Math.PI * 2;
+      groupRef.current.rotation.x = 0;
+      velYaw.current = 0;
+      velPitch.current = 0;
+    };
+    return () => { snapToURef.current = null; };
+  }, [snapToURef]);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
@@ -977,6 +998,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           onDesignMove={props.onDesignMove}
           onDesignDragStart={props.onDesignDragStart}
           onDesignDragEnd={props.onDesignDragEnd}
+          snapToURef={props.snapToURef}
         />
 
         {/* Single, stable ground shadow. Re-renders every frame so it tracks the
