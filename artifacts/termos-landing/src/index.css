@@ -404,3 +404,47 @@
     inset: -1px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Hero animations (CSS-only)
+
+   These replace what framer-motion used to do in hero.tsx / hero-carousel.tsx.
+   Moving them to CSS removed framer-motion (~55 KB gzip) from the always-loaded
+   entry chunk, so the LCP hero paints without waiting on that JS.
+
+   Deliberately, NONE of these animate the LCP element on first paint:
+   - The hero copy + <h1> render statically (no entrance animation) so the
+     largest text paints the instant React commits.
+   - The first carousel frame (index 0) renders static too; only subsequent
+     frames cross-fade. Animating opacity 0->1 on the LCP element is exactly
+     what delayed LCP before.
+   Everything here is opacity/transform only, so CLS stays 0.
+--------------------------------------------------------------------------- */
+@keyframes heroImgFade {
+  from { opacity: 0; transform: scale(1.04); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes heroCaptionRise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes heroBgFade {
+  from { opacity: 0; }
+  to   { opacity: 0.55; }
+}
+
+/* Cross-fade for carousel frames after the first (keyed remount retriggers it). */
+.hero-img-fade { animation: heroImgFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) both; }
+/* Caption swap. */
+.hero-caption-rise { animation: heroCaptionRise 0.4s ease-out both; }
+/* Blurred backdrop echo — settles at 0.55 opacity, matching the old motion value. */
+.hero-bg-fade { animation: heroBgFade 1.2s ease-in-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-img-fade,
+  .hero-caption-rise,
+  .hero-bg-fade {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}

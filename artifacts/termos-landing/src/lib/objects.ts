@@ -51,6 +51,13 @@ export interface ObjectDef {
   /** Fraction of the default framing distance — >1 pulls the camera back. */
   fit?: number;
   /**
+   * Multiplier on the engraved mark's base size for this blank (text and art),
+   * default 1. Small round faces like the pen barrel need a bigger mark so it
+   * stays legible and hugs the centre of the face instead of looking like it
+   * floats above the curved surface.
+   */
+  markScale?: number;
+  /**
    * Whether the customer can recolour the blank. Bare steel (opener) and
    * natural wood keep their fixed material colour; everything else is tintable.
    */
@@ -146,6 +153,8 @@ export const OBJECTS: Record<ObjectId, ObjectDef> = {
     restPitch: 0.0,
     fit: 1.0,
     colorable: true,
+    // The barrel face is tiny; scale the mark up so a name/icon reads clearly.
+    markScale: 2.2,
   },
 
   // Flat stainless-steel bottle opener: landscape 1.54:1 ratio, left-side cutout (~42% width), right-side engravable face.

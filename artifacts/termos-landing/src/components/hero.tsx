@@ -1,5 +1,4 @@
 import React, { useCallback, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import HeroCarousel from "@/components/hero-carousel";
 
 /** Solid fallback shown before any carousel image is active. */
@@ -65,24 +64,23 @@ export default function Hero() {
       {/* Hero — full bleed dark, editorial */}
       <section className="relative min-h-[92vh] flex items-center overflow-hidden" style={{ backgroundColor: HERO_BASE }}>
         {/* Background — a blurred echo of the active carousel image over a solid
-            base, cross-fading as the carousel advances. The overlay keeps the
-            copy legible no matter which image is showing. */}
+            base, fading in as the carousel advances. The overlay keeps the copy
+            legible no matter which image is showing. keyed por bgSrc: al cambiar,
+            la nueva imagen remonta y la clase .hero-bg-fade la funde a 0.55.
+            (Antes era un AnimatePresence de framer-motion.) */}
         <div className="absolute inset-0 z-0">
-          <AnimatePresence mode="sync">
-            {bgSrc && (
-              <motion.img
-                key={bgSrc}
-                src={bgSrc}
-                alt=""
-                aria-hidden
-                className="absolute inset-0 h-full w-full object-cover object-center scale-125 blur-3xl"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 0.55 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 1.2, ease: "easeInOut" }}
-              />
-            )}
-          </AnimatePresence>
+          {bgSrc && (
+            <img
+              key={bgSrc}
+              // Usa la variante 700px: el fondo va desenfocado (blur-3xl), no
+              // necesita resolución, y así en móvil reusa el mismo archivo que
+              // ya bajó el carrusel en vez de traer el 900px aparte.
+              src={bgSrc.replace(/\.webp$/, "-700.webp")}
+              alt=""
+              aria-hidden
+              className="hero-bg-fade absolute inset-0 h-full w-full object-cover object-center scale-125 blur-3xl"
+            />
+          )}
           <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/65 to-black/45" />
         </div>
 
@@ -91,13 +89,10 @@ export default function Hero() {
         <div className="absolute bottom-0 left-0 h-px w-24 bg-[#8B1A2F]" />
 
         <div className="relative z-10 w-full max-w-7xl mx-auto px-6 py-24 flex flex-col lg:flex-row items-center gap-14 lg:gap-0">
-          {/* Left — editorial copy */}
-          <motion.div
-            className="flex-1"
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-          >
+          {/* Left — editorial copy. Renders static (no entrance animation): the
+              <h1> is the LCP element on mobile, so it must paint the instant
+              React commits, not fade in. */}
+          <div className="flex-1">
             <p className="text-white/55 text-[11px] uppercase tracking-[0.4em] mb-10 font-medium">
               Creativa Studio · Personalización
             </p>
@@ -126,17 +121,12 @@ export default function Hero() {
               </button>
             </div>
 
-          </motion.div>
+          </div>
 
           {/* Right — carrusel de trabajos realizados (divide la pantalla) */}
-          <motion.div
-            className="flex-1 flex items-center justify-center w-full"
-            initial={{ opacity: 0, scale: 0.92 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.9, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
-          >
+          <div className="flex-1 flex items-center justify-center w-full">
             <HeroCarousel onImageChange={handleImageChange} />
-          </motion.div>
+          </div>
         </div>
       </section>
     </>

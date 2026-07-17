@@ -321,7 +321,7 @@ function ObjectMesh({
     () => makeFaceMaps({
       engrave: obj.engrave, faceW: obj.face.w, faceH: obj.face.h,
       text: dText, textPlacement: dTextPlacement, fontFamily, artMask, imageSize, artPlacement: dArtPlacement,
-      anisotropy: maxAnisotropy,
+      anisotropy: maxAnisotropy, markScale: obj.markScale,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [obj, dText, dTextPlacement, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy]

@@ -1,15 +1,18 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import {
   Check, Palette, Type, Box, Pipette, ImageIcon, MoveHorizontal, MoveVertical,
   Shapes, Zap, Sparkles, Wallet, TreePine, Square, PenLine, Wine, CupSoda, Snowflake, MessageCircle,
-  Minus, Plus, Move,
+  Minus, Plus, Move, Focus, Globe, Eye, EyeOff,
+  AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
+  WrapText, Rows3, CornerDownLeft,
 } from "lucide-react";
 import Thermos3D from "./thermos-3d";
 import Object3D from "./object-3d";
@@ -18,7 +21,17 @@ import { ENGRAVING_PLANS, type EngravingPlanId } from "@/lib/engraving-plans";
 import type { ProcessedImage } from "@/lib/image-processing";
 import { DEFAULT_PRODUCT_ID, getProduct, getSize, type ProductDef } from "@/lib/products";
 import { getObject } from "@/lib/objects";
-import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "@/lib/placement";
+import {
+  DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, LINE_HEIGHT_PRESETS, DEFAULT_LINE_HEIGHT,
+  type Placement, type TextAlign, type TextLayout, type LineHeightPreset,
+} from "@/lib/placement";
+import {
+  markHalfExtents, computeFaceTextLayout, bandMetrics, TEXTURE_W, TEXTURE_H, type MarkSpec,
+} from "@/lib/engraving-maps";
+import {
+  FRONT_FACE, frontAreaBounds, padToPlacement, placementToPad,
+  clampPlacementToFrontArea, type MarkHalfExtents,
+} from "@/lib/face-area";
 import {
   MATERIALS, DEFAULT_MATERIAL_ID, getMaterial, allowsColorPrint, PEN_OPTIONS, type MaterialId,
 } from "@/lib/materials";
@@ -28,6 +41,22 @@ import { whatsappUrl } from "@/lib/contact";
 /** Text scale bounds. Capped low so a name never blows out past the band. */
 const TEXT_SCALE_MIN = 0.3;
 const TEXT_SCALE_MAX = 1.2;
+
+/** Engraving text length cap. Line breaks (manual disposition) don't count
+ *  toward it, so the user always gets 30 *visible* characters to work with. */
+const MAX_TEXT_CHARS = 30;
+const visibleTextLen = (s: string) => [...s].filter(c => c !== "\n").length;
+function capEngravingText(raw: string, max = MAX_TEXT_CHARS): string {
+  let count = 0;
+  let out = "";
+  for (const ch of raw) {
+    if (ch === "\n") { out += ch; continue; }
+    if (count >= max) continue;
+    out += ch;
+    count++;
+  }
+  return out;
+}
 
 /**
  * Text size control: a single sliding dot (same slider as the placement pad's
@@ -223,15 +252,25 @@ function PlacementControls({
   onChange,
   withSize,
   flat,
+  singleFace,
+  frontExtents,
+  areaAspect,
 }: {
   value: Placement;
   onChange: (next: Placement) => void;
   withSize?: boolean;
   /** Flat objects have a single face: relabel the note. */
   flat?: boolean;
+  /** Single-face mode: the pad represents ONLY the front-face rectangle. */
+  singleFace?: boolean;
+  /** Mark half-extents (placement space) — sizes the proxy in single-face mode. */
+  frontExtents?: MarkHalfExtents;
+  /** width/height of the editable rectangle, so the pad mirrors its real shape. */
+  areaAspect?: number;
 }) {
   const padRef = useRef<HTMLDivElement>(null);
   const mode = useRef<null | "move" | "scale">(null);
+  const [snapped, setSnapped] = useState(false);
 
   const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
   const clampScale = (n: number) => Math.max(0.3, Math.min(1.5, n));
@@ -241,8 +280,19 @@ function PlacementControls({
     const el = padRef.current;
     if (!el || !mode.current) return;
     const rect = el.getBoundingClientRect();
-    const px = clamp01((e.clientX - rect.left) / rect.width);
+    let px = clamp01((e.clientX - rect.left) / rect.width);
     const py = clamp01((e.clientY - rect.top) / rect.height);
+    if (singleFace) {
+      // The pad spans the editable rectangle; map straight into it. The parent
+      // clamps the result so the whole bounding box stays inside the margins.
+      // Magnetic snap to the horizontal centre, Instagram-style.
+      const near = Math.abs(px - 0.5) < 0.05;
+      if (near) px = 0.5;
+      setSnapped(near);
+      const { u, v } = padToPlacement(px, py);
+      set({ u, v });
+      return;
+    }
     if (mode.current === "move") {
       set({ u: px, v: py });
     } else {
@@ -253,62 +303,106 @@ function PlacementControls({
   };
 
   const onPadDown = (e: React.PointerEvent) => {
-    const isCorner = (e.target as HTMLElement).dataset?.role === "scale";
+    // No corner-scale in single-face mode: size is driven by the slider so the
+    // clamp can keep the whole box inside the rectangle.
+    const isCorner = !singleFace && (e.target as HTMLElement).dataset?.role === "scale";
     mode.current = isCorner ? "scale" : "move";
     padRef.current?.setPointerCapture(e.pointerId);
     if (!isCorner) applyPointer(e); // move: jump straight to the tapped point
   };
   const onPadMove = (e: React.PointerEvent) => { if (mode.current) applyPointer(e); };
-  const onPadUp = () => { mode.current = null; };
+  const onPadUp = () => { mode.current = null; setSnapped(false); };
 
-  const cx = value.u * 100;
-  const cy = value.v * 100;
-  const sizePct = PAD_BASE * value.scale * 2 * 100;
+  // In single-face mode the pad IS the rectangle, so position is expressed in
+  // pad coordinates and the proxy is sized from the mark's real extents.
+  const b = frontAreaBounds();
+  const pad = singleFace ? placementToPad(value.u, value.v) : { padX: value.u, padY: value.v };
+  const cx = clamp01(pad.padX) * 100;
+  const cy = clamp01(pad.padY) * 100;
+  // Floor the single-face proxy so an empty/tiny mark still shows a grabbable box.
+  const proxyW = singleFace && frontExtents
+    ? Math.max(14, clamp01((2 * frontExtents.halfU) / (b.uMax - b.uMin)) * 100)
+    : PAD_BASE * value.scale * 2 * 100;
+  const proxyH = singleFace && frontExtents
+    ? Math.max(14, clamp01((2 * frontExtents.halfV) / (b.vMax - b.vMin)) * 100)
+    : PAD_BASE * value.scale * 2 * 100;
+
+  const setVertical = (py: number) => {
+    set({ v: b.vMin + clamp01(py) * (b.vMax - b.vMin) });
+  };
+
+  const padEl = (
+    <div
+      ref={padRef}
+      onPointerDown={onPadDown}
+      onPointerMove={onPadMove}
+      onPointerUp={onPadUp}
+      onPointerCancel={onPadUp}
+      className={`relative rounded-xl border bg-secondary/40 overflow-hidden select-none touch-none cursor-move ${
+        singleFace
+          ? "h-full border-primary/50 border-dashed ring-1 ring-primary/15"
+          : "w-full aspect-square max-w-[240px] mx-auto border-border"
+      }`}
+      style={singleFace ? { aspectRatio: String(areaAspect ?? 1), maxWidth: "100%" } : undefined}
+    >
+      {/* Centre guides */}
+      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border/70" />
+      <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70" />
+
+      {/* Magnetic centre guide while snapped */}
+      {singleFace && snapped && (
+        <div className="pointer-events-none absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-primary/80 z-10" />
+      )}
+
+      {singleFace && (
+        <span className="pointer-events-none absolute top-1.5 left-2 text-[9px] font-semibold uppercase tracking-wide text-primary/70">
+          Área grabable
+        </span>
+      )}
+
+      {/* The element proxy */}
+      <div
+        className="absolute rounded-md border-2 border-primary bg-primary/15 flex items-center justify-center transition-[width,height] duration-75"
+        style={{
+          left: `${cx}%`,
+          top: `${cy}%`,
+          width: `${proxyW}%`,
+          height: `${proxyH}%`,
+          transform: "translate(-50%, -50%)",
+        }}
+      >
+        <span className="pointer-events-none text-[10px] font-bold text-primary">
+          {flat ? "◈" : "Aa"}
+        </span>
+        {withSize && !singleFace && (
+          <span
+            data-role="scale"
+            className="absolute -right-1.5 -bottom-1.5 w-4 h-4 rounded-full bg-primary border-2 border-white shadow-sm cursor-nwse-resize"
+          />
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
-      {/* Drag pad — move + scale by direct manipulation */}
+      {/* Drag pad — move by direct manipulation, plus a vertical slider in single-face */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <Label className="text-xs text-muted-foreground">Posición{withSize ? " y tamaño" : ""}</Label>
+          <Label className="text-xs text-muted-foreground">
+            {singleFace ? "Ubicación del texto" : `Posición${withSize ? " y tamaño" : ""}`}
+          </Label>
           <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/80">
-            <Move className="w-3 h-3" /> Arrastre para mover{withSize ? " · esquina para escalar" : ""}
+            <Move className="w-3 h-3" />
+            {singleFace ? "Arrastre o use el control ↕" : `Arrastre para mover${withSize ? " · esquina para escalar" : ""}`}
           </span>
         </div>
-        <div
-          ref={padRef}
-          onPointerDown={onPadDown}
-          onPointerMove={onPadMove}
-          onPointerUp={onPadUp}
-          onPointerCancel={onPadUp}
-          className="relative w-full aspect-square max-w-[240px] mx-auto rounded-xl border border-border bg-secondary/40 overflow-hidden select-none touch-none cursor-move"
-        >
-          {/* Centre guides */}
-          <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border/70" />
-          <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70" />
-
-          {/* The element proxy */}
-          <div
-            className="absolute rounded-md border-2 border-primary bg-primary/15 flex items-center justify-center transition-[width,height] duration-75"
-            style={{
-              left: `${cx}%`,
-              top: `${cy}%`,
-              width: `${sizePct}%`,
-              height: `${sizePct}%`,
-              transform: "translate(-50%, -50%)",
-            }}
-          >
-            <span className="pointer-events-none text-[10px] font-bold text-primary">
-              {flat ? "◈" : "Aa"}
-            </span>
-            {withSize && (
-              <span
-                data-role="scale"
-                className="absolute -right-1.5 -bottom-1.5 w-4 h-4 rounded-full bg-primary border-2 border-white shadow-sm cursor-nwse-resize"
-              />
-            )}
+        {singleFace ? (
+          <div className="flex items-stretch justify-center gap-3 h-[240px] sm:h-[300px]">
+            <VerticalPosSlider value={clamp01(pad.padY)} onChange={setVertical} />
+            {padEl}
           </div>
-        </div>
+        ) : padEl}
       </div>
 
       {/* Precise size row with live % */}
@@ -369,10 +463,197 @@ function PlacementControls({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        {flat
-          ? "Grabamos sobre la cara principal del producto."
-          : "Solo grabamos las caras externas: la tapa y la base quedan siempre libres."}
+        {singleFace
+          ? "El diseño queda dentro del área de la cara frontal. La tapa, la base y la manija quedan siempre libres."
+          : flat
+            ? "Grabamos sobre la cara principal del producto."
+            : "Solo grabamos las caras externas: la tapa y la base quedan siempre libres."}
       </p>
+    </div>
+  );
+}
+
+type EditMode = "single" | "free";
+
+/**
+ * The mode selector shown above "Texto Personalizado". Two modes decide where
+ * a design (text, icon or image) may live on the termo:
+ *   - "Edición en una cara" — locked to a rectangle on the front face.
+ *   - "Edición libre"       — anywhere around the 360° body.
+ * Reused across the Texto / Íconos / Imagen tabs so the choice is always visible.
+ */
+function EditModeToggle({ mode, onMode, productName }: { mode: EditMode; onMode: (m: EditMode) => void; productName: string }) {
+  const options: { id: EditMode; name: string; Icon: React.ComponentType<{ className?: string }>; help: string }[] = [
+    { id: "single", name: "Edición en una cara", Icon: Focus, help: `El diseño se coloca dentro de un área fija en la cara frontal del ${productName}. Ideal para un logo o nombre bien centrado.` },
+    { id: "free",   name: "Edición libre",       Icon: Globe, help: `Coloque el diseño en cualquier parte del ${productName}, girándolo en los 360°. La tapa y la base quedan siempre libres.` },
+  ];
+  const active = options.find(o => o.id === mode) ?? options[0];
+  return (
+    <div className="mb-6 rounded-xl border border-border bg-secondary/30 p-3">
+      <Label className="text-xs font-semibold text-foreground mb-2 block">Modo de edición</Label>
+      <div className="grid grid-cols-2 gap-2" role="tablist" aria-label="Modo de edición">
+        {options.map(o => {
+          const isActive = mode === o.id;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => onMode(o.id)}
+              className={`flex items-center justify-center gap-2 p-2.5 border rounded-lg text-sm font-medium transition-all active:scale-[0.97] ${
+                isActive ? activeCard : idleCard
+              }`}
+            >
+              <o.Icon className="w-4 h-4" />
+              {o.name}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-xs text-muted-foreground mt-2.5 leading-relaxed">
+        <span className="font-medium text-foreground">{active.name}:</span> {active.help}
+      </p>
+    </div>
+  );
+}
+
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+
+/** Editor-style alignment buttons for multi-line text (left/center/right/justify). */
+const TEXT_ALIGNS: { id: TextAlign; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: "left",    label: "Izquierda",  Icon: AlignLeft },
+  { id: "center",  label: "Centrado",   Icon: AlignCenter },
+  { id: "right",   label: "Derecha",    Icon: AlignRight },
+  { id: "justify", label: "Justificado", Icon: AlignJustify },
+];
+
+function AlignButtons({ value, onChange, className, disabledIds }: { value: TextAlign | undefined; onChange: (a: TextAlign) => void; className?: string; disabledIds?: TextAlign[] }) {
+  const active = value ?? "center";
+  return (
+    <div className={`inline-flex items-center gap-1 ${className ?? ""}`} role="group" aria-label="Alineación del texto">
+      {TEXT_ALIGNS.map(a => {
+        const on = active === a.id;
+        const disabled = disabledIds?.includes(a.id) ?? false;
+        return (
+          <button
+            key={a.id}
+            type="button"
+            title={disabled ? `${a.label} (no disponible en esta disposición)` : a.label}
+            aria-pressed={on}
+            disabled={disabled}
+            onClick={() => onChange(a.id)}
+            className={`w-9 h-9 grid place-items-center rounded-full border transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 ${
+              on ? "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30" : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
+            }`}
+          >
+            <a.Icon className="w-4 h-4" />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Text disposition (how the mark splits into lines) — matches the align pills. */
+const TEXT_LAYOUTS: { id: TextLayout; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: "auto",   label: "Automático",           Icon: WrapText },
+  { id: "stack",  label: "Una palabra por línea", Icon: Rows3 },
+  { id: "manual", label: "Saltos manuales",       Icon: CornerDownLeft },
+];
+
+function LayoutButtons({ value, onChange, className }: { value: TextLayout | undefined; onChange: (l: TextLayout) => void; className?: string }) {
+  const active = value ?? "auto";
+  return (
+    <div className={`inline-flex items-center gap-1 ${className ?? ""}`} role="group" aria-label="Disposición del texto">
+      {TEXT_LAYOUTS.map(l => {
+        const on = active === l.id;
+        return (
+          <button
+            key={l.id}
+            type="button"
+            title={l.label}
+            aria-pressed={on}
+            onClick={() => onChange(l.id)}
+            className={`w-9 h-9 grid place-items-center rounded-full border transition-all active:scale-95 ${
+              on ? "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30" : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
+            }`}
+          >
+            <l.Icon className="w-4 h-4" />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Interlineado (row spacing) presets — important when words are stacked. */
+const LINE_HEIGHT_OPTIONS: { id: LineHeightPreset; label: string }[] = [
+  { id: "compacto", label: "Compacto" },
+  { id: "normal",   label: "Normal" },
+  { id: "amplio",   label: "Amplio" },
+];
+/** Nearest preset to a stored numeric line-height (so the right pill lights up). */
+function lineHeightPresetOf(lh: number | undefined): LineHeightPreset {
+  const v = lh ?? DEFAULT_LINE_HEIGHT;
+  let best: LineHeightPreset = "normal";
+  let bestD = Infinity;
+  for (const { id } of LINE_HEIGHT_OPTIONS) {
+    const d = Math.abs(LINE_HEIGHT_PRESETS[id] - v);
+    if (d < bestD) { bestD = d; best = id; }
+  }
+  return best;
+}
+
+function LineHeightButtons({ value, onChange, className }: { value: number | undefined; onChange: (mul: number) => void; className?: string }) {
+  const active = lineHeightPresetOf(value);
+  return (
+    <div className={`inline-flex items-center gap-1 ${className ?? ""}`} role="group" aria-label="Interlineado">
+      {LINE_HEIGHT_OPTIONS.map(o => {
+        const on = active === o.id;
+        return (
+          <button
+            key={o.id}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onChange(LINE_HEIGHT_PRESETS[o.id])}
+            className={`h-9 px-3 grid place-items-center rounded-full border text-xs font-medium transition-all active:scale-95 ${
+              on ? "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30" : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
+            }`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Instagram-style thin vertical slider (0 = top, 1 = bottom) for vertical position. */
+function VerticalPosSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState(false);
+  const apply = (clientY: number) => {
+    const el = ref.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    onChange(clamp01((clientY - r.top) / r.height));
+  };
+  return (
+    <div
+      ref={ref}
+      onPointerDown={(e) => { setDrag(true); (e.target as HTMLElement).setPointerCapture(e.pointerId); apply(e.clientY); }}
+      onPointerMove={(e) => { if (drag) apply(e.clientY); }}
+      onPointerUp={() => setDrag(false)}
+      onPointerCancel={() => setDrag(false)}
+      className="relative w-9 shrink-0 self-stretch min-h-[160px] rounded-full bg-secondary/60 border border-border touch-none cursor-pointer select-none"
+      title="Posición vertical"
+      aria-label="Posición vertical del texto"
+    >
+      <div className="pointer-events-none absolute inset-y-3 left-1/2 w-0.5 -translate-x-1/2 rounded bg-border" />
+      <div
+        className={`pointer-events-none absolute rounded-full bg-primary border-2 border-white shadow transition-[width,height] duration-75 ${drag ? "w-7 h-7" : "w-5 h-5"}`}
+        style={{ top: `${clamp01(value) * 100}%`, left: "50%", transform: "translate(-50%, -50%)" }}
+      />
     </div>
   );
 }
@@ -516,6 +797,12 @@ export default function Customizer() {
   const [customImage, setCustomImage] = useState<ProcessedImage | null>(null);
   const [textPlacement, setTextPlacement] = useState<Placement>(DEFAULT_TEXT_PLACEMENT);
   const [artPlacement, setArtPlacement] = useState<Placement>(DEFAULT_ART_PLACEMENT);
+  // Placement mode. "single" (front-face rectangle) is the default; "free" is
+  // the original 360° behaviour. Shared by text, icons and images.
+  const [editMode, setEditMode] = useState<EditMode>("single");
+  const singleFace = editMode === "single";
+  // Whether the dashed front-face guide is drawn in the 3D preview.
+  const [showGuides, setShowGuides] = useState(true);
 
   const [technique, setTechnique] = useState<TechniqueId>("laser");
   // Eufy (colour) is drinkware-with-coating only; everything else is laser-only.
@@ -549,6 +836,75 @@ export default function Customizer() {
       : customImage
         ? "large"
         : "none";
+
+  // ── Single-face ("una cara") geometry ──────────────────────────────────────
+  // The mark specs feed the shared measurer so the pad, the clamp and the 3D
+  // texture all agree on how big the text/art is in placement space.
+  const textFontFamily = activeFont.style.fontFamily as string | undefined;
+  const isColorPrint = effectiveTechnique === "eufy";
+  const artNaturalW = selectedIcon ? 256 : customImage?.width ?? 0;
+  const artNaturalH = selectedIcon ? 256 : customImage?.height ?? 0;
+
+  const textSpec = React.useMemo<MarkSpec>(
+    () => ({ kind: "text", text, fontFamily: textFontFamily, colorPrint: isColorPrint }),
+    [text, textFontFamily, isColorPrint],
+  );
+  const artSpec = React.useMemo<MarkSpec>(
+    () => ({ kind: "art", imageSize: artImageSize, artW: artNaturalW, artH: artNaturalH }),
+    [artImageSize, artNaturalW, artNaturalH],
+  );
+
+  const textExtents = React.useMemo<MarkHalfExtents>(
+    () => markHalfExtents(product, textSpec, textPlacement, singleFace),
+    [product, textSpec, textPlacement, singleFace],
+  );
+  const artExtents = React.useMemo<MarkHalfExtents>(
+    () => markHalfExtents(product, artSpec, artPlacement, singleFace),
+    [product, artSpec, artPlacement, singleFace],
+  );
+
+  // Full text layout (wrap + auto-shrink) so the UI can flag when the size was
+  // trimmed to fit the front-face area.
+  const textLayout = React.useMemo(
+    () => computeFaceTextLayout(
+      product,
+      { text, fontFamily: textFontFamily, colorPrint: isColorPrint, orientation: textPlacement.orientation, align: textPlacement.align, layout: textPlacement.layout, lineHeight: textPlacement.lineHeight },
+      textPlacement.scale,
+      singleFace,
+    ),
+    [product, text, textFontFamily, isColorPrint, textPlacement.orientation, textPlacement.align, textPlacement.layout, textPlacement.lineHeight, textPlacement.scale, singleFace],
+  );
+
+  // Shape of the editable rectangle (w/h), so the drag pad mirrors it.
+  const faceAreaAspect = React.useMemo(() => {
+    const m = bandMetrics(product, TEXTURE_W, TEXTURE_H);
+    const AW = 2 * FRONT_FACE.uHalfWidth * TEXTURE_W;
+    const AH = FRONT_FACE.vHeightFrac * (m.botPx - m.topPx);
+    return AH > 0 ? AW / AH : 1;
+  }, [product]);
+
+  // Nearest valid placement inside the front-face rectangle for a given mark.
+  const clampTextP = React.useCallback(
+    (p: Placement) => clampPlacementToFrontArea(p, markHalfExtents(product, textSpec, p, true)),
+    [product, textSpec],
+  );
+  const clampArtP = React.useCallback(
+    (p: Placement) => clampPlacementToFrontArea(p, markHalfExtents(product, artSpec, p, true)),
+    [product, artSpec],
+  );
+
+  // Setters that keep placements inside the rectangle while in single-face mode.
+  const applyTextPlacement = (next: Placement) => setTextPlacement(singleFace ? clampTextP(next) : next);
+  const applyArtPlacement = (next: Placement) => setArtPlacement(singleFace ? clampArtP(next) : next);
+
+  // Re-clamp when growing the mark or the product changes could push the box out
+  // of bounds (typing a longer name, a bigger plan image, switching size, …).
+  React.useEffect(() => {
+    if (singleFace) setTextPlacement(p => clampTextP(p));
+  }, [singleFace, clampTextP]);
+  React.useEffect(() => {
+    if (singleFace) setArtPlacement(p => clampArtP(p));
+  }, [singleFace, clampArtP]);
 
   // Price shown on the CTA. Eufy Make and every non-drinkware product quote by chat.
   const priceLabel = material.pens
@@ -652,6 +1008,7 @@ export default function Customizer() {
           ? `• Imagen: ${activePlan.imageSize === "large" ? "logo" : "dibujo"} ${customImage ? "(la envío en este chat)" : "(la envío en breve)"}`
           : "• Sin imagen"
       );
+      lines.push(`• Ubicación del diseño: ${singleFace ? "Cara frontal (área fija)" : "Libre (360°)"}`);
       lines.push(`• Plan: ${activePlan.shortLabel} — ${priceLabel}`);
     } else {
       lines.push(`• Producto: ${activeMProduct?.name ?? "producto"}`);
@@ -798,10 +1155,25 @@ export default function Customizer() {
                       artPlacement={artPlacement}
                       colorPrint={effectiveTechnique === "eufy"}
                       engraveStyle={drinkwareEngraveStyle}
+                      singleFace={singleFace}
+                      showGuides={showGuides}
+                      frontFaceU={FRONT_FACE.uCenter}
                     />
                   </div>
 
-                  <p className="text-xs text-muted-foreground -mt-1 mb-1">Arrastre para girar</p>
+                  <div className="flex items-center gap-3 -mt-1 mb-1">
+                    <p className="text-xs text-muted-foreground">Arrastre para girar</p>
+                    {singleFace && (
+                      <button
+                        type="button"
+                        onClick={() => setShowGuides(g => !g)}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                      >
+                        {showGuides ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        {showGuides ? "Ocultar guías" : "Mostrar guías"}
+                      </button>
+                    )}
+                  </div>
 
                   {/* Summary badges */}
                   <div className="flex flex-wrap gap-2 justify-center px-4 pb-4">
@@ -1045,6 +1417,8 @@ export default function Customizer() {
 
                   {/* TEXT TAB */}
                   <TabsContent value="text" className="mt-0 space-y-6">
+                    <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
+
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-3 block">Texto Personalizado</Label>
                       <Input
@@ -1057,16 +1431,33 @@ export default function Customizer() {
                       <p className="text-xs text-muted-foreground mt-1.5 text-right">{text.length}/30 caracteres</p>
                       <TextSizeSlider
                         scale={textPlacement.scale}
-                        onScale={(s) => setTextPlacement(p => ({ ...p, scale: s }))}
+                        onScale={(s) => applyTextPlacement({ ...textPlacement, scale: s })}
                       />
+                      {singleFace && textLayout.shrunk && (
+                        <p className="text-xs text-primary/90 flex items-center gap-1.5 rounded-lg bg-[#f5eaec] border border-primary/20 px-3 py-2 mt-2">
+                          <Info className="w-3.5 h-3.5 shrink-0" />
+                          Tamaño ajustado automáticamente para que entre en el área.
+                        </p>
+                      )}
                     </div>
 
                     <div className="pt-4 border-t border-border">
-                      <Label className="text-sm font-medium text-foreground mb-1 block">Ubicación del Texto</Label>
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-sm font-medium text-foreground">Ubicación del Texto</Label>
+                        <AlignButtons value={textPlacement.align} onChange={(a) => applyTextPlacement({ ...textPlacement, align: a })} />
+                      </div>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Colocá el texto donde quieras alrededor del {product.singular.toLowerCase()}.
+                        {singleFace
+                          ? `Subí o bajá el texto con el control vertical, o arrastralo dentro del área grabable de la cara frontal del ${product.singular.toLowerCase()}.`
+                          : `Colocá el texto donde quieras alrededor del ${product.singular.toLowerCase()}.`}
                       </p>
-                      <PlacementControls value={textPlacement} onChange={setTextPlacement} />
+                      <PlacementControls
+                        value={textPlacement}
+                        onChange={applyTextPlacement}
+                        singleFace={singleFace}
+                        frontExtents={textExtents}
+                        areaAspect={faceAreaAspect}
+                      />
                     </div>
 
                     <div className="pt-4 border-t border-border">
@@ -1097,6 +1488,8 @@ export default function Customizer() {
 
                   {/* ICONS TAB */}
                   <TabsContent value="icons" className="mt-0 space-y-6">
+                    <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
+
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Elija un ícono</Label>
                       <p className="text-xs text-muted-foreground mb-3">
@@ -1109,9 +1502,18 @@ export default function Customizer() {
                       <div className="pt-4 border-t border-border">
                         <Label className="text-sm font-medium text-foreground mb-1 block">Ubicación del Ícono</Label>
                         <p className="text-xs text-muted-foreground mb-3">
-                          Movelo y giralo libremente sobre las caras del {product.singular.toLowerCase()}.
+                          {singleFace
+                            ? `Ubicá el ícono dentro del área grabable de la cara frontal del ${product.singular.toLowerCase()}.`
+                            : `Movelo y giralo libremente sobre las caras del ${product.singular.toLowerCase()}.`}
                         </p>
-                        <PlacementControls value={artPlacement} onChange={setArtPlacement} withSize />
+                        <PlacementControls
+                          value={artPlacement}
+                          onChange={applyArtPlacement}
+                          withSize
+                          singleFace={singleFace}
+                          frontExtents={artExtents}
+                          areaAspect={faceAreaAspect}
+                        />
                       </div>
                     )}
                   </TabsContent>
@@ -1119,6 +1521,8 @@ export default function Customizer() {
                   {/* LOGO / PHOTO TAB — stainless steel only */}
                   {canUploadImage && (
                   <TabsContent value="media" className="mt-0 space-y-6">
+                    <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
+
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
                       <p className="text-xs text-muted-foreground mb-3">
@@ -1141,9 +1545,17 @@ export default function Customizer() {
                             <div className="pt-4 mt-4 border-t border-border">
                               <Label className="text-sm font-medium text-foreground mb-1 block">Ubicación de la Imagen</Label>
                               <p className="text-xs text-muted-foreground mb-3">
-                                Movela y girala libremente sobre las caras del {product.singular.toLowerCase()}.
+                                {singleFace
+                                  ? `Ubicá la imagen dentro del área grabable de la cara frontal del ${product.singular.toLowerCase()}.`
+                                  : `Movela y girala libremente sobre las caras del ${product.singular.toLowerCase()}.`}
                               </p>
-                              <PlacementControls value={artPlacement} onChange={setArtPlacement} />
+                              <PlacementControls
+                                value={artPlacement}
+                                onChange={applyArtPlacement}
+                                singleFace={singleFace}
+                                frontExtents={artExtents}
+                                areaAspect={faceAreaAspect}
+                              />
                             </div>
                           )}
                         </>
@@ -1358,7 +1770,10 @@ export default function Customizer() {
                     </div>
 
                     <div className="pt-4 border-t border-border">
-                      <Label className="text-sm font-medium text-foreground mb-1 block">Ubicación del Texto</Label>
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-sm font-medium text-foreground">Ubicación del Texto</Label>
+                        <AlignButtons value={textPlacement.align} onChange={(a) => setTextPlacement(p => ({ ...p, align: a }))} />
+                      </div>
                       <p className="text-xs text-muted-foreground mb-3">
                         Colocá el texto donde quieras sobre la {activeObject.singular.toLowerCase()}.
                       </p>

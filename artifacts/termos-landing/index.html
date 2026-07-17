@@ -28,8 +28,19 @@
          font-display:swap so it doesn't compete with the LCP image. -->
     <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin.woff2" crossorigin>
 
-    <!-- Preload the hero carousel's first frame — the LCP element. -->
-    <link rel="preload" as="image" href="/galeria/termomate.webp" fetchpriority="high">
+    <!-- Preload the hero carousel's first frame — the LCP element.
+         imagesrcset/imagesizes must stay identical to the <img> in
+         hero-carousel.tsx (CAROUSEL_SIZES) so the preloaded variant is the one
+         actually rendered — otherwise the preload is wasted. On mobile this
+         fetches the lighter 700px file; retina/desktop gets the 900px. -->
+    <link
+      rel="preload"
+      as="image"
+      href="/galeria/termomate.webp"
+      imagesrcset="/galeria/termomate-700.webp 700w, /galeria/termomate.webp 900w"
+      imagesizes="(min-width: 1024px) 512px, calc(100vw - 3rem)"
+      fetchpriority="high"
+    >
   </head>
   <body>
     <div id="root"></div>

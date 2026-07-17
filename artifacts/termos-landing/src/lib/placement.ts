@@ -2,6 +2,25 @@ import { resampledProfile, type ProductDef } from "./products";
 
 export type Orientation = "horizontal" | "vertical";
 
+/** How multi-line text distributes its rows within the text block. */
+export type TextAlign = "left" | "center" | "right" | "justify";
+
+/**
+ * How the engraving text is split into lines:
+ *  - "auto"   — flow the text and wrap only when a row no longer fits the area.
+ *  - "stack"  — one word per line, always, regardless of whether they'd fit
+ *               together (e.g. "MATEO MEDINA" → "MATEO" / "MEDINA").
+ *  - "manual" — respect exactly the line breaks the user typed (Enter), no
+ *               automatic wrapping.
+ */
+export type TextLayout = "auto" | "stack" | "manual";
+
+/** Line-spacing presets (multiple of the font size), for the interlineado control. */
+export const LINE_HEIGHT_PRESETS = { compacto: 0.92, normal: 1.12, amplio: 1.5 } as const;
+export type LineHeightPreset = keyof typeof LINE_HEIGHT_PRESETS;
+/** Default row spacing — matches engraving-text's LINE_HEIGHT for continuity. */
+export const DEFAULT_LINE_HEIGHT = LINE_HEIGHT_PRESETS.normal;
+
 /** Where a piece of art or text sits on the engravable band of a product. */
 export interface Placement {
   /** 0–1 around the body. 0.5 is the front face. */
@@ -15,11 +34,17 @@ export interface Placement {
    * the plan (small/dibujo vs large/logo) and scale stays at its default 1.
    */
   scale: number;
+  /** Multi-line text alignment. Ignored for art. Defaults to centre. */
+  align?: TextAlign;
+  /** How the text splits into lines. Ignored for art. Defaults to "auto". */
+  layout?: TextLayout;
+  /** Row spacing as a multiple of the font size. Ignored for art. Defaults to DEFAULT_LINE_HEIGHT. */
+  lineHeight?: number;
 }
 
 // Text starts small (~45%): a full-size name overflows the little mobile preview,
 // and it's easier to scale up from here than to hunt the slider down.
-export const DEFAULT_TEXT_PLACEMENT: Placement = { u: 0.5, v: 0.5, orientation: "horizontal", scale: 0.45 };
+export const DEFAULT_TEXT_PLACEMENT: Placement = { u: 0.5, v: 0.5, orientation: "horizontal", scale: 0.45, align: "center", layout: "auto", lineHeight: DEFAULT_LINE_HEIGHT };
 export const DEFAULT_ART_PLACEMENT: Placement = { u: 0.5, v: 0.28, orientation: "horizontal", scale: 1 };
 
 /**

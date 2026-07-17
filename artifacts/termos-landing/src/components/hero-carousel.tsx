@@ -1,8 +1,22 @@
-import React, { useEffect, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import React, { useEffect, useRef, useState } from "react";
 import { GALLERY_IMAGES } from "@/lib/gallery-images";
 
 const INTERVAL_MS = 3500;
+
+/**
+ * `sizes` describe el ancho real del marco: ~100vw menos el padding del hero en
+ * móvil, y 512px fijo en desktop. Con eso el browser en un móvil DPR~1.75
+ * (~640 device px) elige la variante de 700px en vez de la de 900px.
+ *
+ * IMPORTANTE: este string debe ser idéntico al `imagesizes` del <link
+ * rel="preload"> del LCP en index.html, o el preload de la primera imagen se
+ * desperdicia (bajaría un recurso distinto).
+ */
+const CAROUSEL_SIZES = "(min-width: 1024px) 512px, calc(100vw - 3rem)";
+
+/** Deriva la ruta de la variante 700px a partir de la original de 900px. */
+const variant700 = (src: string) => src.replace(/\.webp$/, "-700.webp");
+const srcSetFor = (src: string) => `${variant700(src)} 700w, ${src} 900w`;
 
 /**
  * Panel de imagen cuadrado (1:1, igual que las fotos) que va pasando entre los
@@ -10,12 +24,23 @@ const INTERVAL_MS = 3500;
  * proporción del marco con la de las fotos, cada una llena el cuadro completo,
  * todas se ven del mismo tamaño y sin bandas vacías.
  * Se muestra al lado del texto del hero, dividiendo la pantalla.
+ *
+ * Las transiciones son CSS puro (clase .hero-img-fade / .hero-caption-rise en
+ * index.css). Antes usaba framer-motion, pero eso lo metía en el bundle de
+ * entrada y competía con el LCP; ahora el primer frame pinta sin animación y
+ * sin JS de animación en el critical path.
  */
 export default function HeroCarousel({ onImageChange }: { onImageChange?: (src: string) => void }) {
-  const reduceMotion = useReducedMotion();
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const count = GALLERY_IMAGES.length;
+
+  // El primer frame es el elemento LCP: se pinta estático, sin fade. Sólo los
+  // frames siguientes hacen cross-fade.
+  const firstPaint = useRef(true);
+  useEffect(() => {
+    firstPaint.current = false;
+  }, []);
 
   useEffect(() => {
     if (paused || count <= 1) return;
@@ -49,24 +74,26 @@ export default function HeroCarousel({ onImageChange }: { onImageChange?: (src: 
       {/* Marco cuadrado — las fotos son 1:1, así que llenan el marco exacto,
           se ven del mismo tamaño y sin espacios vacíos. */}
       <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-neutral-900 ring-1 ring-white/10 shadow-2xl">
-        <AnimatePresence mode="sync">
-          <motion.img
-            key={current.src}
-            src={current.src}
-            alt={current.caption}
-            width={900}
-            height={900}
-            className="absolute inset-0 h-full w-full object-cover"
-            initial={reduceMotion ? { opacity: 1 } : { opacity: 0, scale: 1.04 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 1.02 }}
-            transition={{ duration: reduceMotion ? 0.2 : 0.9, ease: [0.16, 1, 0.3, 1] }}
-            loading="eager"
-            decoding="async"
-            // The first frame is the hero's LCP element — prioritise it.
-            fetchPriority={index === 0 ? "high" : "auto"}
-          />
-        </AnimatePresence>
+        {/* keyed por src: al cambiar el índice, React remonta la <img> y la clase
+            .hero-img-fade retriggerea el cross-fade. El primer frame no lleva la
+            clase (firstPaint) para no retrasar el LCP. */}
+        <img
+          key={current.src}
+          src={current.src}
+          srcSet={srcSetFor(current.src)}
+          sizes={CAROUSEL_SIZES}
+          alt={current.caption}
+          width={900}
+          height={900}
+          className={
+            "absolute inset-0 h-full w-full object-cover" +
+            (firstPaint.current ? "" : " hero-img-fade")
+          }
+          loading="eager"
+          decoding="async"
+          // The first frame is the hero's LCP element — prioritise it.
+          fetchPriority={index === 0 ? "high" : "auto"}
+        />
 
         {/* Degradado inferior para legibilidad del rótulo */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/80 to-transparent" />
@@ -78,20 +105,12 @@ export default function HeroCarousel({ onImageChange }: { onImageChange?: (src: 
           </span>
         </div>
 
-        {/* Rótulo del trabajo actual */}
+        {/* Rótulo del trabajo actual — key por índice para que el fade se
+            retriggeree en cada cambio (varias fotos comparten caption). */}
         <div className="absolute inset-x-5 bottom-14">
-          <AnimatePresence mode="wait">
-            <motion.p
-              key={current.caption}
-              className="text-lg font-semibold text-white drop-shadow"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.4 }}
-            >
-              {current.caption}
-            </motion.p>
-          </AnimatePresence>
+          <p key={index} className="hero-caption-rise text-lg font-semibold text-white drop-shadow">
+            {current.caption}
+          </p>
         </div>
 
         {/* Flechas */}

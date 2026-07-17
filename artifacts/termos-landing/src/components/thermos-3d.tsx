@@ -6,7 +6,8 @@ import { getProduct, getSize, resampledProfile, type ProductDef } from "@/lib/pr
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
 import { makeBodyMaps, type EngraveStyle } from "@/lib/engraving-maps";
-import { wrapToWidth, fillLines, LINE_HEIGHT } from "@/lib/engraving-text";
+import { FRONT_FACE, frontAreaBounds } from "@/lib/face-area";
+import { layoutText, fillLinesAligned, measureLinesWidth, LINE_HEIGHT } from "@/lib/engraving-text";
 
 class WebGLErrorBoundary extends Component<
   { fallback: ReactNode; children: ReactNode },
@@ -35,6 +36,12 @@ interface Thermos3DProps {
   colorPrint?: boolean;
   /** How the laser reads: steel reveal (default), leather char or wood char. */
   engraveStyle?: EngraveStyle;
+  /** "Edición en una cara": confine the design to the front-face rectangle. */
+  singleFace?: boolean;
+  /** Draw the dashed front-face guide (single-face mode only). */
+  showGuides?: boolean;
+  /** Which u faces the camera when single-face is entered. Defaults to config. */
+  frontFaceU?: number;
 }
 
 /** Everything the meshes and the camera rig need, derived from the product profile. */
@@ -150,15 +157,81 @@ function HoppieLid({ sil }: { sil: Silhouette }) {
   );
 }
 
+/**
+ * The dashed rectangle drawn on the front face in "Edición en una cara" — a
+ * closed line loop that hugs the body surface over the editable area, so the
+ * customer sees exactly the box their design is trapped inside. Built straight
+ * from the same `FRONT_FACE` config the clamp uses, so guide and limit agree.
+ */
+function FrontFaceGuide({ sil }: { sil: Silhouette }) {
+  const object = useMemo(() => {
+    const b = frontAreaBounds();
+    const bandTopY = sil.band[1]; // placement v = 0 (band top)
+    const bandBotY = sil.band[0]; // placement v = 1 (band bottom)
+    const yAtV = (v: number) => bandTopY + (bandBotY - bandTopY) * v;
+
+    const pts = sil.points; // Vector2 [radius, y], bottom → top
+    const radiusAtY = (y: number) => {
+      if (y <= pts[0].y) return pts[0].x;
+      if (y >= pts[pts.length - 1].y) return pts[pts.length - 1].x;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const y0 = pts[i].y, y1 = pts[i + 1].y;
+        if (y >= y0 && y <= y1) {
+          const t = y1 === y0 ? 0 : (y - y0) / (y1 - y0);
+          return pts[i].x + (pts[i + 1].x - pts[i].x) * t;
+        }
+      }
+      return pts[pts.length - 1].x;
+    };
+
+    // Float the loop just off the surface so it never z-fights the body.
+    const OFFSET = 1.014;
+    const at = (u: number, v: number) => {
+      const phi = u * Math.PI * 2;
+      const y = yAtV(v);
+      const r = radiusAtY(y) * OFFSET;
+      return new THREE.Vector3(r * Math.sin(phi), y, r * Math.cos(phi));
+    };
+
+    const NH = 28, NV = 12;
+    const verts: THREE.Vector3[] = [];
+    for (let i = 0; i <= NH; i++) verts.push(at(b.uMin + (b.uMax - b.uMin) * (i / NH), b.vMin));
+    for (let i = 1; i <= NV; i++) verts.push(at(b.uMax, b.vMin + (b.vMax - b.vMin) * (i / NV)));
+    for (let i = 1; i <= NH; i++) verts.push(at(b.uMax - (b.uMax - b.uMin) * (i / NH), b.vMax));
+    for (let i = 1; i < NV; i++) verts.push(at(b.uMin, b.vMax - (b.vMax - b.vMin) * (i / NV)));
+
+    const geo = new THREE.BufferGeometry().setFromPoints(verts);
+    const mat = new THREE.LineDashedMaterial({
+      color: "#C1121F",
+      dashSize: 0.05 * sil.scale,
+      gapSize: 0.035 * sil.scale,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+    });
+    const line = new THREE.LineLoop(geo, mat);
+    line.computeLineDistances();
+    return line;
+  }, [sil]);
+
+  useEffect(() => () => {
+    object.geometry.dispose();
+    (object.material as THREE.Material).dispose();
+  }, [object]);
+
+  return <primitive object={object} />;
+}
+
 function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
-  textPlacement, artPlacement, colorPrint, engraveStyle,
+  textPlacement, artPlacement, colorPrint, engraveStyle, singleFace, showGuides, frontFaceU,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
   customImageUrl: string | null; imageSize: "none" | "small" | "large";
   textPlacement: Placement; artPlacement: Placement; colorPrint: boolean;
   engraveStyle: EngraveStyle;
+  singleFace: boolean; showGuides: boolean; frontFaceU: number;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
@@ -293,11 +366,11 @@ function ThermosMesh({
     () => makeBodyMaps({
       product, colorHex, finish: matProps, isGradientFinish: finish === "gradient",
       text: dText, textPlacement: dTextPlacement, fontFamily, artMask, imageSize, artPlacement: dArtPlacement,
-      anisotropy: maxAnisotropy, colorPrint, artImage: customImageEl, engraveStyle,
+      anisotropy: maxAnisotropy, colorPrint, artImage: customImageEl, engraveStyle, singleFace,
     }),
     // fontReady triggers re-creation once the font is actually loaded
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [product, colorHex, matProps, finish, dText, dTextPlacement, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, customImageEl, engraveStyle]
+    [product, colorHex, matProps, finish, dText, dTextPlacement, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, customImageEl, engraveStyle, singleFace]
   );
 
   // Four textures per rebuild, now coalesced to the settled input via useDeferredValue.
@@ -348,13 +421,25 @@ function ThermosMesh({
     };
   }, [gl]);
 
+  // "Edición en una cara": swing the front face to the camera when the mode is
+  // entered (and if the configured front angle changes), so the customer looks
+  // straight at the editable area. Still fully draggable afterwards.
+  useEffect(() => {
+    if (!singleFace || !groupRef.current) return;
+    groupRef.current.rotation.y = -frontFaceU * Math.PI * 2;
+    groupRef.current.rotation.x = 0;
+    velYaw.current = 0;
+    velPitch.current = 0;
+  }, [singleFace, frontFaceU]);
+
   useFrame((_, delta) => {
     if (!groupRef.current) return;
     if (isDragging.current) return;
 
     // Idle auto-spin only while the piece is blank; freeze once the customer is
     // placing text/icon/image so they can position it calmly (still draggable).
-    const hasContent = !!text || (!!customImageUrl && imageSize !== "none");
+    // Single-face mode also freezes, keeping the front face pointed at the camera.
+    const hasContent = singleFace || !!text || (!!customImageUrl && imageSize !== "none");
     const hasYawInertia   = Math.abs(velYaw.current) > 0.001;
     const hasPitchInertia = Math.abs(velPitch.current) > 0.001;
 
@@ -433,6 +518,9 @@ function ThermosMesh({
           <meshPhysicalMaterial color="#aaaaaa" roughness={0.12} metalness={0.98} clearcoat={0.6} envMapIntensity={2.2} />
         </mesh>
       )}
+
+      {/* Front-face editable area outline (single-face mode, guides visible) */}
+      {singleFace && showGuides && <FrontFaceGuide sil={sil} />}
     </group>
   );
 }
@@ -639,18 +727,20 @@ function FallbackCanvas({
           ctx.rotate(tp.rot);
           const fs = Math.max(12, Math.floor(bW * 0.19 * textPlacement.scale));
           ctx.font = `900 ${fs}px Inter, sans-serif`;
-          ctx.textAlign="center"; ctx.textBaseline="middle";
+          ctx.textBaseline="middle";
           ctx.globalAlpha = Math.max(0, Math.min(1, tp.facing+0.25));
-          const lines = wrapToWidth(ctx, text, bW * 0.9);
-          const lh = fs * LINE_HEIGHT;
+          const lines = layoutText(ctx, text, textPlacement.layout ?? "auto", bW * 0.9);
+          const lh = fs * (textPlacement.lineHeight ?? LINE_HEIGHT);
+          const tw = measureLinesWidth(ctx, lines);
+          const al = textPlacement.align ?? "center";
           ctx.fillStyle = "rgba(0,0,0,0.55)";
-          fillLines(ctx, lines, lh, -Math.max(1, fs * 0.035));
+          fillLinesAligned(ctx, lines, lh, tw, al, -Math.max(1, fs * 0.035));
           const steel = ctx.createLinearGradient(0, -fs / 2, 0, fs / 2);
           steel.addColorStop(0, "#8f979f");
           steel.addColorStop(0.45, "#e6eaee");
           steel.addColorStop(1, "#9aa2aa");
           ctx.fillStyle = steel;
-          fillLines(ctx, lines, lh); ctx.restore();
+          fillLinesAligned(ctx, lines, lh, tw, al); ctx.restore();
         }
       }
       // Shadow — offset below the rounded bottom
@@ -739,6 +829,9 @@ function ThreeCanvas({ product, sil, ...props }: Thermos3DProps & { product: Pro
           artPlacement={props.artPlacement ?? DEFAULT_ART_PLACEMENT}
           colorPrint={props.colorPrint ?? false}
           engraveStyle={props.engraveStyle ?? "steel"}
+          singleFace={props.singleFace ?? false}
+          showGuides={props.showGuides ?? true}
+          frontFaceU={props.frontFaceU ?? FRONT_FACE.uCenter}
         />
 
         {/* Single, stable ground shadow. Re-renders every frame so it tracks the

@@ -1,7 +1,13 @@
 import * as THREE from "three";
 import type { ProductDef } from "./products";
-import { bandRange, DEFAULT_ART_PLACEMENT, type Placement } from "./placement";
-import { wrapToWidth, fillLines, measureLinesWidth, LINE_HEIGHT } from "./engraving-text";
+import {
+  bandRange, DEFAULT_ART_PLACEMENT, DEFAULT_LINE_HEIGHT,
+  type Placement, type TextAlign, type TextLayout,
+} from "./placement";
+import {
+  layoutText, fillLinesAligned, measureLinesWidth, fitText,
+} from "./engraving-text";
+import { FRONT_FACE, type MarkHalfExtents } from "./face-area";
 
 /** Text wraps once a row passes this fraction of the wrap-around circumference. */
 const TEXT_WRAP_FRAC = 0.5;
@@ -59,13 +65,34 @@ function drawPlaced(
   p: Placement,
   halfW: number,
   halfH: number,
-  render: () => void
+  render: () => void,
+  singleFace = false
 ) {
   const rot = p.orientation === "vertical" ? -Math.PI / 2 : 0;
   const boundHalfH = (rot ? halfW : halfH) * m.aspect;
+  // Horizontal half-extent in circumference pixels (swaps with vertical when the
+  // mark is turned on its side).
+  const boundHalfW = rot ? halfH : halfW;
 
-  const cx = ((p.u % 1) + 1) % 1 * W;
-  const cy = clamp(m.topPx + (m.botPx - m.topPx) * p.v, m.topPx + boundHalfH, m.botPx - boundHalfH);
+  let cx = ((p.u % 1) + 1) % 1 * W;
+  let cy = clamp(m.topPx + (m.botPx - m.topPx) * p.v, m.topPx + boundHalfH, m.botPx - boundHalfH);
+
+  // "Edición en una cara": trap the whole bounding box inside the front-face
+  // rectangle. This is the authority — the pad clamps for UX, but here the exact
+  // rendered extents guarantee nothing crosses the margin, even partially.
+  if (singleFace) {
+    const bandH = m.botPx - m.topPx;
+    cx = clamp(
+      cx,
+      (FRONT_FACE.uCenter - FRONT_FACE.uHalfWidth) * W + boundHalfW,
+      (FRONT_FACE.uCenter + FRONT_FACE.uHalfWidth) * W - boundHalfW,
+    );
+    cy = clamp(
+      cy,
+      m.topPx + bandH * (FRONT_FACE.vCenter - FRONT_FACE.vHeightFrac / 2) + boundHalfH,
+      m.topPx + bandH * (FRONT_FACE.vCenter + FRONT_FACE.vHeightFrac / 2) - boundHalfH,
+    );
+  }
 
   for (const dx of [-W, 0, W]) {
     ctx.save();
@@ -159,10 +186,84 @@ export interface EngravingInput {
   artImage?: HTMLImageElement | null;
   /** Steel reveal (default), leather char (forrado) or wood char. */
   engraveStyle?: EngraveStyle;
+  /**
+   * "Edición en una cara": confine text and art to the front-face rectangle
+   * instead of the full 360° band. See `face-area.ts`.
+   */
+  singleFace?: boolean;
 }
 
 /** Printed text/brand ink when the piece is colour-printed rather than engraved. */
 const PRINT_INK = "#161616";
+
+/** The engraved name is always heavy; the family comes from the chosen font. */
+const FONT_WEIGHT = 900;
+function makeTextFont(fontPx: number, fontFamily: string): string {
+  return `${FONT_WEIGHT} ${Math.round(fontPx)}px ${fontFamily}`;
+}
+
+/** A fitted name for a product, in square (pre-aspect) pixels. */
+export interface FaceTextLayout {
+  lines: string[];
+  fontPx: number;
+  lineHeight: number;
+  blockW: number;
+  blockH: number;
+  shrunk: boolean;
+  align: TextAlign;
+}
+
+/**
+ * How a name lays out for a product, in square (pre-aspect) pixels — the single
+ * source of truth shared by the 3D texture, the placement clamp and the editor
+ * preview. In single-face mode it is fitted to the front-face rectangle (word
+ * wrap, then auto-shrink if the block is still too tall). In free mode it keeps
+ * the original behaviour: wrap at half the circumference, no shrink.
+ */
+export function computeFaceTextLayout(
+  product: ProductDef,
+  opts: {
+    text: string;
+    fontFamily?: string;
+    colorPrint?: boolean;
+    orientation?: Placement["orientation"];
+    align?: TextAlign;
+    layout?: TextLayout;
+    lineHeight?: number;
+  },
+  scale: number,
+  singleFace: boolean,
+): FaceTextLayout {
+  const W = TEXTURE_W, H = TEXTURE_H;
+  const m = bandMetrics(product, W, H);
+  const fontFamily = opts.fontFamily ?? "Inter, system-ui, sans-serif";
+  const align: TextAlign = opts.align ?? "center";
+  const layout: TextLayout = opts.layout ?? "auto";
+  const lhMul = opts.lineHeight ?? DEFAULT_LINE_HEIGHT;
+  const requestedFont = W * (opts.colorPrint ? 0.10 : 0.13) * scale;
+  const rot = opts.orientation === "vertical";
+  const ctx = measureCtx();
+
+  if (singleFace && opts.text) {
+    // Room for the block in square px. Turning the text vertical swaps which
+    // area dimension constrains the block's own width vs. height.
+    const pad = 1 - 2 * FRONT_FACE.textPadFrac;
+    const areaWcyl = 2 * FRONT_FACE.uHalfWidth * W;                // circumference px
+    const areaHcyl = FRONT_FACE.vHeightFrac * (m.botPx - m.topPx); // texture px
+    const areaHsq = areaHcyl / m.aspect;                          // square px
+    const availW = (rot ? areaHsq : areaWcyl) * pad;
+    const availH = (rot ? areaWcyl : areaHsq) * pad;
+    const fit = fitText(ctx, opts.text, (px) => makeTextFont(px, fontFamily), requestedFont, availW, availH, layout, lhMul);
+    return { ...fit, align };
+  }
+
+  const fontPx = Math.round(requestedFont);
+  ctx.font = makeTextFont(fontPx, fontFamily);
+  const lineHeight = fontPx * lhMul;
+  const lines = opts.text ? layoutText(ctx, opts.text, layout, W * TEXT_WRAP_FRAC) : [];
+  const blockW = measureLinesWidth(ctx, lines);
+  return { lines, fontPx, lineHeight, blockW, blockH: lines.length * lineHeight, shrunk: false, align };
+}
 
 /**
  * Paints the engraving once as an alpha coverage mask — how deep the laser bit
@@ -186,6 +287,7 @@ export function makeBodyMaps({
   colorPrint = false,
   artImage = null,
   engraveStyle = "steel",
+  singleFace = false,
 }: EngravingInput): BodyMaps {
   const W = TEXTURE_W, H = TEXTURE_H;
   const m = bandMetrics(product, W, H);
@@ -243,23 +345,22 @@ export function makeBodyMaps({
       const dh = naturalH * ratio;
       drawPlaced(ctx, m, W, artPlacement, dw / 2, dh / 2, () => {
         ctx.drawImage(artImage, -dw / 2, -dh / 2, dw, dh);
-      });
+      }, singleFace);
     }
 
     if (text) {
-      const fontSize = Math.round(W * 0.10 * textPlacement.scale);
-      const font = `900 ${fontSize}px ${fontFamily}`;
-      const lineHeight = fontSize * LINE_HEIGHT;
-      ctx.font = font;
-      const lines = wrapToWidth(ctx, text, W * TEXT_WRAP_FRAC);
-      const textW = measureLinesWidth(ctx, lines);
-      drawPlaced(ctx, m, W, textPlacement, textW / 2, (lines.length * lineHeight) / 2, () => {
-        ctx.font = font;
-        ctx.textAlign = "center";
+      const L = computeFaceTextLayout(
+        product,
+        { text, fontFamily, colorPrint: true, orientation: textPlacement.orientation, align: textPlacement.align, layout: textPlacement.layout, lineHeight: textPlacement.lineHeight },
+        textPlacement.scale,
+        singleFace,
+      );
+      drawPlaced(ctx, m, W, textPlacement, L.blockW / 2, L.blockH / 2, () => {
+        ctx.font = makeTextFont(L.fontPx, fontFamily);
         ctx.textBaseline = "middle";
         ctx.fillStyle = PRINT_INK;
-        fillLines(ctx, lines, lineHeight);
-      });
+        fillLinesAligned(ctx, L.lines, L.lineHeight, L.blockW, L.align);
+      }, singleFace);
     }
 
     // Print sits flush on the coating: keep the base finish, no groove.
@@ -295,23 +396,22 @@ export function makeBodyMaps({
     const dh = artMask.height * ratio;
     drawPlaced(mk, m, W, artPlacement, dw / 2, dh / 2, () => {
       mk.drawImage(artMask, -dw / 2, -dh / 2, dw, dh);
-    });
+    }, singleFace);
   }
 
   if (text) {
-    const fontSize = Math.round(W * 0.13 * textPlacement.scale);
-    const font = `900 ${fontSize}px ${fontFamily}`;
-    const lineHeight = fontSize * LINE_HEIGHT;
-    mk.font = font;
-    const lines = wrapToWidth(mk, text, W * TEXT_WRAP_FRAC);
-    const textW = measureLinesWidth(mk, lines);
-    drawPlaced(mk, m, W, textPlacement, textW / 2, (lines.length * lineHeight) / 2, () => {
-      mk.font = font;
-      mk.textAlign = "center";
+    const L = computeFaceTextLayout(
+      product,
+      { text, fontFamily, colorPrint: false, orientation: textPlacement.orientation, align: textPlacement.align, layout: textPlacement.layout, lineHeight: textPlacement.lineHeight },
+      textPlacement.scale,
+      singleFace,
+    );
+    drawPlaced(mk, m, W, textPlacement, L.blockW / 2, L.blockH / 2, () => {
+      mk.font = makeTextFont(L.fontPx, fontFamily);
       mk.textBaseline = "middle";
       mk.fillStyle = "#ffffff";
-      fillLines(mk, lines, lineHeight);
-    });
+      fillLinesAligned(mk, L.lines, L.lineHeight, L.blockW, L.align);
+    }, singleFace);
   }
 
   // The chipped/charred rim first, then the mark the beam laid bare on top of it.
@@ -385,5 +485,60 @@ export function makeBodyMaps({
       metalnessMap.dispose();
       grooveMap.dispose();
     },
+  };
+}
+
+/** What kind of mark to measure, with just the inputs that drive its size. */
+export type MarkSpec =
+  | { kind: "text"; text: string; fontFamily?: string; colorPrint?: boolean }
+  | { kind: "art"; imageSize: "none" | "small" | "large"; artW: number; artH: number };
+
+// A single reusable measuring context — text metrics only, never painted.
+let measureCanvas: HTMLCanvasElement | null = null;
+function measureCtx(): CanvasRenderingContext2D {
+  if (!measureCanvas) measureCanvas = document.createElement("canvas");
+  return measureCanvas.getContext("2d")!;
+}
+
+/**
+ * Half-size of a placed mark expressed in placement space (u = fraction of the
+ * circumference, v = fraction of the band). Mirrors exactly the sizing that
+ * `makeBodyMaps` / `drawPlaced` apply, so the drag pad and the single-face clamp
+ * can reason about "does the whole box fit" without re-deriving the font math.
+ */
+export function markHalfExtents(
+  product: ProductDef,
+  spec: MarkSpec,
+  placement: Placement,
+  singleFace = false,
+): MarkHalfExtents {
+  const W = TEXTURE_W, H = TEXTURE_H;
+  const m = bandMetrics(product, W, H);
+  let halfWpx = 0, halfHpx = 0; // pre-aspect "square" pixels, matching drawPlaced's halfW/halfH
+
+  if (spec.kind === "text") {
+    if (spec.text) {
+      const L = computeFaceTextLayout(
+        product,
+        { text: spec.text, fontFamily: spec.fontFamily, colorPrint: spec.colorPrint, orientation: placement.orientation, align: placement.align, layout: placement.layout, lineHeight: placement.lineHeight },
+        placement.scale,
+        singleFace,
+      );
+      halfWpx = L.blockW / 2;
+      halfHpx = L.blockH / 2;
+    }
+  } else if (spec.imageSize !== "none" && spec.artW > 0 && spec.artH > 0) {
+    const maxDim = W * (spec.imageSize === "large" ? 0.34 : 0.19) * placement.scale;
+    const ratio = Math.min(maxDim / spec.artW, maxDim / spec.artH);
+    halfWpx = (spec.artW * ratio) / 2;
+    halfHpx = (spec.artH * ratio) / 2;
+  }
+
+  const rot = placement.orientation === "vertical";
+  const horizHalfPx = rot ? halfHpx : halfWpx;
+  const vertHalfPx = (rot ? halfWpx : halfHpx) * m.aspect;
+  return {
+    halfU: horizHalfPx / W,
+    halfV: vertHalfPx / (m.botPx - m.topPx),
   };
 }
