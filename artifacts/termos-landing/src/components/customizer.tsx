@@ -12,7 +12,7 @@ import {
   Shapes, Zap, Sparkles, Wallet, TreePine, Square, PenLine, Wine, CupSoda, Snowflake, MessageCircle,
   Minus, Plus, Move, Focus, Globe, Eye, EyeOff,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
-  WrapText, Rows3, CornerDownLeft,
+  WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import Thermos3D from "./thermos-3d";
 import Object3D from "./object-3d";
@@ -182,6 +182,121 @@ const MATERIAL_ICON: Record<string, React.ComponentType<{ className?: string }>>
 // physical "click" — the invisible dopamine beat — without extra markup.
 const activeCard = "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30 active:scale-[0.97]";
 const idleCard = "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50 active:scale-[0.97]";
+
+// ── Mobile wizard chrome ─────────────────────────────────────────────────────
+// On phones the customizer is a step-by-step wizard (progress + fixed nav)
+// instead of one long scroll. Desktop keeps the full layout.
+
+/** Compact progress header: "Paso N de M" + a bar segment per step. */
+function WizardProgress({ step, labels }: { step: number; labels: string[] }) {
+  const total = labels.length;
+  return (
+    <div className="md:hidden mb-6">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-primary uppercase tracking-wide">Paso {step} de {total}</span>
+        <span className="text-xs text-muted-foreground">{labels[step - 1]}</span>
+      </div>
+      <div className="flex gap-1.5">
+        {labels.map((_, i) => (
+          <div key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${i < step ? "bg-primary" : "bg-border"}`} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Fixed bottom nav: Back (all but first step) + Next (all but last step). */
+function WizardNav({ step, total, onBack, onNext, nextLabel }: {
+  step: number; total: number; onBack: () => void; onNext: () => void; nextLabel?: string;
+}) {
+  return (
+    <div
+      className="md:hidden fixed inset-x-0 bottom-0 z-40 bg-white/95 backdrop-blur border-t border-border px-4 pt-3 flex items-center gap-3"
+      style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+    >
+      <button
+        type="button"
+        onClick={onBack}
+        disabled={step === 1}
+        className="inline-flex items-center gap-1 px-4 py-2.5 rounded-full border border-border text-sm font-medium text-muted-foreground disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <ChevronLeft className="w-4 h-4" /> Atrás
+      </button>
+      {step < total && (
+        <button
+          type="button"
+          onClick={onNext}
+          className="flex-1 inline-flex items-center justify-center gap-1 px-4 py-2.5 rounded-full bg-primary text-primary-foreground text-sm font-semibold shadow-sm active:scale-[0.98] transition-transform"
+        >
+          {nextLabel ?? "Siguiente"} <ChevronRight className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Material picker as a horizontal row of scrollable pills (mobile Step 1). */
+function MaterialChips({ materials, value, onChange }: {
+  materials: typeof MATERIALS; value: MaterialId; onChange: (id: MaterialId) => void;
+}) {
+  return (
+    <div>
+      <Label className="text-sm font-medium text-foreground mb-3 block">Material</Label>
+      <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 snap-x [scrollbar-width:thin]">
+        {materials.map(m => {
+          const Icon = MATERIAL_ICON[m.icon] ?? Box;
+          const on = m.id === value;
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => onChange(m.id)}
+              title={m.desc}
+              className={`snap-start shrink-0 inline-flex items-center gap-2 px-4 py-2.5 border rounded-full text-sm font-medium whitespace-nowrap transition-all ${on ? activeCard : idleCard}`}
+            >
+              <Icon className="w-4 h-4 shrink-0" /> {m.name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Product picker (or pen) as scrollable pills for the chosen material (mobile Step 1). */
+function ProductChips({ material, value, onChange }: {
+  material: (typeof MATERIALS)[number]; value: string; onChange: (id: string) => void;
+}) {
+  return (
+    <div>
+      <Label className="text-sm font-medium text-foreground mb-3 block">
+        {material.pens ? "Bolígrafo" : "Producto"}
+      </Label>
+      {material.pens ? (
+        <div className="inline-flex items-center gap-2 px-4 py-2.5 border rounded-full text-sm font-medium bg-[#f5eaec] border-primary text-primary ring-1 ring-primary/30">
+          <PenLine className="w-4 h-4" /> Bolígrafo
+        </div>
+      ) : (
+        <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 snap-x [scrollbar-width:thin]">
+          {material.products.map(p => {
+            const on = p.id === value;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => onChange(p.id)}
+                title={p.desc}
+                className={`snap-start shrink-0 inline-flex items-center px-4 py-2.5 border rounded-full text-sm font-medium whitespace-nowrap transition-all ${on ? activeCard : idleCard}`}
+              >
+                {p.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Grid of preset icons the customer can engrave. Toggles selection off on re-click. */
 function IconPicker({ value, onChange }: { value: string | null; onChange: (id: string | null) => void }) {
@@ -629,6 +744,130 @@ function LineHeightButtons({ value, onChange, className }: { value: number | und
   );
 }
 
+/**
+ * Horizontal, scrollable font picker — a strip of chips each previewing the
+ * chosen name in its own typeface. Replaces the tall two-column grid so the
+ * font choice takes one compact row instead of a whole screen on mobile.
+ */
+function FontCarousel({ fonts, value, onChange, sampleText }: {
+  fonts: typeof FONTS;
+  value: string;
+  onChange: (id: string) => void;
+  sampleText: string;
+}) {
+  return (
+    <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 snap-x [scrollbar-width:thin]">
+      {fonts.map((f, i) => {
+        const on = f.id === value;
+        return (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => onChange(f.id)}
+            title={f.name}
+            className={`snap-start shrink-0 w-[104px] px-3 py-2.5 border rounded-xl text-center transition-all ${on ? activeCard : idleCard}`}
+          >
+            <span className={`block text-lg leading-tight truncate ${on ? "text-primary" : "text-foreground"}`} style={f.style}>
+              {sampleText || f.name}
+            </span>
+            <span className="block text-[10px] text-muted-foreground mt-0.5 truncate">{i + 1}. {f.name}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Progressive-disclosure wrapper: keeps advanced controls collapsed behind a
+ * "Más opciones" toggle so the basic path (write a name, pick a font) stays
+ * uncluttered. The defaults already produce a good result, so most users never
+ * open it.
+ */
+function AdvancedOptions({ children, label = "Más opciones" }: { children: React.ReactNode; label?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="pt-4 border-t border-border">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+      >
+        <Settings2 className="w-4 h-4" />
+        {label}
+        <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && <div className="mt-5 space-y-6">{children}</div>}
+    </div>
+  );
+}
+
+/** Multi-line engraving text field: a textarea with a newline-aware char cap
+ *  (line breaks don't count) so "Saltos manuales" works without eating budget. */
+function EngravingTextField({ text, onText, layout }: { text: string; onText: (t: string) => void; layout: TextLayout | undefined }) {
+  return (
+    <>
+      <Textarea
+        value={text}
+        onChange={(e) => onText(capEngravingText(e.target.value))}
+        placeholder="Tu nombre o texto"
+        rows={2}
+        className="text-base text-center border-border focus-visible:ring-primary resize-none leading-snug"
+      />
+      <div className="flex items-center justify-between mt-1.5 gap-2">
+        {layout === "manual" ? (
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <CornerDownLeft className="w-3 h-3 shrink-0" /> Enter para saltar de línea
+          </span>
+        ) : <span />}
+        <p className="text-xs text-muted-foreground text-right whitespace-nowrap">{visibleTextLen(text)}/{MAX_TEXT_CHARS} caracteres</p>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Text toolbar: disposition + alignment + line-height, all writing back to the
+ * text placement. Shared by both text tabs (drinkware and flat objects) so the
+ * two surfaces stay identical. `onChange` receives the full next placement, so
+ * callers can pass either the clamping setter or the raw state setter.
+ */
+function TextDispositionToolbar({ placement, onChange }: { placement: Placement; onChange: (next: Placement) => void }) {
+  const layout = placement.layout ?? "auto";
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <Label className="text-sm font-medium text-foreground">Disposición del texto</Label>
+        <LayoutButtons
+          value={layout}
+          onChange={(l) => onChange({
+            ...placement,
+            layout: l,
+            // "Justificado" no aplica a una palabra por línea: cae a izquierda.
+            align: l === "stack" && placement.align === "justify" ? "left" : placement.align,
+          })}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <Label className="text-sm font-medium text-foreground">Alineación</Label>
+        <AlignButtons
+          value={placement.align}
+          onChange={(a) => onChange({ ...placement, align: a })}
+          disabledIds={layout === "stack" ? ["justify"] : undefined}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <Label className="text-sm font-medium text-foreground">Interlineado</Label>
+        <LineHeightButtons
+          value={placement.lineHeight}
+          onChange={(mul) => onChange({ ...placement, lineHeight: mul })}
+        />
+      </div>
+    </div>
+  );
+}
+
 /** Instagram-style thin vertical slider (0 = top, 1 = bottom) for vertical position. */
 function VerticalPosSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -764,12 +1003,21 @@ export default function Customizer() {
   // below. On ≥md it goes back to the roomier desktop sizing.
   const isMobile = useIsMobile();
 
+  // Mobile wizard: the flow is split into steps on phones. Drinkware gets the
+  // full four-step flow (Producto · Estilo · Diseño · Resumen); simpler products
+  // (flat objects, pens) collapse to two (Producto · Diseño). State is
+  // centralised here, so stepping back and forth never loses anything.
+  const [mobileStep, setMobileStep] = useState(1);
+  const [planTouched, setPlanTouched] = useState(false);
+
   // STEP 1 — material, STEP 2 — product within the material
   const [materialId, setMaterialId] = useState<MaterialId>(DEFAULT_MATERIAL_ID);
   const material = getMaterial(materialId);
   const [materialProductId, setMaterialProductId] = useState<string>(material.products[0]?.id ?? "");
   const activeMProduct = material.products.find(p => p.id === materialProductId) ?? material.products[0];
   const isDrinkware = !!activeMProduct?.drinkwareProductId;
+  // Cristal (glass) pieces render as transparent glass and have no product colour.
+  const isGlass = materialId === "cristal";
   // Non-lathe modelled blanks (box/flat shapes). Pens reuse the pen object.
   const activeObjectId = activeMProduct?.objectId ?? (material.pens ? "boligrafo" : undefined);
   const is3DObject = !isDrinkware && !!activeObjectId;
@@ -822,6 +1070,37 @@ export default function Customizer() {
   const activeColorName = customHex ? `${baseColor.name} · ${customHex.toUpperCase()}` : baseColor.name;
   const activePlan = ENGRAVING_PLANS.find(p => p.id === plan) || ENGRAVING_PLANS[0];
   const MaterialGlyph = MATERIAL_ICON[material.icon] ?? Box;
+
+  // ── Mobile wizard step model (derived from the product kind) ───────────────
+  const wizardLabels = isDrinkware
+    ? ["Producto", "Estilo", "Diseño", "Resumen"]
+    : ["Producto", "Diseño"];
+  const designStepIndex = isDrinkware ? 3 : 2;
+  const isDesignStep = isMobile && mobileStep === designStepIndex;
+
+  // Keep the step in range if the product kind changes the step count.
+  React.useEffect(() => {
+    setMobileStep(s => Math.min(s, wizardLabels.length));
+  }, [wizardLabels.length]);
+
+  // Hide the floating WhatsApp CTA while designing so it never covers controls.
+  React.useEffect(() => {
+    document.body.classList.toggle("wa-fab-hidden", isDesignStep);
+    return () => document.body.classList.remove("wa-fab-hidden");
+  }, [isDesignStep]);
+
+  // "Color" is not a tab on mobile (it's Step 2), so never leave it selected.
+  React.useEffect(() => {
+    if (isMobile && drinkTab === "color") setDrinkTab("text");
+  }, [isMobile, drinkTab]);
+
+  // ── Progressive plan inference ─────────────────────────────────────────────
+  // Infer the plan from what was designed (logo/photo ⇒ logo, icon ⇒ drawing,
+  // text only ⇒ names) and keep it in sync until the customer picks one by hand.
+  const inferredPlanId: EngravingPlanId = customImage ? "logo" : iconId ? "drawing" : "names";
+  React.useEffect(() => {
+    if (!planTouched && isDrinkware && plan !== inferredPlanId) setPlan(inferredPlanId);
+  }, [inferredPlanId, planTouched, isDrinkware, plan]);
 
   // Image upload is stainless-steel only; within drinkware it's gated by the plan.
   const allowsImage = canUploadImage && (isDrinkware ? activePlan.allowsImage : true);
@@ -959,6 +1238,7 @@ export default function Customizer() {
   };
 
   const handleSelectPlan = (id: EngravingPlanId) => {
+    setPlanTouched(true);
     setPlan(id);
     const nextPlan = ENGRAVING_PLANS.find(p => p.id === id);
     if (!nextPlan?.allowsImage) setCustomImage(null);
@@ -1041,23 +1321,222 @@ export default function Customizer() {
     ...(canUploadImage ? [{ key: "media", label: "Imagen", Icon: ImageIcon }] : []),
   ];
 
+  // ── Extracted drinkware controls ───────────────────────────────────────────
+  // Colour, technique and the plan+order summary are pulled out so both the
+  // desktop editor and the mobile wizard steps compose the very same markup —
+  // no control is ever duplicated.
+  const renderDrinkColor = () => isGlass ? (
+    // Glass comes in one finish only: clear. No colour picker, no finish grid.
+    <div>
+      <Label className="text-sm font-medium text-foreground mb-3 block">Material</Label>
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-secondary/40 px-4 py-3">
+        <span className="w-8 h-8 rounded-full border border-border bg-gradient-to-br from-white via-secondary to-white shadow-inner shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-foreground">Cristal transparente</p>
+          <p className="text-xs text-muted-foreground">El grabado se ve esmerilado sobre el vidrio.</p>
+        </div>
+      </div>
+    </div>
+  ) : (
+    <>
+      <div>
+        <Label className="text-sm font-medium text-foreground mb-3 block">Color Base</Label>
+        <div className="grid grid-cols-6 md:grid-cols-6 gap-3">
+          {COLORS.map(c => (
+            <button
+              key={c.id}
+              onClick={() => handleSelectColor(c.id)}
+              title={c.name}
+              className={`group relative aspect-square rounded-full overflow-hidden transition-all hover:scale-105 focus:outline-none ring-offset-2 ${
+                color === c.id && !customHex ? 'ring-2 ring-primary' : 'ring-0'
+              }`}
+            >
+              <div className="absolute inset-0" style={{ backgroundColor: c.hex }} />
+              {color === c.id && !customHex && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                  <Check className="text-white w-5 h-5 drop-shadow" />
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+        {activeColorName && (
+          <p className="text-sm text-muted-foreground mt-3 flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: activeColorHex }} />
+            {activeColorName}
+          </p>
+        )}
+      </div>
+
+      {/* Fine-tune the exact tone within the selected colour family */}
+      <div className="pt-4 border-t border-border">
+        <div className="flex items-baseline justify-between mb-1">
+          <Label className="text-sm font-medium text-foreground">Tono exacto</Label>
+          {customHex && (
+            <button
+              onClick={() => setCustomHex(null)}
+              className="text-xs text-primary hover:underline"
+            >
+              Volver al tono original
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          Cada color tiene variantes. Elija la que más le guste de la paleta, o marque el tono exacto con el selector.
+        </p>
+        <div className="flex items-center gap-3">
+          <label
+            className="relative shrink-0 w-11 h-11 rounded-xl overflow-hidden border border-border cursor-pointer hover:border-primary/40 transition-colors"
+            title="Elegir un tono exacto"
+          >
+            <span className="absolute inset-0" style={{ backgroundColor: activeColorHex }} />
+            <span className="absolute inset-0 flex items-center justify-center">
+              <Pipette className="w-4 h-4 text-white mix-blend-difference" />
+            </span>
+            <input
+              type="color"
+              value={activeColorHex}
+              onChange={e => setCustomHex(e.target.value)}
+              className="absolute inset-0 opacity-0 cursor-pointer"
+              aria-label="Selector de color personalizado"
+            />
+          </label>
+
+          <div className="grid grid-cols-7 gap-2 flex-1">
+            {TONE_STEPS.map(step => {
+              const hex = shadeHex(baseColor.hex, step);
+              const selected = customHex?.toLowerCase() === hex.toLowerCase();
+              return (
+                <button
+                  key={step}
+                  onClick={() => setCustomHex(hex)}
+                  title={hex.toUpperCase()}
+                  className={`relative aspect-square rounded-lg overflow-hidden transition-all hover:scale-105 ring-offset-2 ${
+                    selected ? 'ring-2 ring-primary' : 'ring-0'
+                  }`}
+                >
+                  <span className="absolute inset-0" style={{ backgroundColor: hex }} />
+                  {selected && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/20">
+                      <Check className="text-white w-3.5 h-3.5 drop-shadow" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="pt-4 border-t border-border">
+        <Label className="text-sm font-medium text-foreground mb-3 block">Tipo de Acabado</Label>
+        <div className="grid grid-cols-2 gap-3">
+          {FINISHES.filter(f => !f.material || f.material === materialId).map(f => (
+            <button
+              key={f.id}
+              onClick={() => setFinish(f.id)}
+              className={`p-3 text-center border rounded-lg font-medium text-sm transition-all ${
+                finish === f.id ? activeCard : idleCard
+              }`}
+            >
+              {f.name}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+
+  const renderDrinkTechnique = () => (
+    <div>
+      <Label className="text-sm font-medium mb-2 block">Técnica de grabado</Label>
+      {canEufy ? (
+        <>
+          <TechniqueSelector value={effectiveTechnique} onChange={setTechnique} />
+          {effectiveTechnique === "eufy" && (
+            <p className="text-xs text-muted-foreground mt-2">
+              La impresión UV a todo color se cotiza por WhatsApp según el diseño.
+            </p>
+          )}
+        </>
+      ) : (
+        <div className="flex items-start gap-2 p-3 border rounded-xl border-border bg-secondary/40">
+          <Zap className="w-4 h-4 mt-0.5 text-primary shrink-0" />
+          <div>
+            <p className="text-sm font-semibold">Grabado láser</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Este producto solo admite grabado láser monocromático. La impresión UV a color
+              está reservada al drinkware de acero con pintura electrostática.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderDrinkSummary = () => (
+    <>
+      {effectiveTechnique === "laser" && (
+        <div>
+          <Label className="text-sm font-medium mb-2 block">Plan de grabado</Label>
+          <div className={`grid gap-2 ${canUploadImage ? "grid-cols-1 min-[480px]:grid-cols-3" : "grid-cols-1"}`}>
+            {ENGRAVING_PLANS.filter(p => canUploadImage || !p.allowsImage).map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => handleSelectPlan(p.id)}
+                className={`flex flex-col items-center gap-0.5 rounded-lg border-2 px-2 py-2.5 text-center transition-colors ${
+                  plan === p.id
+                    ? "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30"
+                    : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
+                }`}
+              >
+                <span className="text-xs font-semibold leading-tight">{p.shortLabel}</span>
+                <span className="text-[11px] font-medium">{p.priceLabel}</span>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            {activePlan.title}
+            {activePlan.subtitle ? ` ${activePlan.subtitle}` : ""}
+          </p>
+        </div>
+      )}
+
+      <Button
+        onClick={handleOrder}
+        disabled={isOrdered}
+        size="lg"
+        className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+      >
+        {isOrdered ? "Abriendo WhatsApp..." : ctaLabel}
+      </Button>
+    </>
+  );
+
   return (
     <section className="py-20 md:py-28 px-6 bg-white border-b border-border">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-10">
+        {/* Header — compact on mobile (the long copy is desktop-only). */}
+        <div className="mb-6 md:mb-10">
           <p className="text-[#8B1A2F] text-[11px] font-semibold uppercase tracking-[0.3em] mb-4">
             El personalizador
           </p>
           <h2 className="font-serif font-light text-3xl md:text-5xl text-[#1A1614] mb-4 leading-[1.1]">
             Cree su pieza
           </h2>
-          <p className="text-[#5f574d] font-light text-lg max-w-xl leading-relaxed">
+          <p className="hidden md:block text-[#5f574d] font-light text-lg max-w-xl leading-relaxed">
             Elija el material, luego el producto, y refínelo a su gusto. El diseño final lo coordinamos
             con usted por WhatsApp.
           </p>
         </div>
 
+        {isMobile && <WizardProgress step={mobileStep} labels={wizardLabels} />}
+
+        {/* Desktop: material + product as the original card grids. On mobile these
+            are replaced by the Step 1 chip pickers below. */}
+        {!isMobile && (
+        <>
         {/* STEP 1 — MATERIAL */}
         <div className="mb-8">
           <Label className="text-sm font-medium text-foreground mb-3 block">1 · Tipo de material</Label>
@@ -1125,17 +1604,47 @@ export default function Customizer() {
             <p className="text-xs text-muted-foreground mt-3">{activeMProduct.desc}</p>
           )}
         </div>
+        </>
+        )}
 
+        {/* Mobile Step 1 — Producto: material + product as scrollable chips. */}
+        {isMobile && mobileStep === 1 && (
+          <motion.div key="wiz-1" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-8 pb-28">
+            <MaterialChips materials={MATERIALS} value={materialId} onChange={handleSelectMaterial} />
+            <ProductChips material={material} value={materialProductId} onChange={handleSelectMaterialProduct} />
+            {material.desc && <p className="text-xs text-muted-foreground">{material.desc}</p>}
+          </motion.div>
+        )}
+
+        {/* Mobile Step 2 — Estilo (drinkware only): colour + engraving technique. */}
+        {isMobile && isDrinkware && mobileStep === 2 && (
+          <motion.div key="wiz-2" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-6 pb-28">
+            {renderDrinkColor()}
+            <div className="pt-4 border-t border-border">
+              {renderDrinkTechnique()}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Design step — 3D preview + editor. Step 3 on drinkware, Step 2 otherwise. */}
+        {(!isMobile || mobileStep === designStepIndex) && (
+        <div className={isMobile ? "pb-28" : undefined}>
         {/* STEP 3 — CUSTOMIZE */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
           {/* PREVIEW AREA */}
           <div className="lg:col-span-4 relative">
-            <div className="sticky top-24 bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[360px] md:min-h-[520px]">
-              <div
-                className="absolute inset-0 opacity-[0.07] transition-colors duration-500 rounded-2xl"
-                style={{ backgroundColor: isDrinkware ? activeColorHex : "#C1121F" }}
-              />
+            <div className="sticky top-2 md:top-24 z-20 bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[300px] md:min-h-[520px]">
+              {isGlass ? (
+                // Glass needs an environment to reflect and a graded backdrop to
+                // read against — on flat white the transparency disappears.
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-slate-100 via-white to-slate-200" />
+              ) : (
+                <div
+                  className="absolute inset-0 opacity-[0.07] transition-colors duration-500 rounded-2xl"
+                  style={{ backgroundColor: isDrinkware ? activeColorHex : "#C1121F" }}
+                />
+              )}
 
               {isDrinkware ? (
                 <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
@@ -1158,6 +1667,7 @@ export default function Customizer() {
                       singleFace={singleFace}
                       showGuides={showGuides}
                       frontFaceU={FRONT_FACE.uCenter}
+                      glass={isGlass}
                     />
                   </div>
 
@@ -1181,8 +1691,17 @@ export default function Customizer() {
                       {product.singular}
                     </span>
                     <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: activeColorHex }} />
-                      {activeColorName}
+                      {isGlass ? (
+                        <>
+                          <span className="w-2 h-2 rounded-full inline-block border border-border bg-gradient-to-br from-white to-secondary" />
+                          Cristal transparente
+                        </>
+                      ) : (
+                        <>
+                          <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: activeColorHex }} />
+                          {activeColorName}
+                        </>
+                      )}
                     </span>
                     <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground">
                       {activeTechnique.name}
@@ -1287,10 +1806,14 @@ export default function Customizer() {
             {isDrinkware ? (
               <Tabs value={drinkTab} onValueChange={setDrinkTab} className="w-full">
                 <div className="border-b border-border px-4 sm:px-6 pt-2">
-                  <TabsList className="w-full flex bg-transparent h-12 p-0 gap-0 overflow-x-auto">
+                  <TabsList className="w-full flex bg-transparent h-12 p-0 gap-0 md:overflow-x-auto">
+                    {/* On mobile "Color" moves to the Estilo step, so the tab bar
+                        holds 2–3 segments that fit without a cut-off scroll. */}
+                    {!isMobile && (
                     <TabsTrigger value="color" className="flex-1 min-w-[76px] h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
                       <Palette className="w-4 h-4 mr-1.5 hidden sm:inline" /> Color
                     </TabsTrigger>
+                    )}
                     <TabsTrigger value="text" className="flex-1 min-w-[76px] h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
                       <Type className="w-4 h-4 mr-1.5 hidden sm:inline" /> Texto
                     </TabsTrigger>
@@ -1306,129 +1829,27 @@ export default function Customizer() {
                 </div>
 
                 <div className="p-6 min-h-[320px]">
-                  {/* COLOR TAB */}
+                  {/* COLOR TAB (desktop editor; on mobile colour lives in Step 2 "Estilo") */}
+                  {!isMobile && (
                   <TabsContent value="color" className="mt-0 space-y-6">
-                    <div>
-                      <Label className="text-sm font-medium text-foreground mb-3 block">Color Base</Label>
-                      <div className="grid grid-cols-6 md:grid-cols-6 gap-3">
-                        {COLORS.map(c => (
-                          <button
-                            key={c.id}
-                            onClick={() => handleSelectColor(c.id)}
-                            title={c.name}
-                            className={`group relative aspect-square rounded-full overflow-hidden transition-all hover:scale-105 focus:outline-none ring-offset-2 ${
-                              color === c.id && !customHex ? 'ring-2 ring-primary' : 'ring-0'
-                            }`}
-                          >
-                            <div className="absolute inset-0" style={{ backgroundColor: c.hex }} />
-                            {color === c.id && !customHex && (
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                                <Check className="text-white w-5 h-5 drop-shadow" />
-                              </div>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                      {activeColorName && (
-                        <p className="text-sm text-muted-foreground mt-3 flex items-center gap-2">
-                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: activeColorHex }} />
-                          {activeColorName}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Fine-tune the exact tone within the selected colour family */}
-                    <div className="pt-4 border-t border-border">
-                      <div className="flex items-baseline justify-between mb-1">
-                        <Label className="text-sm font-medium text-foreground">Tono exacto</Label>
-                        {customHex && (
-                          <button
-                            onClick={() => setCustomHex(null)}
-                            className="text-xs text-primary hover:underline"
-                          >
-                            Volver al tono original
-                          </button>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground mb-3">
-                        Cada color tiene variantes. Elija la que más le guste de la paleta, o marque el tono exacto con el selector.
-                      </p>
-                      <div className="flex items-center gap-3">
-                        <label
-                          className="relative shrink-0 w-11 h-11 rounded-xl overflow-hidden border border-border cursor-pointer hover:border-primary/40 transition-colors"
-                          title="Elegir un tono exacto"
-                        >
-                          <span className="absolute inset-0" style={{ backgroundColor: activeColorHex }} />
-                          <span className="absolute inset-0 flex items-center justify-center">
-                            <Pipette className="w-4 h-4 text-white mix-blend-difference" />
-                          </span>
-                          <input
-                            type="color"
-                            value={activeColorHex}
-                            onChange={e => setCustomHex(e.target.value)}
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                            aria-label="Selector de color personalizado"
-                          />
-                        </label>
-
-                        <div className="grid grid-cols-7 gap-2 flex-1">
-                          {TONE_STEPS.map(step => {
-                            const hex = shadeHex(baseColor.hex, step);
-                            const selected = customHex?.toLowerCase() === hex.toLowerCase();
-                            return (
-                              <button
-                                key={step}
-                                onClick={() => setCustomHex(hex)}
-                                title={hex.toUpperCase()}
-                                className={`relative aspect-square rounded-lg overflow-hidden transition-all hover:scale-105 ring-offset-2 ${
-                                  selected ? 'ring-2 ring-primary' : 'ring-0'
-                                }`}
-                              >
-                                <span className="absolute inset-0" style={{ backgroundColor: hex }} />
-                                {selected && (
-                                  <span className="absolute inset-0 flex items-center justify-center bg-black/20">
-                                    <Check className="text-white w-3.5 h-3.5 drop-shadow" />
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="pt-4 border-t border-border">
-                      <Label className="text-sm font-medium text-foreground mb-3 block">Tipo de Acabado</Label>
-                      <div className="grid grid-cols-2 gap-3">
-                        {FINISHES.filter(f => !f.material || f.material === materialId).map(f => (
-                          <button
-                            key={f.id}
-                            onClick={() => setFinish(f.id)}
-                            className={`p-3 text-center border rounded-lg font-medium text-sm transition-all ${
-                              finish === f.id ? activeCard : idleCard
-                            }`}
-                          >
-                            {f.name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    {renderDrinkColor()}
                   </TabsContent>
+                  )}
 
                   {/* TEXT TAB */}
                   <TabsContent value="text" className="mt-0 space-y-6">
-                    <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
-
+                    {/* BÁSICO — lo mínimo para un buen resultado: escribir y elegir fuente. */}
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-3 block">Texto Personalizado</Label>
-                      <Input
-                        value={text}
-                        onChange={(e) => setText(e.target.value.slice(0, 30))}
-                        placeholder="Tu nombre o texto"
-                        className="h-12 text-base text-center border-border focus-visible:ring-primary"
-                        maxLength={30}
-                      />
-                      <p className="text-xs text-muted-foreground mt-1.5 text-right">{text.length}/30 caracteres</p>
+                      <EngravingTextField text={text} onText={setText} layout={textPlacement.layout} />
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium text-foreground mb-3 block">Elija su tipografía</Label>
+                      <FontCarousel fonts={FONTS} value={font} onChange={setFont} sampleText={text} />
+                    </div>
+
+                    <div>
                       <TextSizeSlider
                         scale={textPlacement.scale}
                         onScale={(s) => applyTextPlacement({ ...textPlacement, scale: s })}
@@ -1441,55 +1862,36 @@ export default function Customizer() {
                       )}
                     </div>
 
-                    <div className="pt-4 border-t border-border">
-                      <div className="flex items-center justify-between mb-2">
-                        <Label className="text-sm font-medium text-foreground">Ubicación del Texto</Label>
-                        <AlignButtons value={textPlacement.align} onChange={(a) => applyTextPlacement({ ...textPlacement, align: a })} />
-                      </div>
-                      <p className="text-xs text-muted-foreground mb-3">
-                        {singleFace
-                          ? `Subí o bajá el texto con el control vertical, o arrastralo dentro del área grabable de la cara frontal del ${product.singular.toLowerCase()}.`
-                          : `Colocá el texto donde quieras alrededor del ${product.singular.toLowerCase()}.`}
-                      </p>
-                      <PlacementControls
-                        value={textPlacement}
-                        onChange={applyTextPlacement}
-                        singleFace={singleFace}
-                        frontExtents={textExtents}
-                        areaAspect={faceAreaAspect}
-                      />
-                    </div>
+                    {/* AVANZADO — oculto hasta que se necesite. Los defaults (una cara,
+                        centrado, automático, interlineado normal, horizontal) ya dan un
+                        resultado lindo sin abrir esto. */}
+                    <AdvancedOptions>
+                      <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
 
-                    <div className="pt-4 border-t border-border">
-                      <Label className="text-sm font-medium text-foreground mb-3 block">Elija su tipografía</Label>
-                      <div className="grid grid-cols-2 gap-2 max-h-[340px] overflow-y-auto pr-1">
-                        {FONTS.map((f, i) => (
-                          <button
-                            key={f.id}
-                            onClick={() => setFont(f.id)}
-                            className={`p-3 text-center border rounded-lg transition-all ${
-                              font === f.id
-                                ? 'border-primary bg-[#f5eaec] ring-1 ring-primary/30'
-                                : 'border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50'
-                            }`}
-                          >
-                            <span
-                              className={`block text-base mb-0.5 ${font === f.id ? 'text-primary' : 'text-foreground'}`}
-                              style={f.style}
-                            >
-                              {text || f.name}
-                            </span>
-                            <span className="block text-[10px] text-muted-foreground">{i + 1}. {f.name}</span>
-                          </button>
-                        ))}
+                      <div className="pt-4 border-t border-border">
+                        <TextDispositionToolbar placement={textPlacement} onChange={applyTextPlacement} />
                       </div>
-                    </div>
+
+                      <div className="pt-4 border-t border-border">
+                        <Label className="text-sm font-medium text-foreground mb-2 block">Ubicación del Texto</Label>
+                        <p className="text-xs text-muted-foreground mb-3">
+                          {singleFace
+                            ? `Subí o bajá el texto con el control vertical, o arrastralo dentro del área grabable de la cara frontal del ${product.singular.toLowerCase()}.`
+                            : `Colocá el texto donde quieras alrededor del ${product.singular.toLowerCase()}.`}
+                        </p>
+                        <PlacementControls
+                          value={textPlacement}
+                          onChange={applyTextPlacement}
+                          singleFace={singleFace}
+                          frontExtents={textExtents}
+                          areaAspect={faceAreaAspect}
+                        />
+                      </div>
+                    </AdvancedOptions>
                   </TabsContent>
 
                   {/* ICONS TAB */}
                   <TabsContent value="icons" className="mt-0 space-y-6">
-                    <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
-
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Elija un ícono</Label>
                       <p className="text-xs text-muted-foreground mb-3">
@@ -1498,31 +1900,32 @@ export default function Customizer() {
                       <IconPicker value={iconId} onChange={handlePickIcon} />
                     </div>
 
-                    {selectedIcon && (
-                      <div className="pt-4 border-t border-border">
-                        <Label className="text-sm font-medium text-foreground mb-1 block">Ubicación del Ícono</Label>
-                        <p className="text-xs text-muted-foreground mb-3">
-                          {singleFace
-                            ? `Ubicá el ícono dentro del área grabable de la cara frontal del ${product.singular.toLowerCase()}.`
-                            : `Movelo y giralo libremente sobre las caras del ${product.singular.toLowerCase()}.`}
-                        </p>
-                        <PlacementControls
-                          value={artPlacement}
-                          onChange={applyArtPlacement}
-                          withSize
-                          singleFace={singleFace}
-                          frontExtents={artExtents}
-                          areaAspect={faceAreaAspect}
-                        />
-                      </div>
-                    )}
+                    <AdvancedOptions>
+                      <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
+                      {selectedIcon && (
+                        <div className="pt-4 border-t border-border">
+                          <Label className="text-sm font-medium text-foreground mb-1 block">Ubicación del Ícono</Label>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            {singleFace
+                              ? `Ubicá el ícono dentro del área grabable de la cara frontal del ${product.singular.toLowerCase()}.`
+                              : `Movelo y giralo libremente sobre las caras del ${product.singular.toLowerCase()}.`}
+                          </p>
+                          <PlacementControls
+                            value={artPlacement}
+                            onChange={applyArtPlacement}
+                            withSize
+                            singleFace={singleFace}
+                            frontExtents={artExtents}
+                            areaAspect={faceAreaAspect}
+                          />
+                        </div>
+                      )}
+                    </AdvancedOptions>
                   </TabsContent>
 
                   {/* LOGO / PHOTO TAB — stainless steel only */}
                   {canUploadImage && (
                   <TabsContent value="media" className="mt-0 space-y-6">
-                    <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
-
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
                       <p className="text-xs text-muted-foreground mb-3">
@@ -1579,73 +1982,22 @@ export default function Customizer() {
                         </div>
                       )}
                     </div>
+
+                    <AdvancedOptions>
+                      <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
+                    </AdvancedOptions>
                   </TabsContent>
                   )}
                 </div>
 
-                {/* TECHNIQUE + PLAN + ORDER */}
+                {/* TECHNIQUE + PLAN + ORDER — desktop only; on mobile these are
+                    Step 2 (Estilo) and Step 4 (Resumen) of the wizard. */}
+                {!isMobile && (
                 <div className="px-6 pb-6 pt-4 border-t border-border space-y-4">
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Técnica de grabado</Label>
-                    {canEufy ? (
-                      <>
-                        <TechniqueSelector value={effectiveTechnique} onChange={setTechnique} />
-                        {effectiveTechnique === "eufy" && (
-                          <p className="text-xs text-muted-foreground mt-2">
-                            La impresión UV a todo color se cotiza por WhatsApp según el diseño.
-                          </p>
-                        )}
-                      </>
-                    ) : (
-                      <div className="flex items-start gap-2 p-3 border rounded-xl border-border bg-secondary/40">
-                        <Zap className="w-4 h-4 mt-0.5 text-primary shrink-0" />
-                        <div>
-                          <p className="text-sm font-semibold">Grabado láser</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Este producto solo admite grabado láser monocromático. La impresión UV a color
-                            está reservada al drinkware de acero con pintura electrostática.
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {effectiveTechnique === "laser" && (
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">Plan de grabado</Label>
-                      <div className={`grid gap-2 ${canUploadImage ? "grid-cols-1 min-[480px]:grid-cols-3" : "grid-cols-1"}`}>
-                        {ENGRAVING_PLANS.filter(p => canUploadImage || !p.allowsImage).map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => handleSelectPlan(p.id)}
-                            className={`flex flex-col items-center gap-0.5 rounded-lg border-2 px-2 py-2.5 text-center transition-colors ${
-                              plan === p.id
-                                ? "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30"
-                                : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
-                            }`}
-                          >
-                            <span className="text-xs font-semibold leading-tight">{p.shortLabel}</span>
-                            <span className="text-[11px] font-medium">{p.priceLabel}</span>
-                          </button>
-                        ))}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {activePlan.title}
-                        {activePlan.subtitle ? ` ${activePlan.subtitle}` : ""}
-                      </p>
-                    </div>
-                  )}
-
-                  <Button
-                    onClick={handleOrder}
-                    disabled={isOrdered}
-                    size="lg"
-                    className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-                  >
-                    {isOrdered ? "Abriendo WhatsApp..." : ctaLabel}
-                  </Button>
+                  {renderDrinkTechnique()}
+                  {renderDrinkSummary()}
                 </div>
+                )}
               </Tabs>
             ) : is3DObject && activeObject ? (
               /* MODELLED BLANK — laser-only personalization (wood, leather, acrylic, plastic, bare steel, pens) */
@@ -1753,57 +2105,36 @@ export default function Customizer() {
 
                   {/* TEXT TAB */}
                   <TabsContent value="text" className="mt-0 space-y-6">
+                    {/* BÁSICO */}
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-3 block">Texto Personalizado</Label>
-                      <Input
-                        value={text}
-                        onChange={(e) => setText(e.target.value.slice(0, 30))}
-                        placeholder="Tu nombre o texto"
-                        className="h-12 text-base text-center border-border focus-visible:ring-primary"
-                        maxLength={30}
-                      />
-                      <p className="text-xs text-muted-foreground mt-1.5 text-right">{text.length}/30 caracteres</p>
+                      <EngravingTextField text={text} onText={setText} layout={textPlacement.layout} />
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium text-foreground mb-3 block">Elija su tipografía</Label>
+                      <FontCarousel fonts={FONTS} value={font} onChange={setFont} sampleText={text} />
+                    </div>
+
+                    <div>
                       <TextSizeSlider
                         scale={textPlacement.scale}
                         onScale={(s) => setTextPlacement(p => ({ ...p, scale: s }))}
                       />
                     </div>
 
-                    <div className="pt-4 border-t border-border">
-                      <div className="flex items-center justify-between mb-2">
-                        <Label className="text-sm font-medium text-foreground">Ubicación del Texto</Label>
-                        <AlignButtons value={textPlacement.align} onChange={(a) => setTextPlacement(p => ({ ...p, align: a }))} />
-                      </div>
-                      <p className="text-xs text-muted-foreground mb-3">
-                        Colocá el texto donde quieras sobre la {activeObject.singular.toLowerCase()}.
-                      </p>
-                      <PlacementControls value={textPlacement} onChange={setTextPlacement} flat />
-                    </div>
+                    {/* AVANZADO */}
+                    <AdvancedOptions>
+                      <TextDispositionToolbar placement={textPlacement} onChange={setTextPlacement} />
 
-                    <div className="pt-4 border-t border-border">
-                      <Label className="text-sm font-medium text-foreground mb-3 block">Elija su tipografía</Label>
-                      <div className="grid grid-cols-2 gap-2 max-h-[340px] overflow-y-auto pr-1">
-                        {FONTS.map((f, i) => (
-                          <button
-                            key={f.id}
-                            onClick={() => setFont(f.id)}
-                            className={`p-3 text-center border rounded-lg transition-all ${
-                              font === f.id
-                                ? 'border-primary bg-[#f5eaec] ring-1 ring-primary/30'
-                                : 'border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50'
-                            }`}
-                          >
-                            <span
-                              className={`block text-base mb-0.5 ${font === f.id ? 'text-primary' : 'text-foreground'}`}
-                              style={f.style}
-                            >
-                              {text || f.name}
-                            </span>
-                            <span className="block text-[10px] text-muted-foreground">{i + 1}. {f.name}</span>
-                          </button>
-                        ))}
+                      <div className="pt-4 border-t border-border">
+                        <Label className="text-sm font-medium text-foreground mb-2 block">Ubicación del Texto</Label>
+                        <p className="text-xs text-muted-foreground mb-3">
+                          Colocá el texto donde quieras sobre la {activeObject.singular.toLowerCase()}.
+                        </p>
+                        <PlacementControls value={textPlacement} onChange={setTextPlacement} flat />
                       </div>
-                    </div>
+                    </AdvancedOptions>
                   </TabsContent>
 
                   {/* ICONS TAB */}
@@ -1995,6 +2326,28 @@ export default function Customizer() {
             )}
           </div>
         </div>
+        </div>
+        )}
+
+        {/* Mobile Step 4 — Resumen (drinkware only): inferred plan + price + WhatsApp. */}
+        {isMobile && isDrinkware && mobileStep === 4 && (
+          <motion.div key="wiz-4" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-4 pb-28">
+            <p className="text-sm text-muted-foreground">
+              Plan sugerido según tu diseño. Podés cambiarlo si querés.
+            </p>
+            {renderDrinkSummary()}
+          </motion.div>
+        )}
+
+        {isMobile && (
+          <WizardNav
+            step={mobileStep}
+            total={wizardLabels.length}
+            onBack={() => setMobileStep(s => Math.max(1, s - 1))}
+            onNext={() => setMobileStep(s => Math.min(wizardLabels.length, s + 1))}
+            nextLabel={mobileStep === designStepIndex ? "Continuar" : mobileStep === 1 ? "Diseñar" : "Siguiente"}
+          />
+        )}
 
         {/* Personalizar algo más — emphasized invite below the customizer */}
         <div className="mt-16 md:mt-24">

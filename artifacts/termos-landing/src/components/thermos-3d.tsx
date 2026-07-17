@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { getProduct, getSize, resampledProfile, type ProductDef } from "@/lib/products";
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
-import { makeBodyMaps, type EngraveStyle } from "@/lib/engraving-maps";
+import { makeBodyMaps, makeGlassEngraving, type EngraveStyle } from "@/lib/engraving-maps";
 import { FRONT_FACE, frontAreaBounds } from "@/lib/face-area";
 import { layoutText, fillLinesAligned, measureLinesWidth, LINE_HEIGHT } from "@/lib/engraving-text";
 
@@ -42,6 +42,8 @@ interface Thermos3DProps {
   showGuides?: boolean;
   /** Which u faces the camera when single-face is entered. Defaults to config. */
   frontFaceU?: number;
+  /** Render the body as transparent glass (cristal) with a sandblasted engraving. */
+  glass?: boolean;
 }
 
 /** Everything the meshes and the camera rig need, derived from the product profile. */
@@ -224,14 +226,14 @@ function FrontFaceGuide({ sil }: { sil: Silhouette }) {
 
 function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
-  textPlacement, artPlacement, colorPrint, engraveStyle, singleFace, showGuides, frontFaceU,
+  textPlacement, artPlacement, colorPrint, engraveStyle, singleFace, showGuides, frontFaceU, glass,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
   customImageUrl: string | null; imageSize: "none" | "small" | "large";
   textPlacement: Placement; artPlacement: Placement; colorPrint: boolean;
   engraveStyle: EngraveStyle;
-  singleFace: boolean; showGuides: boolean; frontFaceU: number;
+  singleFace: boolean; showGuides: boolean; frontFaceU: number; glass: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
@@ -362,19 +364,40 @@ function ThermosMesh({
   const dTextPlacement = useDeferredValue(textPlacement);
   const dArtPlacement = useDeferredValue(artPlacement);
 
+  // Steel/leather/wood body maps — skipped entirely for glass, which paints no
+  // colour/roughness/metalness maps onto the clear body.
   const maps = useMemo(
-    () => makeBodyMaps({
+    () => glass ? null : makeBodyMaps({
       product, colorHex, finish: matProps, isGradientFinish: finish === "gradient",
       text: dText, textPlacement: dTextPlacement, fontFamily, artMask, imageSize, artPlacement: dArtPlacement,
       anisotropy: maxAnisotropy, colorPrint, artImage: customImageEl, engraveStyle, singleFace,
     }),
     // fontReady triggers re-creation once the font is actually loaded
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [product, colorHex, matProps, finish, dText, dTextPlacement, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, customImageEl, engraveStyle, singleFace]
+    [glass, product, colorHex, matProps, finish, dText, dTextPlacement, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, customImageEl, engraveStyle, singleFace]
   );
 
   // Four textures per rebuild, now coalesced to the settled input via useDeferredValue.
-  useEffect(() => () => maps.dispose(), [maps]);
+  useEffect(() => () => maps?.dispose(), [maps]);
+
+  // Glass frost coverage — the sandblasted mark, used as alpha/colour on the
+  // frosted overlay mesh. Only built for cristal pieces.
+  const glassFrost = useMemo(
+    () => glass ? makeGlassEngraving({
+      product, text: dText, textPlacement: dTextPlacement, fontFamily,
+      artMask, imageSize, artPlacement: dArtPlacement, singleFace, anisotropy: maxAnisotropy,
+    }) : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [glass, product, dText, dTextPlacement, fontFamily, fontReady, artMask, imageSize, dArtPlacement, singleFace, maxAnisotropy]
+  );
+  useEffect(() => () => glassFrost?.dispose(), [glassFrost]);
+
+  // transmission (real refraction) is heavy; on phones fall back to a cheaper
+  // transparent+reflection glass so the preview stays smooth.
+  const lowPerf = useMemo(() => {
+    try { return typeof matchMedia !== "undefined" && matchMedia("(max-width: 768px)").matches; }
+    catch { return false; }
+  }, []);
 
   // Pointer drag handlers — both axes
   useEffect(() => {
@@ -467,27 +490,72 @@ function ThermosMesh({
 
   return (
     <group ref={groupRef}>
-      {/* Main body. The maps carry the colour and the finish; leaving `color`
-          white keeps the exposed steel steel-coloured instead of tinting it. */}
-      <mesh geometry={bodyGeo} castShadow receiveShadow>
-        {/* Keyed on finish: three only recompiles a shader when material.version
-            changes, so toggling clearcoat on a live material never lights up the
-            USE_CLEARCOAT define. Remounting sidesteps that. */}
-        <meshPhysicalMaterial
-          key={finish}
-          map={maps.map}
-          roughnessMap={maps.roughnessMap}
-          roughness={1}
-          metalnessMap={maps.metalnessMap}
-          metalness={1}
-          bumpMap={maps.grooveMap}
-          bumpScale={0.42}
-          clearcoatMap={maps.grooveMap}
-          clearcoat={matProps.clearcoat}
-          clearcoatRoughness={matProps.clearcoatRoughness}
-          envMapIntensity={finish === "metallic" ? 2.0 : finish === "glossy" ? 1.8 : 1.4}
-        />
-      </mesh>
+      {glass ? (
+        <>
+          {/* Clear glass body — real refraction via transmission (lite fallback
+              on phones uses plain transparency + reflections instead). */}
+          <mesh geometry={bodyGeo} castShadow receiveShadow>
+            <meshPhysicalMaterial
+              key={lowPerf ? "glass-lite" : "glass"}
+              color="#ffffff"
+              transmission={lowPerf ? 0 : 1}
+              transparent
+              opacity={lowPerf ? 0.28 : 1}
+              roughness={0.05}
+              metalness={0}
+              ior={1.5}
+              thickness={lowPerf ? 0 : 0.35}
+              clearcoat={1}
+              clearcoatRoughness={0.05}
+              envMapIntensity={2.2}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+
+          {/* Sandblasted engraving: a frosted, light-diffusing white that only
+              shows where the design's coverage mask is opaque. Slightly scaled
+              out to sit on the glass surface without z-fighting; FrontSide so the
+              back-face mark doesn't muddy the read when the glass is rotated. */}
+          {glassFrost && (
+            <mesh geometry={bodyGeo} scale={1.004}>
+              <meshPhysicalMaterial
+                color="#ffffff"
+                map={glassFrost.frostMap}
+                alphaMap={glassFrost.frostMap}
+                transparent
+                opacity={0.72}
+                roughness={0.92}
+                metalness={0}
+                envMapIntensity={0.8}
+                depthWrite={false}
+                side={THREE.FrontSide}
+              />
+            </mesh>
+          )}
+        </>
+      ) : (
+        /* Main body. The maps carry the colour and the finish; leaving `color`
+           white keeps the exposed steel steel-coloured instead of tinting it. */
+        <mesh geometry={bodyGeo} castShadow receiveShadow>
+          {/* Keyed on finish: three only recompiles a shader when material.version
+              changes, so toggling clearcoat on a live material never lights up the
+              USE_CLEARCOAT define. Remounting sidesteps that. */}
+          <meshPhysicalMaterial
+            key={finish}
+            map={maps!.map}
+            roughnessMap={maps!.roughnessMap}
+            roughness={1}
+            metalnessMap={maps!.metalnessMap}
+            metalness={1}
+            bumpMap={maps!.grooveMap}
+            bumpScale={0.42}
+            clearcoatMap={maps!.grooveMap}
+            clearcoat={matProps.clearcoat}
+            clearcoatRoughness={matProps.clearcoatRoughness}
+            envMapIntensity={finish === "metallic" ? 2.0 : finish === "glossy" ? 1.8 : 1.4}
+          />
+        </mesh>
+      )}
 
       {/* Hoppie gets a bespoke detailed flip-straw lid; everything else uses the
           generic cap + handle below. */}
@@ -832,6 +900,7 @@ function ThreeCanvas({ product, sil, ...props }: Thermos3DProps & { product: Pro
           singleFace={props.singleFace ?? false}
           showGuides={props.showGuides ?? true}
           frontFaceU={props.frontFaceU ?? FRONT_FACE.uCenter}
+          glass={props.glass ?? false}
         />
 
         {/* Single, stable ground shadow. Re-renders every frame so it tracks the

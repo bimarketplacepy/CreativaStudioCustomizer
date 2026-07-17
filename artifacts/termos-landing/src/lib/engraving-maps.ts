@@ -388,31 +388,7 @@ export function makeBodyMaps({
 
   // ── Coverage mask for the laser burn ───────────────────────────────────────
   const [mark, mk] = newCanvas();
-
-  if (artMask && imageSize !== "none") {
-    const maxDim = W * (imageSize === "large" ? 0.34 : 0.19) * artPlacement.scale;
-    const ratio = Math.min(maxDim / artMask.width, maxDim / artMask.height);
-    const dw = artMask.width * ratio;
-    const dh = artMask.height * ratio;
-    drawPlaced(mk, m, W, artPlacement, dw / 2, dh / 2, () => {
-      mk.drawImage(artMask, -dw / 2, -dh / 2, dw, dh);
-    }, singleFace);
-  }
-
-  if (text) {
-    const L = computeFaceTextLayout(
-      product,
-      { text, fontFamily, colorPrint: false, orientation: textPlacement.orientation, align: textPlacement.align, layout: textPlacement.layout, lineHeight: textPlacement.lineHeight },
-      textPlacement.scale,
-      singleFace,
-    );
-    drawPlaced(mk, m, W, textPlacement, L.blockW / 2, L.blockH / 2, () => {
-      mk.font = makeTextFont(L.fontPx, fontFamily);
-      mk.textBaseline = "middle";
-      mk.fillStyle = "#ffffff";
-      fillLinesAligned(mk, L.lines, L.lineHeight, L.blockW, L.align);
-    }, singleFace);
-  }
+  drawEngravingMark(mk, m, W, { product, text, textPlacement, fontFamily, artMask, imageSize, artPlacement, singleFace });
 
   // The chipped/charred rim first, then the mark the beam laid bare on top of it.
   const app = ENGRAVE_APPEARANCE[engraveStyle];
@@ -541,4 +517,104 @@ export function markHalfExtents(
     halfU: horizHalfPx / W,
     halfV: vertHalfPx / (m.botPx - m.topPx),
   };
+}
+
+// ── Glass (cristal) engraving ────────────────────────────────────────────────
+
+/**
+ * Draw the engraving coverage (uploaded art + text) as opaque white on `mk`'s
+ * otherwise-transparent canvas. This is the raw *shape* of the mark, shared by
+ * both the steel laser burn (makeBodyMaps) and the glass frost below, so text
+ * fitting / placement stay identical across materials.
+ */
+function drawEngravingMark(
+  mk: CanvasRenderingContext2D,
+  m: BandMetrics,
+  W: number,
+  opts: {
+    product: ProductDef;
+    text: string;
+    textPlacement: Placement;
+    fontFamily: string;
+    artMask?: HTMLCanvasElement | null;
+    imageSize?: "none" | "small" | "large";
+    artPlacement?: Placement;
+    singleFace?: boolean;
+  },
+) {
+  const {
+    product, text, textPlacement, fontFamily,
+    artMask = null, imageSize = "none", artPlacement = DEFAULT_ART_PLACEMENT, singleFace = false,
+  } = opts;
+
+  if (artMask && imageSize !== "none") {
+    const maxDim = W * (imageSize === "large" ? 0.34 : 0.19) * artPlacement.scale;
+    const ratio = Math.min(maxDim / artMask.width, maxDim / artMask.height);
+    const dw = artMask.width * ratio;
+    const dh = artMask.height * ratio;
+    drawPlaced(mk, m, W, artPlacement, dw / 2, dh / 2, () => {
+      mk.drawImage(artMask, -dw / 2, -dh / 2, dw, dh);
+    }, singleFace);
+  }
+
+  if (text) {
+    const L = computeFaceTextLayout(
+      product,
+      { text, fontFamily, colorPrint: false, orientation: textPlacement.orientation, align: textPlacement.align, layout: textPlacement.layout, lineHeight: textPlacement.lineHeight },
+      textPlacement.scale,
+      singleFace,
+    );
+    drawPlaced(mk, m, W, textPlacement, L.blockW / 2, L.blockH / 2, () => {
+      mk.font = makeTextFont(L.fontPx, fontFamily);
+      mk.textBaseline = "middle";
+      mk.fillStyle = "#ffffff";
+      fillLinesAligned(mk, L.lines, L.lineHeight, L.blockW, L.align);
+    }, singleFace);
+  }
+}
+
+export interface GlassMaps {
+  /**
+   * White-on-transparent coverage of the design. On the frosted overlay mesh it
+   * drives both the colour (milky white) and the alpha, so the sandblasted mark
+   * only shows where text/art actually is.
+   */
+  frostMap: THREE.CanvasTexture;
+  dispose: () => void;
+}
+
+/**
+ * Engraving texture for a glass (cristal) piece. Unlike steel — which reveals
+ * bare metal — glass is sandblasted: the mark is a frosted, light-diffusing
+ * white. We only need the coverage shape; the frosted look itself comes from the
+ * overlay material in the 3D component (high roughness, translucent white).
+ */
+export function makeGlassEngraving(opts: {
+  product: ProductDef;
+  text: string;
+  textPlacement: Placement;
+  fontFamily?: string;
+  artMask?: HTMLCanvasElement | null;
+  imageSize?: "none" | "small" | "large";
+  artPlacement?: Placement;
+  singleFace?: boolean;
+  anisotropy?: number;
+}): GlassMaps {
+  const W = TEXTURE_W, H = TEXTURE_H;
+  const m = bandMetrics(opts.product, W, H);
+  const [mark, mk] = newCanvas();
+  drawEngravingMark(mk, m, W, {
+    product: opts.product,
+    text: opts.text,
+    textPlacement: opts.textPlacement,
+    fontFamily: opts.fontFamily ?? "Inter, system-ui, sans-serif",
+    artMask: opts.artMask,
+    imageSize: opts.imageSize,
+    artPlacement: opts.artPlacement,
+    singleFace: opts.singleFace,
+  });
+  const frostMap = new THREE.CanvasTexture(mark);
+  frostMap.colorSpace = THREE.SRGBColorSpace;
+  frostMap.anisotropy = opts.anisotropy ?? 1;
+  return { frostMap, dispose: () => frostMap.dispose() };
 }

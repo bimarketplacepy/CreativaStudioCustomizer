@@ -18,7 +18,7 @@ export default function WhatsAppButton() {
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Escríbanos por WhatsApp"
-      className="group fixed bottom-5 right-5 z-50 flex items-center gap-2.5 rounded-full bg-[#1A1614] pl-4 pr-4 py-3.5 text-white ring-1 ring-white/10 shadow-lg shadow-black/25 transition-all hover:bg-[#8B1A2F] hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#8B1A2F]"
+      className="wa-fab group fixed bottom-5 right-5 z-50 flex items-center gap-2.5 rounded-full bg-[#1A1614] pl-4 pr-4 py-3.5 text-white ring-1 ring-white/10 shadow-lg shadow-black/25 transition-all hover:bg-[#8B1A2F] hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#8B1A2F]"
     >
       <WhatsAppGlyph className="w-[22px] h-[22px] shrink-0" />
       <span className="hidden sm:block max-w-0 overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-wide transition-[max-width] duration-300 group-hover:max-w-[10rem]">

@@ -405,6 +405,15 @@
   }
 }
 
+/* The floating WhatsApp CTA is hidden while the mobile customizer is on its
+   design step, so it never covers the editor controls. The customizer toggles
+   `wa-fab-hidden` on <body>. */
+body.wa-fab-hidden .wa-fab {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* ---------------------------------------------------------------------------
    Hero animations (CSS-only)
 
