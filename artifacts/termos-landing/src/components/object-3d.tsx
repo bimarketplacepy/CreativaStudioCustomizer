@@ -456,7 +456,8 @@ function ThreeCanvas({ obj, onContextLost, onContextRestored, ...props }: Object
   return (
     <Canvas
       dpr={[1, 1.5]}
-      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+      // preserveDrawingBuffer: keep the last frame readable for PNG capture.
+      gl={{ antialias: true, alpha: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
       onCreated={({ gl, invalidate }) => {
         const canvas = gl.domElement;
         canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); onContextLost?.(); }, false);

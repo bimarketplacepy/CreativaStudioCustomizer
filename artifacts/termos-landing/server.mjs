@@ -20,6 +20,7 @@ import { createReadStream } from "node:fs";
 import { join, normalize, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync, brotliCompressSync, constants as zlibConstants } from "node:zlib";
+import { handleUploadRequest, handleServeRequest } from "./upload-store.mjs";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = join(__dirname, "dist", "public");
@@ -167,14 +168,25 @@ async function resolveFile(pathname) {
 
 async function serve(req, res) {
   const method = req.method || "GET";
-  if (method !== "GET" && method !== "HEAD") {
-    res.writeHead(405, { Allow: "GET, HEAD" });
-    res.end("Method Not Allowed");
-    return;
-  }
 
   const url = new URL(req.url || "/", "http://localhost");
   let pathname = url.pathname;
+
+  // Design-preview upload API (used by the customizer to attach a PNG to the
+  // WhatsApp message). POST stores the image, GET /u/<id>.png serves it back.
+  if (method === "POST" && pathname === "/api/design-preview") {
+    await handleUploadRequest(req, res);
+    return;
+  }
+  if ((method === "GET" || method === "HEAD") && handleServeRequest(pathname, res)) {
+    return;
+  }
+
+  if (method !== "GET" && method !== "HEAD") {
+    res.writeHead(405, { Allow: "GET, HEAD, POST" });
+    res.end("Method Not Allowed");
+    return;
+  }
 
   // Generated text docs (robots/sitemap/llms) served as plain text/XML.
   const doc = dynamicDoc(pathname, req);

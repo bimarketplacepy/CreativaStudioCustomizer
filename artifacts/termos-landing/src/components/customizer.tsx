@@ -37,6 +37,8 @@ import {
 } from "@/lib/materials";
 import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
 import { whatsappUrl } from "@/lib/contact";
+import { shareDesignToWhatsApp, downloadDataUrl } from "@/lib/share";
+import { Download } from "lucide-react";
 
 /** Text scale bounds. Capped low so a name never blows out past the band. */
 const TEXT_SCALE_MIN = 0.3;
@@ -1122,6 +1124,11 @@ export default function Customizer() {
   const [font, setFont] = useState(FONTS[0].id);
   const activeFont = FONTS.find(f => f.id === font) || FONTS[0];
   const [isOrdered, setIsOrdered] = useState(false);
+  // PNG snapshot of the finished 3D piece, shown in the Step 4 summary and sent
+  // with the WhatsApp message. Captured from the live canvas while it's mounted.
+  const [previewImg, setPreviewImg] = useState<string | null>(null);
+  const previewImgRef = useRef<string | null>(null);
+  const previewPanelRef = useRef<HTMLDivElement>(null);
   const [plan, setPlan] = useState<EngravingPlanId>(ENGRAVING_PLANS[0].id);
   const [customImage, setCustomImage] = useState<ProcessedImage | null>(null);
   const [textPlacement, setTextPlacement] = useState<Placement>(DEFAULT_TEXT_PLACEMENT);
@@ -1193,8 +1200,9 @@ export default function Customizer() {
     if (!planTouched && isDrinkware && plan !== inferredPlanId) setPlan(inferredPlanId);
   }, [inferredPlanId, planTouched, isDrinkware, plan]);
 
-  // Image upload is stainless-steel only; within drinkware it's gated by the plan.
-  const allowsImage = canUploadImage && (isDrinkware ? activePlan.allowsImage : true);
+  // Image upload is stainless-steel drinkware only. (Ya no lo condiciona el plan:
+  // los planes/precios se quitaron del personalizador.)
+  const allowsImage = canUploadImage;
   // Custom art shown on the 3D — a selected icon takes priority over an upload.
   const artUrl = selectedIcon
     ? iconToDataUrl(selectedIcon)
@@ -1276,6 +1284,35 @@ export default function Customizer() {
     if (singleFace) setArtPlacement(p => clampArtP(p));
   }, [singleFace, clampArtP]);
 
+  // ── Preview capture ─────────────────────────────────────────────────────────
+  // Grab a PNG of the live 3D canvas (preserveDrawingBuffer keeps the last frame
+  // readable). Returns null if the canvas isn't mounted (e.g. mobile Step 4).
+  const capturePreview = React.useCallback((): string | null => {
+    const canvas = previewPanelRef.current?.querySelector("canvas");
+    if (!canvas) return null;
+    try {
+      const url = canvas.toDataURL("image/png");
+      return url.startsWith("data:image/png") ? url : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Refresh the stored snapshot ~500ms after the design settles, while the canvas
+  // is still on screen (design step / desktop). On mobile the canvas unmounts at
+  // Step 4, so this keeps the last good frame captured during Step 3.
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      const img = capturePreview();
+      if (img) { setPreviewImg(img); previewImgRef.current = img; }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [
+    capturePreview, isDrinkware, is3DObject, productId, size, activeColorHex,
+    finish, text, font, iconId, artUrl, textColor, effectiveTechnique, isGlass,
+    singleFace, textPlacement, artPlacement, mobileStep, isMobile,
+  ]);
+
   const handleSelectColor = (id: string) => {
     setColor(id);
     setCustomHex(null);
@@ -1337,8 +1374,8 @@ export default function Customizer() {
     if (img) { setIconId(null); setArtPlacement(p => ({ ...p, scale: 1 })); }
   };
 
-  /** Send the whole configuration to WhatsApp so the shop can quote it directly. */
-  const handleOrder = () => {
+  /** Build the WhatsApp message body describing the whole configuration. */
+  const buildOrderMessage = (): string => {
     const lines: string[] = [
       "¡Hola! ¿Cómo están? 😊 Estuve armando esto en el personalizador y me encantaría concretarlo:",
       "",
@@ -1380,10 +1417,21 @@ export default function Customizer() {
     }
 
     lines.push("", "¿Me confirman si está todo bien y cómo seguimos? ¡Muchas gracias!");
+    return lines.join("\n");
+  };
 
-    window.open(whatsappUrl(lines.join("\n")), "_blank", "noopener,noreferrer");
+  /** Capture the design, then send it to WhatsApp with the preview image. */
+  const handleOrder = async () => {
+    // Fresh capture if the canvas is on screen (desktop / design step); otherwise
+    // reuse the snapshot taken during Step 3 (mobile Step 4 has no live canvas).
+    const img = capturePreview() ?? previewImgRef.current;
+    if (img) { setPreviewImg(img); previewImgRef.current = img; }
     setIsOrdered(true);
-    setTimeout(() => setIsOrdered(false), 5000);
+    try {
+      await shareDesignToWhatsApp({ message: buildOrderMessage(), dataUrl: img });
+    } finally {
+      setTimeout(() => setIsOrdered(false), 5000);
+    }
   };
 
   // Precios viven únicamente en la sección "Tarifas"; el CTA del personalizador
@@ -1537,33 +1585,48 @@ export default function Customizer() {
     </div>
   );
 
+  // Paso 4 — Resumen: imagen del diseño + detalle legible + envío por WhatsApp.
+  // (Sin planes ni precios: eso vive en la sección "Tarifas".)
+  const drinkSummaryRows = (): [string, string][] => {
+    const rows: [string, string][] = [
+      ["Producto", `${product.singular} · ${activeSize.name}`],
+      ["Material", isGlass ? "Cristal transparente" : material.name],
+    ];
+    if (!isGlass) rows.push(["Color", activeColorName]);
+    rows.push(["Acabado", FINISHES.find(f => f.id === finish)?.name ?? "—"]);
+    rows.push(["Técnica", activeTechnique.name]);
+    if (isColorPrint) rows.push(["Color del texto/diseño", textColor.toUpperCase()]);
+    rows.push(["Texto", text ? `"${text}" · ${activeFont.name}` : "Sin texto"]);
+    if (selectedIcon) rows.push(["Ícono", selectedIcon.name]);
+    else if (customImage) rows.push(["Imagen", "Logo/foto adjunta"]);
+    rows.push(["Ubicación", singleFace ? "Cara frontal (área fija)" : "Libre (360°)"]);
+    return rows;
+  };
+
   const renderDrinkSummary = () => (
-    <>
-      {effectiveTechnique === "laser" && (
+    <div className="space-y-4">
+      {/* Imagen de vista previa del diseño final, capturada del 3D. */}
+      {previewImg && (
         <div>
-          <Label className="text-sm font-medium mb-2 block">Plan de grabado</Label>
-          <div className={`grid gap-2 ${canUploadImage ? "grid-cols-1 min-[480px]:grid-cols-3" : "grid-cols-1"}`}>
-            {ENGRAVING_PLANS.filter(p => canUploadImage || !p.allowsImage).map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => handleSelectPlan(p.id)}
-                className={`flex flex-col items-center gap-0.5 rounded-lg border-2 px-2 py-2.5 text-center transition-colors ${
-                  plan === p.id
-                    ? "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30"
-                    : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
-                }`}
-              >
-                <span className="text-xs font-semibold leading-tight">{p.shortLabel}</span>
-              </button>
-            ))}
+          <Label className="text-sm font-medium mb-2 block">Vista de tu diseño</Label>
+          <div className="rounded-xl border border-border bg-secondary/30 p-2 flex justify-center">
+            <img src={previewImg} alt="Vista del diseño final" className="max-h-64 w-auto object-contain" />
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            {activePlan.title}
-            {activePlan.subtitle ? ` ${activePlan.subtitle}` : ""}
-          </p>
         </div>
       )}
+
+      {/* Resumen legible de la personalización. */}
+      <div>
+        <Label className="text-sm font-medium mb-2 block">Resumen de tu personalización</Label>
+        <dl className="rounded-xl border border-border divide-y divide-border overflow-hidden text-sm bg-white">
+          {drinkSummaryRows().map(([k, v]) => (
+            <div key={k} className="flex items-baseline justify-between gap-3 px-3 py-2">
+              <dt className="text-muted-foreground shrink-0">{k}</dt>
+              <dd className="font-medium text-foreground text-right break-words">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
 
       <Button
         onClick={handleOrder}
@@ -1573,7 +1636,22 @@ export default function Customizer() {
       >
         {isOrdered ? "Abriendo WhatsApp..." : ctaLabel}
       </Button>
-    </>
+
+      {previewImg && (
+        <button
+          type="button"
+          onClick={() => downloadDataUrl(previewImg, "mi-diseno.png")}
+          className="w-full inline-flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+        >
+          <Download className="w-4 h-4" /> Descargar imagen
+        </button>
+      )}
+
+      <p className="text-xs text-muted-foreground text-center leading-relaxed">
+        Te abrimos WhatsApp con el resumen y la imagen de tu diseño. En computadora, si la imagen no se adjunta
+        sola, descargala y sumala al chat.
+      </p>
+    </div>
   );
 
   return (
@@ -1697,7 +1775,7 @@ export default function Customizer() {
               so the live 3D stays pinned at the top while the editor scrolls
               beneath it — same single canvas, no second WebGL context. */}
           <div className="w-full min-w-0 lg:col-span-4 relative max-lg:sticky max-lg:top-0 max-lg:z-30 lg:self-start">
-            <div className="lg:sticky lg:top-24 z-20 bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[280px] md:min-h-[520px] max-lg:shadow-lg max-lg:shadow-black/5">
+            <div ref={previewPanelRef} className="lg:sticky lg:top-24 z-20 bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[280px] md:min-h-[520px] max-lg:shadow-lg max-lg:shadow-black/5">
               {isGlass ? (
                 // Glass needs an environment to reflect and a graded backdrop to
                 // read against — on flat white the transparency disappears. A soft
@@ -2407,7 +2485,7 @@ export default function Customizer() {
         {isMobile && isDrinkware && mobileStep === 4 && (
           <motion.div key="wiz-4" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-4 pb-28">
             <p className="text-sm text-muted-foreground">
-              Plan sugerido según tu diseño. Podés cambiarlo si querés.
+              Revisá tu diseño y envialo por WhatsApp. Coordinamos los detalles al instante.
             </p>
             {renderDrinkSummary()}
           </motion.div>
@@ -2418,7 +2496,15 @@ export default function Customizer() {
             step={mobileStep}
             total={wizardLabels.length}
             onBack={() => setMobileStep(s => Math.max(1, s - 1))}
-            onNext={() => setMobileStep(s => Math.min(wizardLabels.length, s + 1))}
+            onNext={() => {
+              // Leaving the design step: snapshot the live canvas so Step 4 (which
+              // has no 3D canvas on mobile) can show and send the preview image.
+              if (mobileStep === designStepIndex) {
+                const img = capturePreview();
+                if (img) { setPreviewImg(img); previewImgRef.current = img; }
+              }
+              setMobileStep(s => Math.min(wizardLabels.length, s + 1));
+            }}
             nextLabel={mobileStep === designStepIndex ? "Continuar" : mobileStep === 1 ? "Diseñar" : "Siguiente"}
           />
         )}

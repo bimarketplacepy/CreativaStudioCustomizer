@@ -3,6 +3,8 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+// @ts-expect-error — plain .mjs helper shared with the production server.
+import { handleUploadRequest, handleServeRequest } from "./upload-store.mjs";
 
 const rawPort = process.env.PORT;
 const port = rawPort ? Number(rawPort) : 3000;
@@ -25,6 +27,32 @@ const basePath = process.env.BASE_PATH ?? "/";
  *
  * Only affects the production HTML transform; no effect on chunking/splitting.
  */
+/**
+ * Dev-server counterpart of the production `/api/design-preview` upload route
+ * (see upload-store.mjs). Lets the customizer store a PNG of the finished piece
+ * and serve it back at /u/<id>.png so it can go into the WhatsApp message while
+ * running `vite dev`.
+ */
+function designPreviewApiPlugin(): Plugin {
+  return {
+    name: "design-preview-api",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url || "/";
+        const pathname = url.split("?")[0];
+        if (req.method === "POST" && pathname === "/api/design-preview") {
+          handleUploadRequest(req, res);
+          return;
+        }
+        if ((req.method === "GET" || req.method === "HEAD") && handleServeRequest(pathname, res)) {
+          return;
+        }
+        next();
+      });
+    },
+  };
+}
+
 function asyncCssPlugin(): Plugin {
   return {
     name: "async-css",
@@ -49,6 +77,7 @@ export default defineConfig({
     tailwindcss(),
     runtimeErrorOverlay(),
     asyncCssPlugin(),
+    designPreviewApiPlugin(),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [

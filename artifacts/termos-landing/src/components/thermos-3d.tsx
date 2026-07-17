@@ -894,7 +894,9 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
       // Cap the pixel ratio so high-DPI phones don't render 3–4× the pixels of a
       // transmission/glass scene (keeps it smooth and eases GPU memory pressure).
       dpr={[1, 1.5]}
-      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+      // preserveDrawingBuffer keeps the last frame readable so we can capture a
+      // PNG of the finished piece (canvas.toDataURL) for the WhatsApp summary.
+      gl={{ antialias: true, alpha: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
       // preventDefault on context loss lets the browser fire `contextrestored`
       // and R3F rebuild the scene instead of leaving a black canvas. We surface a
       // placeholder while lost and force a re-render once the context is back.
