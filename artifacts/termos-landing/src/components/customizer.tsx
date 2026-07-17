@@ -1883,6 +1883,11 @@ export default function Customizer() {
 
                   {/* TEXT TAB */}
                   <TabsContent value="text" className="mt-0 space-y-5">
+                    {/* Modo de edición — decisión principal (dónde vive el diseño),
+                        global a Texto / Íconos / Imagen. Siempre visible: define
+                        cómo se coloca todo lo demás, así que no va oculto en avanzados. */}
+                    <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
+
                     {/* BÁSICO — lo mínimo para un buen resultado: escribir y elegir fuente. */}
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-3 block">Texto Personalizado</Label>
@@ -1917,22 +1922,22 @@ export default function Customizer() {
                         centrado, automático, interlineado normal, horizontal) ya dan un
                         resultado lindo sin abrir esto. */}
                     <AdvancedOptions>
-                      {/* Modo de edición — global, una sola vez (sólo en Texto). */}
-                      <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
-
-                      <div className="pt-4 border-t border-border">
+                      <div>
                         <TextDispositionToolbar placement={textPlacement} onChange={applyTextPlacement} />
                       </div>
 
-                      {/* En mobile la posición se controla arrastrando el texto sobre
-                          el 3D; el pad de ubicación queda sólo en desktop. */}
-                      {!isMobile && (
+                      {/* Ubicación + orientación — visible también en mobile: el pad
+                          responde a touch y la orientación (horizontal/vertical) sólo
+                          se controla acá. En mobile además se puede arrastrar el texto
+                          directo sobre el 3D. */}
                       <div className="pt-4 border-t border-border">
                         <Label className="text-sm font-medium text-foreground mb-2 block">Ubicación del Texto</Label>
                         <p className="text-xs text-muted-foreground mb-3">
-                          {singleFace
-                            ? `Subí o bajá el texto con el control vertical, o arrastralo dentro del área grabable de la cara frontal del ${product.singular.toLowerCase()}.`
-                            : `Colocá el texto donde quieras alrededor del ${product.singular.toLowerCase()}.`}
+                          {isMobile
+                            ? `Arrastrá el texto directamente sobre el ${product.singular.toLowerCase()} o usá los controles de abajo.`
+                            : singleFace
+                              ? `Subí o bajá el texto con el control vertical, o arrastralo dentro del área grabable de la cara frontal del ${product.singular.toLowerCase()}.`
+                              : `Colocá el texto donde quieras alrededor del ${product.singular.toLowerCase()}.`}
                         </p>
                         <PlacementControls
                           value={textPlacement}
@@ -1942,7 +1947,6 @@ export default function Customizer() {
                           areaAspect={faceAreaAspect}
                         />
                       </div>
-                      )}
                     </AdvancedOptions>
                   </TabsContent>
 
@@ -2180,7 +2184,6 @@ export default function Customizer() {
                     <AdvancedOptions>
                       <TextDispositionToolbar placement={textPlacement} onChange={setTextPlacement} />
 
-                      {!isMobile && (
                       <div className="pt-4 border-t border-border">
                         <Label className="text-sm font-medium text-foreground mb-2 block">Ubicación del Texto</Label>
                         <p className="text-xs text-muted-foreground mb-3">
@@ -2188,7 +2191,6 @@ export default function Customizer() {
                         </p>
                         <PlacementControls value={textPlacement} onChange={setTextPlacement} flat />
                       </div>
-                      )}
                     </AdvancedOptions>
                   </TabsContent>
 
