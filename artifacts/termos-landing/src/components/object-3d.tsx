@@ -449,14 +449,18 @@ function ObjectFallback({ obj, text }: { obj: ObjectDef; text: string }) {
   );
 }
 
-function ThreeCanvas({ obj, ...props }: Object3DProps & { obj: ObjectDef }) {
+function ThreeCanvas({ obj, onContextLost, onContextRestored, ...props }: Object3DProps & {
+  obj: ObjectDef; onContextLost?: () => void; onContextRestored?: () => void;
+}) {
   const { camY } = frame(obj);
   return (
     <Canvas
       dpr={[1, 1.5]}
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-      onCreated={({ gl }) => {
-        gl.domElement.addEventListener("webglcontextlost", (e) => e.preventDefault(), false);
+      onCreated={({ gl, invalidate }) => {
+        const canvas = gl.domElement;
+        canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); onContextLost?.(); }, false);
+        canvas.addEventListener("webglcontextrestored", () => { onContextRestored?.(); invalidate(); }, false);
       }}
       // touch-action none: a drag that starts on the product rotates it instead
       // of scrolling the page. To scroll, the finger must start outside the canvas.
@@ -499,11 +503,25 @@ function ThreeCanvas({ obj, ...props }: Object3DProps & { obj: ObjectDef }) {
 export default function Object3D(props: Object3DProps) {
   const obj = getObject(props.objectId);
   const [webgl] = useState(() => isWebGLAvailable());
+  const [contextLost, setContextLost] = useState(false);
   const fallback = <ObjectFallback obj={obj} text={props.text} />;
   if (!webgl) return fallback;
   return (
     <WebGLErrorBoundary fallback={fallback}>
-      <ThreeCanvas {...props} obj={obj} />
+      <div className="relative w-full h-full">
+        <ThreeCanvas
+          {...props}
+          obj={obj}
+          onContextLost={() => setContextLost(true)}
+          onContextRestored={() => setContextLost(false)}
+        />
+        {contextLost && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-secondary/40 backdrop-blur-sm rounded-2xl">
+            <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+            <p className="text-xs text-muted-foreground">Restaurando vista 3D…</p>
+          </div>
+        )}
+      </div>
     </WebGLErrorBoundary>
   );
 }

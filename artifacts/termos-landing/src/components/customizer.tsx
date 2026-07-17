@@ -119,6 +119,12 @@ function shadeHex(hex: string, amount: number): string {
   return `#${ch(16)}${ch(8)}${ch(0)}`;
 }
 
+/** Spanish article for a drinkware product name: "del termo", "de la copa". */
+const FEMININE_PRODUCTS = new Set(["copa", "guampa", "hoppie", "botella"]);
+function productArticle(singular: string): string {
+  return FEMININE_PRODUCTS.has(singular.toLowerCase()) ? "de la" : "del";
+}
+
 const FINISHES: { id: string; name: string; material?: MaterialId }[] = [
   { id: "matte", name: "Mate" },
   { id: "glossy", name: "Brillante" },
@@ -374,6 +380,7 @@ function PlacementControls({
   singleFace,
   frontExtents,
   areaAspect,
+  hideOrientation,
 }: {
   value: Placement;
   onChange: (next: Placement) => void;
@@ -386,6 +393,8 @@ function PlacementControls({
   frontExtents?: MarkHalfExtents;
   /** width/height of the editable rectangle, so the pad mirrors its real shape. */
   areaAspect?: number;
+  /** Hide the orientation toggle (it lives inside "Texto Personalizado" for text). */
+  hideOrientation?: boolean;
 }) {
   const padRef = useRef<HTMLDivElement>(null);
   const mode = useRef<null | "move" | "scale">(null);
@@ -560,7 +569,8 @@ function PlacementControls({
         </div>
       )}
 
-      {/* Orientation */}
+      {/* Orientation (hidden for text — it lives inside "Texto Personalizado") */}
+      {!hideOrientation && (
       <div>
         <Label className="text-xs text-muted-foreground mb-2 block">Orientación</Label>
         <div className="grid grid-cols-2 gap-2">
@@ -580,6 +590,7 @@ function PlacementControls({
           ))}
         </div>
       </div>
+      )}
 
       <p className="text-xs text-muted-foreground">
         {singleFace
@@ -905,6 +916,32 @@ function TextDispositionToolbar({ placement, onChange }: { placement: Placement;
           value={placement.lineHeight}
           onChange={(mul) => onChange({ ...placement, lineHeight: mul })}
         />
+      </div>
+    </div>
+  );
+}
+
+/** Orientation toggle (Horizontal / Vertical) — lives inside "Texto Personalizado". */
+function OrientationToggle({ value, onChange }: { value: Placement["orientation"]; onChange: (o: "horizontal" | "vertical") => void }) {
+  return (
+    <div>
+      <Label className="text-xs text-muted-foreground mb-2 block">Orientación</Label>
+      <div className="grid grid-cols-2 gap-2">
+        {(["horizontal", "vertical"] as const).map(o => (
+          <button
+            key={o}
+            type="button"
+            onClick={() => onChange(o)}
+            className={`flex items-center justify-center gap-2 p-2.5 border rounded-lg text-sm font-medium transition-all active:scale-[0.97] ${
+              (value ?? "horizontal") === o
+                ? "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30"
+                : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
+            }`}
+          >
+            {o === "horizontal" ? <MoveHorizontal className="w-4 h-4" /> : <MoveVertical className="w-4 h-4" />}
+            {o === "horizontal" ? "Horizontal" : "Vertical"}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -1239,15 +1276,6 @@ export default function Customizer() {
     if (singleFace) setArtPlacement(p => clampArtP(p));
   }, [singleFace, clampArtP]);
 
-  // Price shown on the CTA. Eufy Make and every non-drinkware product quote by chat.
-  const priceLabel = material.pens
-    ? activePen.priceLabel
-    : !isDrinkware
-      ? "A consultar"
-      : effectiveTechnique === "eufy"
-        ? "A consultar"
-        : activePlan.priceLabel;
-
   const handleSelectColor = (id: string) => {
     setColor(id);
     setCustomHex(null);
@@ -1318,7 +1346,7 @@ export default function Customizer() {
     ];
 
     if (material.pens) {
-      lines.push(`• Grabado de bolígrafos: ${activePen.label} — ${activePen.priceLabel}`);
+      lines.push(`• Grabado de bolígrafos: ${activePen.label}`);
       lines.push("• Técnica: Grabado láser");
       if (text) lines.push(`• Texto: "${text}" en ${activeFont.name}`);
       if (selectedIcon) lines.push(`• Ícono: ${selectedIcon.name}`);
@@ -1329,12 +1357,12 @@ export default function Customizer() {
       lines.push(text ? `• Texto: "${text}" en ${activeFont.name}, ${textPlacement.orientation}` : "• Sin texto");
       if (selectedIcon) lines.push(`• Ícono: ${selectedIcon.name}`);
       if (customImage) lines.push("• Imagen: (la envío en este chat)");
-      lines.push(`• Precio: ${priceLabel}`);
     } else if (isDrinkware) {
       lines.push(`• Producto: ${product.singular}`);
       lines.push(`• Color: ${activeColorName}`);
       lines.push(`• Acabado: ${FINISHES.find(f => f.id === finish)?.name}`);
       lines.push(`• Técnica: ${activeTechnique.name}`);
+      if (isColorPrint) lines.push(`• Color del texto/diseño: ${textColor.toUpperCase()}`);
       lines.push(text ? `• Texto: "${text}" en ${activeFont.name}, ${textPlacement.orientation}` : "• Sin texto");
       if (selectedIcon) lines.push(`• Ícono: ${selectedIcon.name}`);
       lines.push(
@@ -1343,14 +1371,12 @@ export default function Customizer() {
           : "• Sin imagen"
       );
       lines.push(`• Ubicación del diseño: ${singleFace ? "Cara frontal (área fija)" : "Libre (360°)"}`);
-      lines.push(`• Plan: ${activePlan.shortLabel} — ${priceLabel}`);
     } else {
       lines.push(`• Producto: ${activeMProduct?.name ?? "producto"}`);
       lines.push(`• Personalización: ${KINDS.find(k => k.id === simpleKind)?.name}`);
       if (text) lines.push(`• Texto: "${text}"`);
       if (selectedIcon) lines.push(`• Ícono: ${selectedIcon.name}`);
       if (customImage) lines.push("• Imagen: (la envío en este chat)");
-      lines.push(`• Precio: ${priceLabel}`);
     }
 
     lines.push("", "¿Me confirman si está todo bien y cómo seguimos? ¡Muchas gracias!");
@@ -1360,11 +1386,9 @@ export default function Customizer() {
     setTimeout(() => setIsOrdered(false), 5000);
   };
 
-  const ctaLabel = material.pens
-    ? `Pedir grabado — ${priceLabel}`
-    : isDrinkware
-      ? `Personalizar mi ${product.singular} — ${priceLabel}`
-      : `Pedir ${activeMProduct?.name ?? "producto"} — ${priceLabel}`;
+  // Precios viven únicamente en la sección "Tarifas"; el CTA del personalizador
+  // nunca muestra montos.
+  const ctaLabel = "Enviar mi diseño por WhatsApp";
 
   // Tabs shown in the modelled-blank panel: Color only if tintable, Imagen only
   // on stainless steel.
@@ -1394,7 +1418,9 @@ export default function Customizer() {
   ) : (
     <>
       <div>
-        <Label className="text-sm font-medium text-foreground mb-3 block">Color Base</Label>
+        <Label className="text-sm font-medium text-foreground mb-3 block">
+          Color base {productArticle(product.singular)} {product.singular.toLowerCase()}
+        </Label>
         <div className="grid grid-cols-6 md:grid-cols-6 gap-3">
           {COLORS.map(c => (
             <button
@@ -1529,7 +1555,6 @@ export default function Customizer() {
                 }`}
               >
                 <span className="text-xs font-semibold leading-tight">{p.shortLabel}</span>
-                <span className="text-[11px] font-medium">{p.priceLabel}</span>
               </button>
             ))}
           </div>
@@ -1653,13 +1678,11 @@ export default function Customizer() {
           </motion.div>
         )}
 
-        {/* Mobile Step 2 — Estilo (drinkware only): colour + engraving technique. */}
+        {/* Mobile Step 2 — Color base del producto (drinkware only). La técnica de
+            grabado vive ahora en el Paso 3, bajo "Texto Personalizado". */}
         {isMobile && isDrinkware && mobileStep === 2 && (
           <motion.div key="wiz-2" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-6 pb-28">
             {renderDrinkColor()}
-            <div className="pt-4 border-t border-border">
-              {renderDrinkTechnique()}
-            </div>
           </motion.div>
         )}
 
@@ -1777,9 +1800,6 @@ export default function Customizer() {
                     <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground flex items-center gap-1">
                       <Zap className="w-3 h-3" /> Grabado láser
                     </span>
-                    <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground">
-                      {priceLabel}
-                    </span>
                   </div>
                 </div>
               ) : (
@@ -1796,9 +1816,6 @@ export default function Customizer() {
                   <div className="flex flex-wrap gap-2 justify-center">
                     <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground">
                       {KINDS.find(k => k.id === simpleKind)?.name}
-                    </span>
-                    <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground">
-                      {priceLabel}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground max-w-xs">
@@ -1888,10 +1905,26 @@ export default function Customizer() {
                         cómo se coloca todo lo demás, así que no va oculto en avanzados. */}
                     <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
 
-                    {/* BÁSICO — lo mínimo para un buen resultado: escribir y elegir fuente. */}
-                    <div>
-                      <Label className="text-sm font-medium text-foreground mb-3 block">Texto Personalizado</Label>
-                      <EngravingTextField text={text} onText={setText} layout={textPlacement.layout} />
+                    {/* BÁSICO — escribir, elegir técnica de grabado y orientación. */}
+                    <div className="space-y-4">
+                      <div>
+                        <Label className="text-sm font-medium text-foreground mb-3 block">Texto Personalizado</Label>
+                        <EngravingTextField text={text} onText={setText} layout={textPlacement.layout} />
+                      </div>
+
+                      {/* Técnica de grabado — global (afecta texto, ícono e imagen).
+                          En impresión UV aparece el color del texto/diseño; en láser
+                          el diseño queda monocromático. */}
+                      {renderDrinkTechnique()}
+                      {isColorPrint && (
+                        <TextColorPicker value={textColor} onChange={setTextColor} />
+                      )}
+
+                      {/* Orientación del texto (al final de los controles de Texto). */}
+                      <OrientationToggle
+                        value={textPlacement.orientation}
+                        onChange={(o) => applyTextPlacement({ ...textPlacement, orientation: o })}
+                      />
                     </div>
 
                     <div>
@@ -1911,12 +1944,6 @@ export default function Customizer() {
                         </p>
                       )}
                     </div>
-
-                    {/* Color del texto — sólo con impresión UV a color (sobre grabado
-                        láser el texto es monocromático). */}
-                    {isColorPrint && !!text && (
-                      <TextColorPicker value={textColor} onChange={setTextColor} />
-                    )}
 
                     {/* AVANZADO — oculto hasta que se necesite. Los defaults (una cara,
                         centrado, automático, interlineado normal, horizontal) ya dan un
@@ -1945,6 +1972,7 @@ export default function Customizer() {
                           singleFace={singleFace}
                           frontExtents={textExtents}
                           areaAspect={faceAreaAspect}
+                          hideOrientation
                         />
                       </div>
                     </AdvancedOptions>
@@ -2036,7 +2064,7 @@ export default function Customizer() {
                                 onClick={() => handleSelectPlan(p.id)}
                                 className="text-xs font-medium border border-border rounded-lg px-3 py-2 text-foreground hover:border-primary/40 hover:bg-secondary/50 transition-colors"
                               >
-                                {p.shortLabel} — {p.priceLabel}
+                                {p.shortLabel}
                               </button>
                             ))}
                           </div>
@@ -2047,11 +2075,10 @@ export default function Customizer() {
                   )}
                 </div>
 
-                {/* TECHNIQUE + PLAN + ORDER — desktop only; on mobile these are
-                    Step 2 (Estilo) and Step 4 (Resumen) of the wizard. */}
+                {/* PLAN + ORDER — desktop only; on mobile this is Step 4 (Resumen).
+                    La técnica de grabado vive ahora en el tab Texto (Paso 3). */}
                 {!isMobile && (
                 <div className="px-6 pb-6 pt-4 border-t border-border space-y-4">
-                  {renderDrinkTechnique()}
                   {renderDrinkSummary()}
                 </div>
                 )}
@@ -2163,9 +2190,15 @@ export default function Customizer() {
                   {/* TEXT TAB */}
                   <TabsContent value="text" className="mt-0 space-y-5">
                     {/* BÁSICO */}
-                    <div>
-                      <Label className="text-sm font-medium text-foreground mb-3 block">Texto Personalizado</Label>
-                      <EngravingTextField text={text} onText={setText} layout={textPlacement.layout} />
+                    <div className="space-y-4">
+                      <div>
+                        <Label className="text-sm font-medium text-foreground mb-3 block">Texto Personalizado</Label>
+                        <EngravingTextField text={text} onText={setText} layout={textPlacement.layout} />
+                      </div>
+                      <OrientationToggle
+                        value={textPlacement.orientation}
+                        onChange={(o) => setTextPlacement(p => ({ ...p, orientation: o }))}
+                      />
                     </div>
 
                     <div>
@@ -2189,7 +2222,7 @@ export default function Customizer() {
                         <p className="text-xs text-muted-foreground mb-3">
                           Colocá el texto donde quieras sobre la {activeObject.singular.toLowerCase()}.
                         </p>
-                        <PlacementControls value={textPlacement} onChange={setTextPlacement} flat />
+                        <PlacementControls value={textPlacement} onChange={setTextPlacement} flat hideOrientation />
                       </div>
                     </AdvancedOptions>
                   </TabsContent>
@@ -2259,7 +2292,6 @@ export default function Customizer() {
                                 <PenLine className="w-4 h-4 shrink-0" />
                                 <span className="font-medium text-sm truncate">{o.label}</span>
                               </span>
-                              <span className="text-sm font-bold shrink-0">{o.priceLabel}</span>
                             </button>
                           );
                         })}
@@ -2277,12 +2309,6 @@ export default function Customizer() {
                       </p>
                     </div>
                   </div>
-
-                  {priceLabel === "A consultar" && (
-                    <p className="text-xs text-muted-foreground">
-                      Este producto se cotiza según el diseño. Le pasamos el precio por WhatsApp al instante.
-                    </p>
-                  )}
 
                   <Button
                     onClick={handleOrder}
@@ -2303,7 +2329,7 @@ export default function Customizer() {
                   </Label>
                   <p className="text-xs text-muted-foreground">
                     {material.pens
-                      ? `${activePen.label} — ${activePen.priceLabel}. Contanos qué querés grabar.`
+                      ? `${activePen.label}. Contanos qué querés grabar.`
                       : `${material.name}. Personalícelo y coordinamos el diseño final con usted por WhatsApp.`}
                   </p>
                 </div>
@@ -2361,15 +2387,6 @@ export default function Customizer() {
                 )}
 
                 <div className="pt-2 border-t border-border space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Precio</span>
-                    <span className="text-lg font-bold text-foreground">{priceLabel}</span>
-                  </div>
-                  {priceLabel === "A consultar" && (
-                    <p className="text-xs text-muted-foreground">
-                      Este producto se cotiza según el diseño. Le pasamos el precio por WhatsApp al instante.
-                    </p>
-                  )}
                   <Button
                     onClick={handleOrder}
                     disabled={isOrdered}

@@ -312,6 +312,18 @@ function ThermosMesh({
     return new THREE.TorusGeometry(sil.neckR * 1.02, 0.030 * sil.scale, 6, 64);
   }, [product.cap, sil]);
 
+  // Free the GPU buffers of the PREVIOUS product/size before the memos above swap
+  // in fresh geometry. These are created imperatively and handed to <mesh> via the
+  // `geometry` prop, so R3F never disposes them — without this cleanup every product
+  // or size change leaks the old Lathe/cap/handle/collar buffers. After ~20 changes
+  // the accumulated buffers exhaust GPU memory, the WebGL context is lost, and the
+  // body mesh corrupts/deforms. (Root cause of the "se deforma tras un rato" bug.)
+  useEffect(() => () => {
+    bodyGeo.dispose();
+    capGeo?.dispose();
+    handleGeo?.dispose();
+    collarGeo?.dispose();
+  }, [bodyGeo, capGeo, handleGeo, collarGeo]);
 
   const [fontReady, setFontReady] = useState(0);
 
@@ -872,7 +884,10 @@ function FallbackCanvas({
   );
 }
 
-function ThreeCanvas({ product, sil, ...props }: Thermos3DProps & { product: ProductDef; sil: Silhouette }) {
+function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props }: Thermos3DProps & {
+  product: ProductDef; sil: Silhouette;
+  onContextLost?: () => void; onContextRestored?: () => void;
+}) {
   const { shadowY } = fitCamera(sil);
   return (
     <Canvas
@@ -881,9 +896,12 @@ function ThreeCanvas({ product, sil, ...props }: Thermos3DProps & { product: Pro
       dpr={[1, 1.5]}
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
       // preventDefault on context loss lets the browser fire `contextrestored`
-      // and R3F rebuild the scene instead of leaving a black canvas.
-      onCreated={({ gl }) => {
-        gl.domElement.addEventListener("webglcontextlost", (e) => e.preventDefault(), false);
+      // and R3F rebuild the scene instead of leaving a black canvas. We surface a
+      // placeholder while lost and force a re-render once the context is back.
+      onCreated={({ gl, invalidate }) => {
+        const canvas = gl.domElement;
+        canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); onContextLost?.(); }, false);
+        canvas.addEventListener("webglcontextrestored", () => { onContextRestored?.(); invalidate(); }, false);
       }}
       // touch-action none: a drag that starts on the product rotates it instead
       // of scrolling the page. To scroll, the finger must start outside the canvas.
@@ -961,11 +979,26 @@ export default function Thermos3D(props: Thermos3DProps) {
   );
 
   const [webgl] = useState(() => isWebGLAvailable());
+  const [contextLost, setContextLost] = useState(false);
   if (!webgl) return fallback;
 
   return (
     <WebGLErrorBoundary fallback={fallback}>
-      <ThreeCanvas {...props} product={product} sil={sil} />
+      <div className="relative w-full h-full">
+        <ThreeCanvas
+          {...props}
+          product={product}
+          sil={sil}
+          onContextLost={() => setContextLost(true)}
+          onContextRestored={() => setContextLost(false)}
+        />
+        {contextLost && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-secondary/40 backdrop-blur-sm rounded-2xl">
+            <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+            <p className="text-xs text-muted-foreground">Restaurando vista 3D…</p>
+          </div>
+        )}
+      </div>
     </WebGLErrorBoundary>
   );
 }
