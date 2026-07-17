@@ -16,9 +16,6 @@ export default function PricingEngraving() {
           <p className="text-white/40 text-[11px] font-semibold uppercase tracking-[0.35em] mb-5">
             Tarifas
           </p>
-          <h2 className="font-serif font-light text-3xl md:text-4xl text-white/95 mb-4">
-            El grabado
-          </h2>
           <p className="text-white/50 text-sm font-light leading-relaxed">
             {ENGRAVING_BASE} incluido en todos los planes. El valor de la pieza se cotiza aparte.
           </p>
