@@ -183,6 +183,8 @@ export interface EngravingInput {
    * it into the steel. Drinkware only. `artImage` carries the colour pixels.
    */
   colorPrint?: boolean;
+  /** Ink colour for the printed text (UV DTF only). Defaults to near-black. */
+  textColor?: string;
   artImage?: HTMLImageElement | null;
   /** Steel reveal (default), leather char (forrado) or wood char. */
   engraveStyle?: EngraveStyle;
@@ -285,6 +287,7 @@ export function makeBodyMaps({
   artPlacement = DEFAULT_ART_PLACEMENT,
   anisotropy = 1,
   colorPrint = false,
+  textColor = PRINT_INK,
   artImage = null,
   engraveStyle = "steel",
   singleFace = false,
@@ -358,7 +361,7 @@ export function makeBodyMaps({
       drawPlaced(ctx, m, W, textPlacement, L.blockW / 2, L.blockH / 2, () => {
         ctx.font = makeTextFont(L.fontPx, fontFamily);
         ctx.textBaseline = "middle";
-        ctx.fillStyle = PRINT_INK;
+        ctx.fillStyle = textColor;
         fillLinesAligned(ctx, L.lines, L.lineHeight, L.blockW, L.align);
       }, singleFace);
     }

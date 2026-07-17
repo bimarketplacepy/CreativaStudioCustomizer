@@ -34,6 +34,8 @@ interface Thermos3DProps {
   artPlacement?: Placement;
   /** Eufy Make (UV DTF): print the artwork in colour instead of engraving it. */
   colorPrint?: boolean;
+  /** Ink colour for printed text (UV DTF only). */
+  textColor?: string;
   /** How the laser reads: steel reveal (default), leather char or wood char. */
   engraveStyle?: EngraveStyle;
   /** "Edición en una cara": confine the design to the front-face rectangle. */
@@ -226,12 +228,12 @@ function FrontFaceGuide({ sil }: { sil: Silhouette }) {
 
 function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
-  textPlacement, artPlacement, colorPrint, engraveStyle, singleFace, showGuides, frontFaceU, glass,
+  textPlacement, artPlacement, colorPrint, textColor, engraveStyle, singleFace, showGuides, frontFaceU, glass,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
   customImageUrl: string | null; imageSize: "none" | "small" | "large";
-  textPlacement: Placement; artPlacement: Placement; colorPrint: boolean;
+  textPlacement: Placement; artPlacement: Placement; colorPrint: boolean; textColor?: string;
   engraveStyle: EngraveStyle;
   singleFace: boolean; showGuides: boolean; frontFaceU: number; glass: boolean;
 }) {
@@ -370,11 +372,11 @@ function ThermosMesh({
     () => glass ? null : makeBodyMaps({
       product, colorHex, finish: matProps, isGradientFinish: finish === "gradient",
       text: dText, textPlacement: dTextPlacement, fontFamily, artMask, imageSize, artPlacement: dArtPlacement,
-      anisotropy: maxAnisotropy, colorPrint, artImage: customImageEl, engraveStyle, singleFace,
+      anisotropy: maxAnisotropy, colorPrint, textColor, artImage: customImageEl, engraveStyle, singleFace,
     }),
     // fontReady triggers re-creation once the font is actually loaded
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [glass, product, colorHex, matProps, finish, dText, dTextPlacement, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, customImageEl, engraveStyle, singleFace]
+    [glass, product, colorHex, matProps, finish, dText, dTextPlacement, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, textColor, customImageEl, engraveStyle, singleFace]
   );
 
   // Four textures per rebuild, now coalesced to the settled input via useDeferredValue.
@@ -874,7 +876,15 @@ function ThreeCanvas({ product, sil, ...props }: Thermos3DProps & { product: Pro
   const { shadowY } = fitCamera(sil);
   return (
     <Canvas
+      // Cap the pixel ratio so high-DPI phones don't render 3–4× the pixels of a
+      // transmission/glass scene (keeps it smooth and eases GPU memory pressure).
+      dpr={[1, 1.5]}
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+      // preventDefault on context loss lets the browser fire `contextrestored`
+      // and R3F rebuild the scene instead of leaving a black canvas.
+      onCreated={({ gl }) => {
+        gl.domElement.addEventListener("webglcontextlost", (e) => e.preventDefault(), false);
+      }}
       // touch-action none: a drag that starts on the product rotates it instead
       // of scrolling the page. To scroll, the finger must start outside the canvas.
       style={{ background: "transparent", cursor: "grab", touchAction: "none" }}
@@ -896,6 +906,7 @@ function ThreeCanvas({ product, sil, ...props }: Thermos3DProps & { product: Pro
           textPlacement={props.textPlacement ?? DEFAULT_TEXT_PLACEMENT}
           artPlacement={props.artPlacement ?? DEFAULT_ART_PLACEMENT}
           colorPrint={props.colorPrint ?? false}
+          textColor={props.textColor}
           engraveStyle={props.engraveStyle ?? "steel"}
           singleFace={props.singleFace ?? false}
           showGuides={props.showGuides ?? true}

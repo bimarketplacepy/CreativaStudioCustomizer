@@ -453,7 +453,11 @@ function ThreeCanvas({ obj, ...props }: Object3DProps & { obj: ObjectDef }) {
   const { camY } = frame(obj);
   return (
     <Canvas
+      dpr={[1, 1.5]}
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+      onCreated={({ gl }) => {
+        gl.domElement.addEventListener("webglcontextlost", (e) => e.preventDefault(), false);
+      }}
       // touch-action none: a drag that starts on the product rotates it instead
       // of scrolling the page. To scroll, the finger must start outside the canvas.
       style={{ background: "transparent", cursor: "grab", touchAction: "none" }}

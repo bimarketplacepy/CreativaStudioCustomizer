@@ -183,6 +183,10 @@ const MATERIAL_ICON: Record<string, React.ComponentType<{ className?: string }>>
 const activeCard = "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30 active:scale-[0.97]";
 const idleCard = "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50 active:scale-[0.97]";
 
+// Editor tab as a segment of a pill control: equal width, icon over label on
+// mobile / inline on desktop, so all tabs always fit — no cut-off scroll.
+const SEG_TAB = "flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 rounded-lg py-1.5 px-1 text-[11px] sm:text-sm font-medium text-muted-foreground data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm transition-colors";
+
 // ── Mobile wizard chrome ─────────────────────────────────────────────────────
 // On phones the customizer is a step-by-step wizard (progress + fixed nav)
 // instead of one long scroll. Desktop keeps the full layout.
@@ -784,7 +788,7 @@ function FontCarousel({ fonts, value, onChange, sampleText }: {
  * uncluttered. The defaults already produce a good result, so most users never
  * open it.
  */
-function AdvancedOptions({ children, label = "Más opciones" }: { children: React.ReactNode; label?: string }) {
+function AdvancedOptions({ children, label = "Ajustes avanzados" }: { children: React.ReactNode; label?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="pt-4 border-t border-border">
@@ -799,6 +803,44 @@ function AdvancedOptions({ children, label = "Más opciones" }: { children: Reac
         <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && <div className="mt-5 space-y-6">{children}</div>}
+    </div>
+  );
+}
+
+/** Ink colours offered for UV-printed text. */
+const TEXT_INK_PRESETS = ["#161616", "#ffffff", "#8B1A2F", "#1e40af", "#15803d", "#b45309", "#db2777", "#6d28d9"];
+
+/** Text colour picker — only shown when the piece is UV-printed (impresión a color). */
+function TextColorPicker({ value, onChange }: { value: string; onChange: (hex: string) => void }) {
+  return (
+    <div>
+      <Label className="text-sm font-medium text-foreground mb-2 block">Color del texto</Label>
+      <div className="flex items-center gap-2 flex-wrap">
+        {TEXT_INK_PRESETS.map(hex => {
+          const on = value.toLowerCase() === hex.toLowerCase();
+          return (
+            <button
+              key={hex}
+              type="button"
+              onClick={() => onChange(hex)}
+              title={hex}
+              className={`w-8 h-8 rounded-full border transition-all ${on ? "ring-2 ring-primary ring-offset-2" : "border-border hover:scale-105"}`}
+              style={{ backgroundColor: hex }}
+            />
+          );
+        })}
+        <label className="relative w-8 h-8 rounded-full overflow-hidden border border-border cursor-pointer hover:border-primary/40" title="Color personalizado">
+          <span className="absolute inset-0" style={{ backgroundColor: value }} />
+          <span className="absolute inset-0 flex items-center justify-center"><Pipette className="w-4 h-4 text-white mix-blend-difference" /></span>
+          <input
+            type="color"
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            className="absolute inset-0 opacity-0 cursor-pointer"
+            aria-label="Color de texto personalizado"
+          />
+        </label>
+      </div>
     </div>
   );
 }
@@ -1036,6 +1078,8 @@ export default function Customizer() {
 
   const [color, setColor] = useState(COLORS[0].id);
   const [customHex, setCustomHex] = useState<string | null>(null);
+  // Ink colour for UV-printed text (only used when the technique is impresión UV).
+  const [textColor, setTextColor] = useState("#161616");
   const [finish, setFinish] = useState(FINISHES[0].id);
   const [text, setText] = useState("");
   const [font, setFont] = useState(FONTS[0].id);
@@ -1083,11 +1127,21 @@ export default function Customizer() {
     setMobileStep(s => Math.min(s, wizardLabels.length));
   }, [wizardLabels.length]);
 
-  // Hide the floating WhatsApp CTA while designing so it never covers controls.
+  // Hide the floating WhatsApp CTA while the customizer section is on screen on
+  // mobile, so it never covers the editor controls or the "Personalizar" CTA.
+  const sectionRef = useRef<HTMLElement>(null);
+  const [customizerInView, setCustomizerInView] = useState(false);
   React.useEffect(() => {
-    document.body.classList.toggle("wa-fab-hidden", isDesignStep);
+    const el = sectionRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([e]) => setCustomizerInView(e.isIntersecting), { threshold: 0.12 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  React.useEffect(() => {
+    document.body.classList.toggle("wa-fab-hidden", isMobile && customizerInView);
     return () => document.body.classList.remove("wa-fab-hidden");
-  }, [isDesignStep]);
+  }, [isMobile, customizerInView]);
 
   // "Color" is not a tab on mobile (it's Step 2), so never leave it selected.
   React.useEffect(() => {
@@ -1427,23 +1481,6 @@ export default function Customizer() {
           </div>
         </div>
       </div>
-
-      <div className="pt-4 border-t border-border">
-        <Label className="text-sm font-medium text-foreground mb-3 block">Tipo de Acabado</Label>
-        <div className="grid grid-cols-2 gap-3">
-          {FINISHES.filter(f => !f.material || f.material === materialId).map(f => (
-            <button
-              key={f.id}
-              onClick={() => setFinish(f.id)}
-              className={`p-3 text-center border rounded-lg font-medium text-sm transition-all ${
-                finish === f.id ? activeCard : idleCard
-              }`}
-            >
-              {f.name}
-            </button>
-          ))}
-        </div>
-      </div>
     </>
   );
 
@@ -1515,7 +1552,7 @@ export default function Customizer() {
   );
 
   return (
-    <section className="py-20 md:py-28 px-6 bg-white border-b border-border">
+    <section ref={sectionRef} className="py-12 md:py-16 px-4 sm:px-6 bg-white border-b border-border">
       <div className="max-w-7xl mx-auto">
         {/* Header — compact on mobile (the long copy is desktop-only). */}
         <div className="mb-6 md:mb-10">
@@ -1630,15 +1667,22 @@ export default function Customizer() {
         {(!isMobile || mobileStep === designStepIndex) && (
         <div className={isMobile ? "pb-28" : undefined}>
         {/* STEP 3 — CUSTOMIZE */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 lg:gap-8 items-start">
 
           {/* PREVIEW AREA */}
-          <div className="lg:col-span-4 relative">
-            <div className="sticky top-2 md:top-24 z-20 bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[300px] md:min-h-[520px]">
+          {/* On mobile the preview wrapper is sticky within the tall flex column,
+              so the live 3D stays pinned at the top while the editor scrolls
+              beneath it — same single canvas, no second WebGL context. */}
+          <div className="w-full lg:col-span-4 relative max-lg:sticky max-lg:top-0 max-lg:z-30 self-start">
+            <div className="lg:sticky lg:top-24 z-20 bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[280px] md:min-h-[520px] max-lg:shadow-lg max-lg:shadow-black/5">
               {isGlass ? (
                 // Glass needs an environment to reflect and a graded backdrop to
-                // read against — on flat white the transparency disappears.
-                <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-slate-100 via-white to-slate-200" />
+                // read against — on flat white the transparency disappears. A soft
+                // pearl→mid-grey radial keeps the silhouette legible from any angle.
+                <div
+                  className="absolute inset-0 rounded-2xl"
+                  style={{ background: "radial-gradient(circle at 50% 38%, #eef2f6 0%, #d3dae2 55%, #aeb8c4 100%)" }}
+                />
               ) : (
                 <div
                   className="absolute inset-0 opacity-[0.07] transition-colors duration-500 rounded-2xl"
@@ -1663,6 +1707,7 @@ export default function Customizer() {
                       textPlacement={textPlacement}
                       artPlacement={artPlacement}
                       colorPrint={effectiveTechnique === "eufy"}
+                      textColor={textColor}
                       engraveStyle={drinkwareEngraveStyle}
                       singleFace={singleFace}
                       showGuides={showGuides}
@@ -1685,8 +1730,8 @@ export default function Customizer() {
                     )}
                   </div>
 
-                  {/* Summary badges */}
-                  <div className="flex flex-wrap gap-2 justify-center px-4 pb-4">
+                  {/* Summary badges — hidden on mobile to keep the sticky preview compact. */}
+                  <div className="hidden md:flex flex-wrap gap-2 justify-center px-4 pb-4">
                     <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground">
                       {product.singular}
                     </span>
@@ -1805,39 +1850,39 @@ export default function Customizer() {
           <div className="lg:col-span-8 bg-white rounded-2xl border border-border">
             {isDrinkware ? (
               <Tabs value={drinkTab} onValueChange={setDrinkTab} className="w-full">
-                <div className="border-b border-border px-4 sm:px-6 pt-2">
-                  <TabsList className="w-full flex bg-transparent h-12 p-0 gap-0 md:overflow-x-auto">
-                    {/* On mobile "Color" moves to the Estilo step, so the tab bar
-                        holds 2–3 segments that fit without a cut-off scroll. */}
+                <div className="px-4 sm:px-6 pt-4 pb-1">
+                  <TabsList className="w-full flex gap-1 bg-secondary/50 rounded-xl p-1 h-auto">
+                    {/* On mobile "Color" moves to the Estilo step. All segments are
+                        equal-width and always visible — no arrows, no scroll. */}
                     {!isMobile && (
-                    <TabsTrigger value="color" className="flex-1 min-w-[76px] h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                      <Palette className="w-4 h-4 mr-1.5 hidden sm:inline" /> Color
+                    <TabsTrigger value="color" className={SEG_TAB}>
+                      <Palette className="w-4 h-4 shrink-0" /> <span className="truncate">Color</span>
                     </TabsTrigger>
                     )}
-                    <TabsTrigger value="text" className="flex-1 min-w-[76px] h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                      <Type className="w-4 h-4 mr-1.5 hidden sm:inline" /> Texto
+                    <TabsTrigger value="text" className={SEG_TAB}>
+                      <Type className="w-4 h-4 shrink-0" /> <span className="truncate">Texto</span>
                     </TabsTrigger>
-                    <TabsTrigger value="icons" className="flex-1 min-w-[76px] h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                      <Shapes className="w-4 h-4 mr-1.5 hidden sm:inline" /> Íconos
+                    <TabsTrigger value="icons" className={SEG_TAB}>
+                      <Shapes className="w-4 h-4 shrink-0" /> <span className="truncate">Íconos</span>
                     </TabsTrigger>
                     {canUploadImage && (
-                      <TabsTrigger value="media" className="flex-1 min-w-[76px] h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                        <ImageIcon className="w-4 h-4 mr-1.5 hidden sm:inline" /> Imagen
+                      <TabsTrigger value="media" className={SEG_TAB}>
+                        <ImageIcon className="w-4 h-4 shrink-0" /> <span className="truncate">Imagen</span>
                       </TabsTrigger>
                     )}
                   </TabsList>
                 </div>
 
-                <div className="p-6 min-h-[320px]">
+                <div className="p-4 sm:p-5 min-h-[280px]">
                   {/* COLOR TAB (desktop editor; on mobile colour lives in Step 2 "Estilo") */}
                   {!isMobile && (
-                  <TabsContent value="color" className="mt-0 space-y-6">
+                  <TabsContent value="color" className="mt-0 space-y-5">
                     {renderDrinkColor()}
                   </TabsContent>
                   )}
 
                   {/* TEXT TAB */}
-                  <TabsContent value="text" className="mt-0 space-y-6">
+                  <TabsContent value="text" className="mt-0 space-y-5">
                     {/* BÁSICO — lo mínimo para un buen resultado: escribir y elegir fuente. */}
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-3 block">Texto Personalizado</Label>
@@ -1862,16 +1907,26 @@ export default function Customizer() {
                       )}
                     </div>
 
+                    {/* Color del texto — sólo con impresión UV a color (sobre grabado
+                        láser el texto es monocromático). */}
+                    {isColorPrint && !!text && (
+                      <TextColorPicker value={textColor} onChange={setTextColor} />
+                    )}
+
                     {/* AVANZADO — oculto hasta que se necesite. Los defaults (una cara,
                         centrado, automático, interlineado normal, horizontal) ya dan un
                         resultado lindo sin abrir esto. */}
                     <AdvancedOptions>
+                      {/* Modo de edición — global, una sola vez (sólo en Texto). */}
                       <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
 
                       <div className="pt-4 border-t border-border">
                         <TextDispositionToolbar placement={textPlacement} onChange={applyTextPlacement} />
                       </div>
 
+                      {/* En mobile la posición se controla arrastrando el texto sobre
+                          el 3D; el pad de ubicación queda sólo en desktop. */}
+                      {!isMobile && (
                       <div className="pt-4 border-t border-border">
                         <Label className="text-sm font-medium text-foreground mb-2 block">Ubicación del Texto</Label>
                         <p className="text-xs text-muted-foreground mb-3">
@@ -1887,11 +1942,12 @@ export default function Customizer() {
                           areaAspect={faceAreaAspect}
                         />
                       </div>
+                      )}
                     </AdvancedOptions>
                   </TabsContent>
 
                   {/* ICONS TAB */}
-                  <TabsContent value="icons" className="mt-0 space-y-6">
+                  <TabsContent value="icons" className="mt-0 space-y-5">
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Elija un ícono</Label>
                       <p className="text-xs text-muted-foreground mb-3">
@@ -1900,32 +1956,33 @@ export default function Customizer() {
                       <IconPicker value={iconId} onChange={handlePickIcon} />
                     </div>
 
+                    {/* Modo de edición vive sólo en el tab Texto (global). Aquí sólo
+                        el pad de ubicación del ícono, y sólo cuando hay uno elegido. */}
+                    {selectedIcon && (
                     <AdvancedOptions>
-                      <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
-                      {selectedIcon && (
-                        <div className="pt-4 border-t border-border">
-                          <Label className="text-sm font-medium text-foreground mb-1 block">Ubicación del Ícono</Label>
-                          <p className="text-xs text-muted-foreground mb-3">
-                            {singleFace
-                              ? `Ubicá el ícono dentro del área grabable de la cara frontal del ${product.singular.toLowerCase()}.`
-                              : `Movelo y giralo libremente sobre las caras del ${product.singular.toLowerCase()}.`}
-                          </p>
-                          <PlacementControls
-                            value={artPlacement}
-                            onChange={applyArtPlacement}
-                            withSize
-                            singleFace={singleFace}
-                            frontExtents={artExtents}
-                            areaAspect={faceAreaAspect}
-                          />
-                        </div>
-                      )}
+                      <div>
+                        <Label className="text-sm font-medium text-foreground mb-1 block">Ubicación del Ícono</Label>
+                        <p className="text-xs text-muted-foreground mb-3">
+                          {singleFace
+                            ? `Ubicá el ícono dentro del área grabable de la cara frontal del ${product.singular.toLowerCase()}.`
+                            : `Movelo y giralo libremente sobre las caras del ${product.singular.toLowerCase()}.`}
+                        </p>
+                        <PlacementControls
+                          value={artPlacement}
+                          onChange={applyArtPlacement}
+                          withSize
+                          singleFace={singleFace}
+                          frontExtents={artExtents}
+                          areaAspect={faceAreaAspect}
+                        />
+                      </div>
                     </AdvancedOptions>
+                    )}
                   </TabsContent>
 
                   {/* LOGO / PHOTO TAB — stainless steel only */}
                   {canUploadImage && (
-                  <TabsContent value="media" className="mt-0 space-y-6">
+                  <TabsContent value="media" className="mt-0 space-y-5">
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
                       <p className="text-xs text-muted-foreground mb-3">
@@ -1982,10 +2039,6 @@ export default function Customizer() {
                         </div>
                       )}
                     </div>
-
-                    <AdvancedOptions>
-                      <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
-                    </AdvancedOptions>
                   </TabsContent>
                   )}
                 </div>
@@ -2002,24 +2055,24 @@ export default function Customizer() {
             ) : is3DObject && activeObject ? (
               /* MODELLED BLANK — laser-only personalization (wood, leather, acrylic, plastic, bare steel, pens) */
               <Tabs key={activeObject.id} defaultValue="text" className="w-full">
-                <div className="border-b border-border px-4 sm:px-6 pt-2">
-                  <TabsList className="w-full flex bg-transparent h-12 p-0 gap-0 overflow-x-auto">
+                <div className="px-4 sm:px-6 pt-4 pb-1">
+                  <TabsList className="w-full flex gap-1 bg-secondary/50 rounded-xl p-1 h-auto">
                     {objectTabs.map(({ key, label, Icon }) => (
-                      <TabsTrigger key={key} value={key} className="flex-1 min-w-[76px] h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary bg-transparent text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                        <Icon className="w-4 h-4 mr-1.5 hidden sm:inline" /> {label}
+                      <TabsTrigger key={key} value={key} className={SEG_TAB}>
+                        <Icon className="w-4 h-4 shrink-0" /> <span className="truncate">{label}</span>
                       </TabsTrigger>
                     ))}
                   </TabsList>
                 </div>
 
-                <div className="p-6 min-h-[320px]">
+                <div className="p-4 sm:p-5 min-h-[280px]">
                   <p className="text-xs text-muted-foreground mb-5">
                     {activeObject.desc} Vea cómo se vería con su texto, un ícono o su logo.
                   </p>
 
                   {/* COLOR TAB — colourable blanks only */}
                   {activeObject.colorable && (
-                    <TabsContent value="color" className="mt-0 space-y-6">
+                    <TabsContent value="color" className="mt-0 space-y-5">
                       <div>
                         <Label className="text-sm font-medium text-foreground mb-3 block">Color del Producto</Label>
                         <div className="grid grid-cols-6 gap-3">
@@ -2104,7 +2157,7 @@ export default function Customizer() {
                   )}
 
                   {/* TEXT TAB */}
-                  <TabsContent value="text" className="mt-0 space-y-6">
+                  <TabsContent value="text" className="mt-0 space-y-5">
                     {/* BÁSICO */}
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-3 block">Texto Personalizado</Label>
@@ -2127,6 +2180,7 @@ export default function Customizer() {
                     <AdvancedOptions>
                       <TextDispositionToolbar placement={textPlacement} onChange={setTextPlacement} />
 
+                      {!isMobile && (
                       <div className="pt-4 border-t border-border">
                         <Label className="text-sm font-medium text-foreground mb-2 block">Ubicación del Texto</Label>
                         <p className="text-xs text-muted-foreground mb-3">
@@ -2134,11 +2188,12 @@ export default function Customizer() {
                         </p>
                         <PlacementControls value={textPlacement} onChange={setTextPlacement} flat />
                       </div>
+                      )}
                     </AdvancedOptions>
                   </TabsContent>
 
                   {/* ICONS TAB */}
-                  <TabsContent value="icons" className="mt-0 space-y-6">
+                  <TabsContent value="icons" className="mt-0 space-y-5">
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Elija un ícono</Label>
                       <p className="text-xs text-muted-foreground mb-3">
@@ -2160,7 +2215,7 @@ export default function Customizer() {
 
                   {/* LOGO / PHOTO TAB — stainless steel only */}
                   {canUploadImage && (
-                  <TabsContent value="media" className="mt-0 space-y-6">
+                  <TabsContent value="media" className="mt-0 space-y-5">
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
                       <p className="text-xs text-muted-foreground mb-3">
