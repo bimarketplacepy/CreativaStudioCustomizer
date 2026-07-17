@@ -46,6 +46,19 @@ interface Thermos3DProps {
   frontFaceU?: number;
   /** Render the body as transparent glass (cristal) with a sandblasted engraving. */
   glass?: boolean;
+  /**
+   * A design (text/icon/image) is active, so a drag on the body MOVES it across
+   * the front face instead of rotating the piece. Only honoured in single-face
+   * mode (the front face is frozen to camera there, so screen deltas map cleanly
+   * to placement). When false, a drag rotates as usual.
+   */
+  designActive?: boolean;
+  /** Drag delta as a fraction of the canvas (dx/width, dy/height) while moving a design. */
+  onDesignMove?: (dxFrac: number, dyFrac: number) => void;
+  /** A design drag started (used to flash the front-face guides). */
+  onDesignDragStart?: () => void;
+  /** A design drag ended. */
+  onDesignDragEnd?: () => void;
 }
 
 /** Everything the meshes and the camera rig need, derived from the product profile. */
@@ -229,6 +242,7 @@ function FrontFaceGuide({ sil }: { sil: Silhouette }) {
 function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
   textPlacement, artPlacement, colorPrint, textColor, engraveStyle, singleFace, showGuides, frontFaceU, glass,
+  designActive, onDesignMove, onDesignDragStart, onDesignDragEnd,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
@@ -236,6 +250,10 @@ function ThermosMesh({
   textPlacement: Placement; artPlacement: Placement; colorPrint: boolean; textColor?: string;
   engraveStyle: EngraveStyle;
   singleFace: boolean; showGuides: boolean; frontFaceU: number; glass: boolean;
+  designActive: boolean;
+  onDesignMove?: (dxFrac: number, dyFrac: number) => void;
+  onDesignDragStart?: () => void;
+  onDesignDragEnd?: () => void;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
@@ -244,7 +262,14 @@ function ThermosMesh({
   const lastX = useRef(0);
   const lastY = useRef(0);
   const lastTime = useRef(0);
+  // "rotate" spins the piece; "design" drags the active mark across the face.
+  const dragMode = useRef<"rotate" | "design">("rotate");
   const { gl } = useThree();
+
+  // Latest design-drag inputs, read inside the (stable) pointer listeners so we
+  // don't re-attach them every render when the callbacks change identity.
+  const designRef = useRef({ designActive, singleFace, onDesignMove, onDesignDragStart, onDesignDragEnd });
+  designRef.current = { designActive, singleFace, onDesignMove, onDesignDragStart, onDesignDragEnd };
 
   const bodyGeo = useMemo(() => {
     const geo = new THREE.LatheGeometry(sil.points, 128);
@@ -424,6 +449,11 @@ function ThermosMesh({
       lastX.current = e.clientX;
       lastY.current = e.clientY;
       lastTime.current = performance.now();
+      // With a design active in single-face mode, this gesture repositions the
+      // mark on the frozen front face instead of rotating the piece.
+      const d = designRef.current;
+      dragMode.current = d.designActive && d.singleFace ? "design" : "rotate";
+      if (dragMode.current === "design") d.onDesignDragStart?.();
       canvas.setPointerCapture(e.pointerId);
     };
     const onMove = (e: PointerEvent) => {
@@ -432,11 +462,18 @@ function ThermosMesh({
       const dt = Math.max(1, now - lastTime.current);
       const dx = e.clientX - lastX.current;
       const dy = e.clientY - lastY.current;
-      velYaw.current   = dx / dt * 16;
-      velPitch.current = dy / dt * 16;
       lastX.current = e.clientX;
       lastY.current = e.clientY;
       lastTime.current = now;
+      if (dragMode.current === "design") {
+        // Move the mark: screen delta as a fraction of the canvas. The parent
+        // maps it into the front-face rectangle and clamps.
+        const rect = canvas.getBoundingClientRect();
+        designRef.current.onDesignMove?.(dx / rect.width, dy / rect.height);
+        return;
+      }
+      velYaw.current   = dx / dt * 16;
+      velPitch.current = dy / dt * 16;
       if (groupRef.current) {
         groupRef.current.rotation.y += dx * 0.008;
         // Clamp pitch so it doesn't flip upside-down
@@ -444,7 +481,11 @@ function ThermosMesh({
         groupRef.current.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, newPitch));
       }
     };
-    const onUp = () => { isDragging.current = false; };
+    const onUp = () => {
+      if (isDragging.current && dragMode.current === "design") designRef.current.onDesignDragEnd?.();
+      isDragging.current = false;
+      dragMode.current = "rotate";
+    };
 
     canvas.addEventListener("pointerdown", onDown);
     canvas.addEventListener("pointermove", onMove);
@@ -932,6 +973,10 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           showGuides={props.showGuides ?? true}
           frontFaceU={props.frontFaceU ?? FRONT_FACE.uCenter}
           glass={props.glass ?? false}
+          designActive={props.designActive ?? false}
+          onDesignMove={props.onDesignMove}
+          onDesignDragStart={props.onDesignDragStart}
+          onDesignDragEnd={props.onDesignDragEnd}
         />
 
         {/* Single, stable ground shadow. Re-renders every frame so it tracks the

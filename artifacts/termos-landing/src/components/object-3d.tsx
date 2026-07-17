@@ -29,6 +29,12 @@ interface Object3DProps {
   imageSize: "none" | "small" | "large";
   textPlacement?: Placement;
   artPlacement?: Placement;
+  /** A design is active: a drag moves it across the flat face instead of rotating. */
+  designActive?: boolean;
+  /** Drag delta as a fraction of the canvas while moving a design. */
+  onDesignMove?: (dxFrac: number, dyFrac: number) => void;
+  onDesignDragStart?: () => void;
+  onDesignDragEnd?: () => void;
 }
 
 const FOV = 30;
@@ -271,10 +277,15 @@ function Blank({ obj, baseColor }: { obj: ObjectDef; baseColor: string }) {
 
 function ObjectMesh({
   obj, baseColor, text, fontFamily, customImageUrl, imageSize, textPlacement, artPlacement,
+  designActive, onDesignMove, onDesignDragStart, onDesignDragEnd,
 }: {
   obj: ObjectDef; baseColor: string; text: string; fontFamily?: string;
   customImageUrl: string | null; imageSize: "none" | "small" | "large";
   textPlacement: Placement; artPlacement: Placement;
+  designActive: boolean;
+  onDesignMove?: (dxFrac: number, dyFrac: number) => void;
+  onDesignDragStart?: () => void;
+  onDesignDragEnd?: () => void;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);
@@ -282,7 +293,12 @@ function ObjectMesh({
   const isDragging = useRef(false);
   const lastX = useRef(0);
   const lastY = useRef(0);
+  const dragMode = useRef<"rotate" | "design">("rotate");
   const { gl } = useThree();
+
+  // Latest design-drag inputs, read inside the stable pointer listeners.
+  const designRef = useRef({ designActive, onDesignMove, onDesignDragStart, onDesignDragEnd });
+  designRef.current = { designActive, onDesignMove, onDesignDragStart, onDesignDragEnd };
 
   // Seat the blank at its resting tilt so a top-engraved face reads to camera.
   useEffect(() => {
@@ -335,22 +351,35 @@ function ObjectMesh({
       isDragging.current = true;
       velYaw.current = 0; velPitch.current = 0;
       lastX.current = e.clientX; lastY.current = e.clientY;
+      // Objects have a single flat engraving face, so an active design always
+      // drags rather than rotates.
+      dragMode.current = designRef.current.designActive ? "design" : "rotate";
+      if (dragMode.current === "design") designRef.current.onDesignDragStart?.();
       canvas.setPointerCapture(e.pointerId);
     };
     const onMove = (e: PointerEvent) => {
       if (!isDragging.current) return;
       const dx = e.clientX - lastX.current;
       const dy = e.clientY - lastY.current;
+      lastX.current = e.clientX; lastY.current = e.clientY;
+      if (dragMode.current === "design") {
+        const rect = canvas.getBoundingClientRect();
+        designRef.current.onDesignMove?.(dx / rect.width, dy / rect.height);
+        return;
+      }
       velYaw.current = dx * 0.5;
       velPitch.current = dy * 0.5;
-      lastX.current = e.clientX; lastY.current = e.clientY;
       if (groupRef.current) {
         groupRef.current.rotation.y += dx * 0.008;
         const np = groupRef.current.rotation.x + dy * 0.008;
         groupRef.current.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, np));
       }
     };
-    const onUp = () => { isDragging.current = false; };
+    const onUp = () => {
+      if (isDragging.current && dragMode.current === "design") designRef.current.onDesignDragEnd?.();
+      isDragging.current = false;
+      dragMode.current = "rotate";
+    };
     canvas.addEventListener("pointerdown", onDown);
     canvas.addEventListener("pointermove", onMove);
     canvas.addEventListener("pointerup", onUp);
@@ -479,6 +508,10 @@ function ThreeCanvas({ obj, onContextLost, onContextRestored, ...props }: Object
           imageSize={props.imageSize}
           textPlacement={props.textPlacement ?? DEFAULT_TEXT_PLACEMENT}
           artPlacement={props.artPlacement ?? DEFAULT_ART_PLACEMENT}
+          designActive={props.designActive ?? false}
+          onDesignMove={props.onDesignMove}
+          onDesignDragStart={props.onDesignDragStart}
+          onDesignDragEnd={props.onDesignDragEnd}
         />
         {/* Single, stable ground shadow — re-renders each frame, no real-time
             shadow map, so no self-shadow flicker as the object rotates/tilts. */}

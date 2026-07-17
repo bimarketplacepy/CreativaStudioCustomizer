@@ -10,9 +10,10 @@ import { Slider } from "@/components/ui/slider";
 import {
   Check, Palette, Type, Box, Pipette, ImageIcon, MoveHorizontal, MoveVertical,
   Shapes, Zap, Sparkles, Wallet, TreePine, Square, PenLine, Wine, CupSoda, Snowflake, MessageCircle,
-  Minus, Plus, Move, Focus, Globe, Eye, EyeOff,
+  Minus, Plus, Move, Focus, Globe,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
   WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
+  ChevronUp, Crosshair,
 } from "lucide-react";
 import Thermos3D from "./thermos-3d";
 import Object3D from "./object-3d";
@@ -374,14 +375,61 @@ function TechniqueSelector({ value, onChange }: { value: TechniqueId; onChange: 
  */
 const PAD_BASE = 0.15; // element half-size as a fraction of the pad, at scale 1
 
+/**
+ * Compact, semi-transparent position pad that floats over the 3D visor. Appears
+ * only while a design is active. Four arrows nudge the active mark, the centre
+ * button recentres it, and the whole thing collapses to a single grip button so
+ * it never gets in the way of the product.
+ */
+function DesignNudgeControl({ side, onNudge, onCenter }: {
+  side: "left" | "right";
+  onNudge: (dx: number, dy: number) => void;
+  onCenter: () => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const pos = side === "left" ? "left-2.5" : "right-2.5";
+  const btn = "w-7 h-7 grid place-items-center rounded-md text-foreground/75 hover:text-primary hover:bg-white active:scale-90 transition";
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="Mostrar controles de posición"
+        className={`absolute bottom-2.5 ${pos} z-20 w-9 h-9 grid place-items-center rounded-full bg-white/70 backdrop-blur-sm border border-border shadow-sm text-primary`}
+      >
+        <Move className="w-4 h-4" />
+      </button>
+    );
+  }
+
+  return (
+    <div className={`absolute bottom-2.5 ${pos} z-20 rounded-xl bg-white/70 backdrop-blur-sm border border-border shadow-md p-1.5 select-none touch-none`}>
+      <div className="flex items-center justify-between gap-3 px-1 pb-1">
+        <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Posición</span>
+        <button type="button" onClick={() => setOpen(false)} aria-label="Ocultar controles" className="text-muted-foreground hover:text-foreground">
+          <ChevronDown className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <div className="grid grid-cols-3 gap-0.5">
+        <span />
+        <button type="button" aria-label="Subir" className={btn} onClick={() => onNudge(0, -1)}><ChevronUp className="w-4 h-4" /></button>
+        <span />
+        <button type="button" aria-label="Mover a la izquierda" className={btn} onClick={() => onNudge(-1, 0)}><ChevronLeft className="w-4 h-4" /></button>
+        <button type="button" aria-label="Centrar" className={btn} onClick={onCenter}><Crosshair className="w-4 h-4" /></button>
+        <button type="button" aria-label="Mover a la derecha" className={btn} onClick={() => onNudge(1, 0)}><ChevronRight className="w-4 h-4" /></button>
+        <span />
+        <button type="button" aria-label="Bajar" className={btn} onClick={() => onNudge(0, 1)}><ChevronDown className="w-4 h-4" /></button>
+        <span />
+      </div>
+    </div>
+  );
+}
+
 function PlacementControls({
   value,
   onChange,
   withSize,
-  flat,
-  singleFace,
-  frontExtents,
-  areaAspect,
   hideOrientation,
 }: {
   value: Placement;
@@ -398,143 +446,13 @@ function PlacementControls({
   /** Hide the orientation toggle (it lives inside "Texto Personalizado" for text). */
   hideOrientation?: boolean;
 }) {
-  const padRef = useRef<HTMLDivElement>(null);
-  const mode = useRef<null | "move" | "scale">(null);
-  const [snapped, setSnapped] = useState(false);
-
-  const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+  // Position now lives on the 3D visor (drag + floating pad), so this component
+  // only carries size and orientation. See DesignNudgeControl / moveActivePlacement.
   const clampScale = (n: number) => Math.max(0.3, Math.min(1.5, n));
   const set = (patch: Partial<Placement>) => onChange({ ...value, ...patch });
 
-  const applyPointer = (e: React.PointerEvent) => {
-    const el = padRef.current;
-    if (!el || !mode.current) return;
-    const rect = el.getBoundingClientRect();
-    let px = clamp01((e.clientX - rect.left) / rect.width);
-    const py = clamp01((e.clientY - rect.top) / rect.height);
-    if (singleFace) {
-      // The pad spans the editable rectangle; map straight into it. The parent
-      // clamps the result so the whole bounding box stays inside the margins.
-      // Magnetic snap to the horizontal centre, Instagram-style.
-      const near = Math.abs(px - 0.5) < 0.05;
-      if (near) px = 0.5;
-      setSnapped(near);
-      const { u, v } = padToPlacement(px, py);
-      set({ u, v });
-      return;
-    }
-    if (mode.current === "move") {
-      set({ u: px, v: py });
-    } else {
-      // Scale from the element centre out to the pointer (square feel).
-      const half = Math.max(Math.abs(px - value.u), Math.abs(py - value.v));
-      set({ scale: clampScale(half / PAD_BASE) });
-    }
-  };
-
-  const onPadDown = (e: React.PointerEvent) => {
-    // No corner-scale in single-face mode: size is driven by the slider so the
-    // clamp can keep the whole box inside the rectangle.
-    const isCorner = !singleFace && (e.target as HTMLElement).dataset?.role === "scale";
-    mode.current = isCorner ? "scale" : "move";
-    padRef.current?.setPointerCapture(e.pointerId);
-    if (!isCorner) applyPointer(e); // move: jump straight to the tapped point
-  };
-  const onPadMove = (e: React.PointerEvent) => { if (mode.current) applyPointer(e); };
-  const onPadUp = () => { mode.current = null; setSnapped(false); };
-
-  // In single-face mode the pad IS the rectangle, so position is expressed in
-  // pad coordinates and the proxy is sized from the mark's real extents.
-  const b = frontAreaBounds();
-  const pad = singleFace ? placementToPad(value.u, value.v) : { padX: value.u, padY: value.v };
-  const cx = clamp01(pad.padX) * 100;
-  const cy = clamp01(pad.padY) * 100;
-  // Floor the single-face proxy so an empty/tiny mark still shows a grabbable box.
-  const proxyW = singleFace && frontExtents
-    ? Math.max(14, clamp01((2 * frontExtents.halfU) / (b.uMax - b.uMin)) * 100)
-    : PAD_BASE * value.scale * 2 * 100;
-  const proxyH = singleFace && frontExtents
-    ? Math.max(14, clamp01((2 * frontExtents.halfV) / (b.vMax - b.vMin)) * 100)
-    : PAD_BASE * value.scale * 2 * 100;
-
-  const setVertical = (py: number) => {
-    set({ v: b.vMin + clamp01(py) * (b.vMax - b.vMin) });
-  };
-
-  const padEl = (
-    <div
-      ref={padRef}
-      onPointerDown={onPadDown}
-      onPointerMove={onPadMove}
-      onPointerUp={onPadUp}
-      onPointerCancel={onPadUp}
-      className={`relative rounded-xl border bg-secondary/40 overflow-hidden select-none touch-none cursor-move ${
-        singleFace
-          ? "h-full border-primary/50 border-dashed ring-1 ring-primary/15"
-          : "w-full aspect-square max-w-[240px] mx-auto border-border"
-      }`}
-      style={singleFace ? { aspectRatio: String(areaAspect ?? 1), maxWidth: "100%" } : undefined}
-    >
-      {/* Centre guides */}
-      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border/70" />
-      <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70" />
-
-      {/* Magnetic centre guide while snapped */}
-      {singleFace && snapped && (
-        <div className="pointer-events-none absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-primary/80 z-10" />
-      )}
-
-      {singleFace && (
-        <span className="pointer-events-none absolute top-1.5 left-2 text-[9px] font-semibold uppercase tracking-wide text-primary/70">
-          Área grabable
-        </span>
-      )}
-
-      {/* The element proxy */}
-      <div
-        className="absolute rounded-md border-2 border-primary bg-primary/15 flex items-center justify-center transition-[width,height] duration-75"
-        style={{
-          left: `${cx}%`,
-          top: `${cy}%`,
-          width: `${proxyW}%`,
-          height: `${proxyH}%`,
-          transform: "translate(-50%, -50%)",
-        }}
-      >
-        <span className="pointer-events-none text-[10px] font-bold text-primary">
-          {flat ? "◈" : "Aa"}
-        </span>
-        {withSize && !singleFace && (
-          <span
-            data-role="scale"
-            className="absolute -right-1.5 -bottom-1.5 w-4 h-4 rounded-full bg-primary border-2 border-white shadow-sm cursor-nwse-resize"
-          />
-        )}
-      </div>
-    </div>
-  );
-
   return (
     <div className="space-y-4">
-      {/* Drag pad — move by direct manipulation, plus a vertical slider in single-face */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <Label className="text-xs text-muted-foreground">
-            {singleFace ? "Ubicación del texto" : `Posición${withSize ? " y tamaño" : ""}`}
-          </Label>
-          <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/80">
-            <Move className="w-3 h-3" />
-            {singleFace ? "Arrastre o use el control ↕" : `Arrastre para mover${withSize ? " · esquina para escalar" : ""}`}
-          </span>
-        </div>
-        {singleFace ? (
-          <div className="flex items-stretch justify-center gap-3 h-[240px] sm:h-[300px]">
-            <VerticalPosSlider value={clamp01(pad.padY)} onChange={setVertical} />
-            {padEl}
-          </div>
-        ) : padEl}
-      </div>
-
       {/* Precise size row with live % */}
       {withSize && (
         <div>
@@ -593,14 +511,6 @@ function PlacementControls({
         </div>
       </div>
       )}
-
-      <p className="text-xs text-muted-foreground">
-        {singleFace
-          ? "El diseño queda dentro del área de la cara frontal. La tapa, la base y la manija quedan siempre libres."
-          : flat
-            ? "Grabamos sobre la cara principal del producto."
-            : "Solo grabamos las caras externas: la tapa y la base quedan siempre libres."}
-      </p>
     </div>
   );
 }
@@ -949,35 +859,6 @@ function OrientationToggle({ value, onChange }: { value: Placement["orientation"
   );
 }
 
-/** Instagram-style thin vertical slider (0 = top, 1 = bottom) for vertical position. */
-function VerticalPosSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [drag, setDrag] = useState(false);
-  const apply = (clientY: number) => {
-    const el = ref.current; if (!el) return;
-    const r = el.getBoundingClientRect();
-    onChange(clamp01((clientY - r.top) / r.height));
-  };
-  return (
-    <div
-      ref={ref}
-      onPointerDown={(e) => { setDrag(true); (e.target as HTMLElement).setPointerCapture(e.pointerId); apply(e.clientY); }}
-      onPointerMove={(e) => { if (drag) apply(e.clientY); }}
-      onPointerUp={() => setDrag(false)}
-      onPointerCancel={() => setDrag(false)}
-      className="relative w-9 shrink-0 self-stretch min-h-[160px] rounded-full bg-secondary/60 border border-border touch-none cursor-pointer select-none"
-      title="Posición vertical"
-      aria-label="Posición vertical del texto"
-    >
-      <div className="pointer-events-none absolute inset-y-3 left-1/2 w-0.5 -translate-x-1/2 rounded bg-border" />
-      <div
-        className={`pointer-events-none absolute rounded-full bg-primary border-2 border-white shadow transition-[width,height] duration-75 ${drag ? "w-7 h-7" : "w-5 h-5"}`}
-        style={{ top: `${clamp01(value) * 100}%`, left: "50%", transform: "translate(-50%, -50%)" }}
-      />
-    </div>
-  );
-}
-
 /** Tiny silhouette drawn straight from the product's lathe profile. */
 function ProductGlyph({ product, className, style }: { product: ProductDef; className?: string; style?: React.CSSProperties }) {
   const pts = product.profile;
@@ -1137,8 +1018,6 @@ export default function Customizer() {
   // the original 360° behaviour. Shared by text, icons and images.
   const [editMode, setEditMode] = useState<EditMode>("single");
   const singleFace = editMode === "single";
-  // Whether the dashed front-face guide is drawn in the 3D preview.
-  const [showGuides, setShowGuides] = useState(true);
 
   const [technique, setTechnique] = useState<TechniqueId>("laser");
   // Eufy (colour) is drinkware-with-coating only; everything else is laser-only.
@@ -1284,14 +1163,95 @@ export default function Customizer() {
     if (singleFace) setArtPlacement(p => clampArtP(p));
   }, [singleFace, clampArtP]);
 
+  // ── Design drag / nudge (posicionamiento sobre el 3D) ───────────────────────
+  // Which mark a drag-on-3D gesture or the floating d-pad moves: follow the open
+  // editor tab, then fall back to whatever design actually exists.
+  const hasText = !!text;
+  const hasArt = !!artUrl && artImageSize !== "none";
+  const activeDesignKind: "text" | "art" | null =
+    drinkTab === "text" ? (hasText ? "text" : hasArt ? "art" : null)
+    : (drinkTab === "icons" || drinkTab === "media") ? (hasArt ? "art" : hasText ? "text" : null)
+    : hasText ? "text" : hasArt ? "art" : null;
+  const designActive = activeDesignKind !== null;
+
+  // Dashed front-face guides appear ONLY while the design is being moved — a drag
+  // holds them on; a nudge/center tap flashes them briefly.
+  const [guidesActive, setGuidesActive] = useState(false);
+  const guidesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashGuides = React.useCallback(() => {
+    setGuidesActive(true);
+    if (guidesTimer.current) clearTimeout(guidesTimer.current);
+    guidesTimer.current = setTimeout(() => setGuidesActive(false), 1100);
+  }, []);
+  const beginDesignDrag = React.useCallback(() => {
+    if (guidesTimer.current) { clearTimeout(guidesTimer.current); guidesTimer.current = null; }
+    setGuidesActive(true);
+  }, []);
+  const endDesignDrag = React.useCallback(() => { flashGuides(); }, [flashGuides]);
+
+  // Move the active mark by a delta in pad space (0..1 across the front-face
+  // rectangle). Shared by the drag-on-3D and the floating d-pad. In single-face
+  // the delta walks the pad and re-clamps into the rectangle; in free mode it
+  // applies straight to u/v (u wraps around the body).
+  const moveActivePlacement = React.useCallback((dPadX: number, dPadY: number) => {
+    const apply = (p: Placement, clampFn: (q: Placement) => Placement): Placement => {
+      if (singleFace) {
+        const pad = placementToPad(p.u, p.v);
+        const np = padToPlacement(
+          Math.max(0, Math.min(1, pad.padX + dPadX)),
+          Math.max(0, Math.min(1, pad.padY + dPadY)),
+        );
+        return clampFn({ ...p, u: np.u, v: np.v });
+      }
+      let u = p.u + dPadX; u -= Math.floor(u);
+      const v = Math.max(0, Math.min(1, p.v + dPadY));
+      return { ...p, u, v };
+    };
+    if (activeDesignKind === "text") setTextPlacement(p => apply(p, clampTextP));
+    else if (activeDesignKind === "art") setArtPlacement(p => apply(p, clampArtP));
+  }, [singleFace, activeDesignKind, clampTextP, clampArtP]);
+
+  const centerActivePlacement = React.useCallback(() => {
+    const c = padToPlacement(0.5, 0.5);
+    if (activeDesignKind === "text") setTextPlacement(p => clampTextP({ ...p, u: c.u, v: c.v }));
+    else if (activeDesignKind === "art") setArtPlacement(p => clampArtP({ ...p, u: c.u, v: c.v }));
+    flashGuides();
+  }, [activeDesignKind, clampTextP, clampArtP, flashGuides]);
+
+  // Drag delta (fraction of the canvas) → pad delta. The front face fills roughly
+  // the middle half of the canvas, so a gain just under 2 tracks the finger.
+  const onDesignMove = React.useCallback((dxFrac: number, dyFrac: number) => {
+    moveActivePlacement(dxFrac * 1.7, dyFrac * 1.5);
+  }, [moveActivePlacement]);
+
+  const NUDGE_STEP = 0.06;
+
   // ── Preview capture ─────────────────────────────────────────────────────────
   // Grab a PNG of the live 3D canvas (preserveDrawingBuffer keeps the last frame
   // readable). Returns null if the canvas isn't mounted (e.g. mobile Step 4).
   const capturePreview = React.useCallback((): string | null => {
-    const canvas = previewPanelRef.current?.querySelector("canvas");
+    const canvas = previewPanelRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
     if (!canvas) return null;
     try {
-      const url = canvas.toDataURL("image/png");
+      const sw = canvas.width, sh = canvas.height;
+      if (!sw || !sh) return null;
+      // Upscale the captured frame so the longest side reaches ~1080px (never
+      // downscale below native). Gives WhatsApp a decently sized preview.
+      const TARGET = 1080;
+      const factor = Math.max(1, TARGET / Math.max(sw, sh));
+      const ow = Math.round(sw * factor);
+      const oh = Math.round(sh * factor);
+      const off = document.createElement("canvas");
+      off.width = ow; off.height = oh;
+      const ctx = off.getContext("2d");
+      if (!ctx) {
+        const raw = canvas.toDataURL("image/png");
+        return raw.startsWith("data:image/png") ? raw : null;
+      }
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(canvas, 0, 0, ow, oh);
+      const url = off.toDataURL("image/png");
       return url.startsWith("data:image/png") ? url : null;
     } catch {
       return null;
@@ -1759,7 +1719,42 @@ export default function Customizer() {
         {/* Mobile Step 2 — Color base del producto (drinkware only). La técnica de
             grabado vive ahora en el Paso 3, bajo "Texto Personalizado". */}
         {isMobile && isDrinkware && mobileStep === 2 && (
-          <motion.div key="wiz-2" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-6 pb-28">
+          <motion.div key="wiz-2" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-5 pb-28">
+            {/* Live mini-preview — a compact, sticky 3D of the product that updates
+                as the colour changes. Only ONE 3D canvas is ever mounted at a time
+                (this one on Step 2, the big one on Step 3), so no second renderer. */}
+            <div className="sticky top-0 z-30">
+              <div className="relative bg-secondary/30 rounded-2xl border border-border overflow-hidden shadow-lg shadow-black/5">
+                {isGlass ? (
+                  <div className="absolute inset-0 rounded-2xl" style={{ background: "radial-gradient(circle at 50% 38%, #eef2f6 0%, #d3dae2 55%, #aeb8c4 100%)" }} />
+                ) : (
+                  <div className="absolute inset-0 opacity-[0.07] transition-colors duration-500 rounded-2xl" style={{ backgroundColor: activeColorHex }} />
+                )}
+                <div className="relative z-10" style={{ height: "32vh", minHeight: 210, maxHeight: 320 }}>
+                  <Thermos3D
+                    colorHex={activeColorHex}
+                    finish={finish}
+                    text={text}
+                    fontClass=""
+                    fontStyle={activeFont.style}
+                    productId={productId}
+                    sizeId={size}
+                    customImageUrl={artUrl}
+                    imageSize={artImageSize}
+                    textPlacement={textPlacement}
+                    artPlacement={artPlacement}
+                    colorPrint={effectiveTechnique === "eufy"}
+                    textColor={textColor}
+                    engraveStyle={drinkwareEngraveStyle}
+                    singleFace={singleFace}
+                    showGuides={false}
+                    frontFaceU={FRONT_FACE.uCenter}
+                    glass={isGlass}
+                  />
+                </div>
+              </div>
+              <p className="text-center text-xs text-muted-foreground mt-1">Vista en vivo · arrastre para girar</p>
+            </div>
             {renderDrinkColor()}
           </motion.div>
         )}
@@ -1794,7 +1789,7 @@ export default function Customizer() {
               {isDrinkware ? (
                 <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
                   {/* 3D Canvas — taller for bigger sizes; compact on phones */}
-                  <div className="w-full" style={{ height: (isMobile ? 300 : 480) + Math.round((activeSize.scale - 0.84) * (isMobile ? 110 : 200)) }}>
+                  <div className="relative w-full" style={{ height: (isMobile ? 300 : 480) + Math.round((activeSize.scale - 0.84) * (isMobile ? 110 : 200)) }}>
                     <Thermos3D
                       colorHex={activeColorHex}
                       finish={finish}
@@ -1811,24 +1806,32 @@ export default function Customizer() {
                       textColor={textColor}
                       engraveStyle={drinkwareEngraveStyle}
                       singleFace={singleFace}
-                      showGuides={showGuides}
+                      showGuides={guidesActive}
                       frontFaceU={FRONT_FACE.uCenter}
                       glass={isGlass}
+                      designActive={designActive}
+                      onDesignMove={onDesignMove}
+                      onDesignDragStart={beginDesignDrag}
+                      onDesignDragEnd={endDesignDrag}
                     />
+                    {/* Floating position control — over the visor, on the side that
+                        least covers the piece (left for the termo, whose D-grip is on
+                        the right). Only while a design is active. */}
+                    {designActive && (
+                      <DesignNudgeControl
+                        side={product.handle === "body-d" ? "left" : "right"}
+                        onNudge={(dx, dy) => { moveActivePlacement(dx * NUDGE_STEP, dy * NUDGE_STEP); flashGuides(); }}
+                        onCenter={centerActivePlacement}
+                      />
+                    )}
                   </div>
 
                   <div className="flex items-center gap-3 -mt-1 mb-1">
-                    <p className="text-xs text-muted-foreground">Arrastre para girar</p>
-                    {singleFace && (
-                      <button
-                        type="button"
-                        onClick={() => setShowGuides(g => !g)}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                      >
-                        {showGuides ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                        {showGuides ? "Ocultar guías" : "Mostrar guías"}
-                      </button>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {designActive
+                        ? (singleFace ? "Arrastre el diseño sobre el producto" : "Arrastre para girar")
+                        : "Arrastre para girar"}
+                    </p>
                   </div>
 
                   {/* Summary badges — hidden on mobile to keep the sticky preview compact. */}
@@ -1856,7 +1859,7 @@ export default function Customizer() {
                 </div>
               ) : is3DObject && activeObject ? (
                 <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
-                  <div className="w-full" style={{ height: isMobile ? 300 : 460 }}>
+                  <div className="relative w-full" style={{ height: isMobile ? 300 : 460 }}>
                     <Object3D
                       objectId={activeObject.id}
                       colorHex={activeObject.colorable ? activeColorHex : undefined}
@@ -1866,10 +1869,23 @@ export default function Customizer() {
                       imageSize={artImageSize}
                       textPlacement={textPlacement}
                       artPlacement={artPlacement}
+                      designActive={designActive}
+                      onDesignMove={onDesignMove}
+                      onDesignDragStart={beginDesignDrag}
+                      onDesignDragEnd={endDesignDrag}
                     />
+                    {designActive && (
+                      <DesignNudgeControl
+                        side="right"
+                        onNudge={(dx, dy) => { moveActivePlacement(dx * NUDGE_STEP, dy * NUDGE_STEP); flashGuides(); }}
+                        onCenter={centerActivePlacement}
+                      />
+                    )}
                   </div>
 
-                  <p className="text-xs text-muted-foreground -mt-1 mb-1">Arrastre para girar</p>
+                  <p className="text-xs text-muted-foreground -mt-1 mb-1">
+                    {designActive ? "Arrastre el diseño sobre el producto" : "Arrastre para girar"}
+                  </p>
 
                   <div className="flex flex-wrap gap-2 justify-center px-4 pb-4">
                     <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground">
@@ -2030,29 +2046,6 @@ export default function Customizer() {
                       <div>
                         <TextDispositionToolbar placement={textPlacement} onChange={applyTextPlacement} />
                       </div>
-
-                      {/* Ubicación + orientación — visible también en mobile: el pad
-                          responde a touch y la orientación (horizontal/vertical) sólo
-                          se controla acá. En mobile además se puede arrastrar el texto
-                          directo sobre el 3D. */}
-                      <div className="pt-4 border-t border-border">
-                        <Label className="text-sm font-medium text-foreground mb-2 block">Ubicación del Texto</Label>
-                        <p className="text-xs text-muted-foreground mb-3">
-                          {isMobile
-                            ? `Arrastrá el texto directamente sobre el ${product.singular.toLowerCase()} o usá los controles de abajo.`
-                            : singleFace
-                              ? `Subí o bajá el texto con el control vertical, o arrastralo dentro del área grabable de la cara frontal del ${product.singular.toLowerCase()}.`
-                              : `Colocá el texto donde quieras alrededor del ${product.singular.toLowerCase()}.`}
-                        </p>
-                        <PlacementControls
-                          value={textPlacement}
-                          onChange={applyTextPlacement}
-                          singleFace={singleFace}
-                          frontExtents={textExtents}
-                          areaAspect={faceAreaAspect}
-                          hideOrientation
-                        />
-                      </div>
                     </AdvancedOptions>
                   </TabsContent>
 
@@ -2071,11 +2064,9 @@ export default function Customizer() {
                     {selectedIcon && (
                     <AdvancedOptions>
                       <div>
-                        <Label className="text-sm font-medium text-foreground mb-1 block">Ubicación del Ícono</Label>
+                        <Label className="text-sm font-medium text-foreground mb-1 block">Tamaño y orientación del ícono</Label>
                         <p className="text-xs text-muted-foreground mb-3">
-                          {singleFace
-                            ? `Ubicá el ícono dentro del área grabable de la cara frontal del ${product.singular.toLowerCase()}.`
-                            : `Movelo y giralo libremente sobre las caras del ${product.singular.toLowerCase()}.`}
+                          Arrastrá el ícono sobre el {product.singular.toLowerCase()} para ubicarlo, o usá el control de posición del visor. Acá ajustás su tamaño.
                         </p>
                         <PlacementControls
                           value={artPlacement}
@@ -2113,11 +2104,9 @@ export default function Customizer() {
 
                           {customImage && (
                             <div className="pt-4 mt-4 border-t border-border">
-                              <Label className="text-sm font-medium text-foreground mb-1 block">Ubicación de la Imagen</Label>
+                              <Label className="text-sm font-medium text-foreground mb-1 block">Orientación de la imagen</Label>
                               <p className="text-xs text-muted-foreground mb-3">
-                                {singleFace
-                                  ? `Ubicá la imagen dentro del área grabable de la cara frontal del ${product.singular.toLowerCase()}.`
-                                  : `Movela y girala libremente sobre las caras del ${product.singular.toLowerCase()}.`}
+                                Arrastrá la imagen sobre el {product.singular.toLowerCase()} para ubicarla, o usá el control de posición del visor.
                               </p>
                               <PlacementControls
                                 value={artPlacement}
@@ -2294,14 +2283,6 @@ export default function Customizer() {
                     {/* AVANZADO */}
                     <AdvancedOptions>
                       <TextDispositionToolbar placement={textPlacement} onChange={setTextPlacement} />
-
-                      <div className="pt-4 border-t border-border">
-                        <Label className="text-sm font-medium text-foreground mb-2 block">Ubicación del Texto</Label>
-                        <p className="text-xs text-muted-foreground mb-3">
-                          Colocá el texto donde quieras sobre la {activeObject.singular.toLowerCase()}.
-                        </p>
-                        <PlacementControls value={textPlacement} onChange={setTextPlacement} flat hideOrientation />
-                      </div>
                     </AdvancedOptions>
                   </TabsContent>
 
@@ -2317,9 +2298,9 @@ export default function Customizer() {
 
                     {selectedIcon && (
                       <div className="pt-4 border-t border-border">
-                        <Label className="text-sm font-medium text-foreground mb-1 block">Ubicación del Ícono</Label>
+                        <Label className="text-sm font-medium text-foreground mb-1 block">Tamaño y orientación del ícono</Label>
                         <p className="text-xs text-muted-foreground mb-3">
-                          Movelo y giralo libremente sobre la cara de la {activeObject.singular.toLowerCase()}.
+                          Arrastrá el ícono sobre la {activeObject.singular.toLowerCase()} para ubicarlo, o usá el control de posición del visor. Acá ajustás su tamaño.
                         </p>
                         <PlacementControls value={artPlacement} onChange={setArtPlacement} withSize flat />
                       </div>
@@ -2338,9 +2319,9 @@ export default function Customizer() {
 
                       {customImage && (
                         <div className="pt-4 mt-4 border-t border-border">
-                          <Label className="text-sm font-medium text-foreground mb-1 block">Ubicación de la Imagen</Label>
+                          <Label className="text-sm font-medium text-foreground mb-1 block">Orientación de la imagen</Label>
                           <p className="text-xs text-muted-foreground mb-3">
-                            Movela y girala libremente sobre la cara de la {activeObject.singular.toLowerCase()}.
+                            Arrastrá la imagen sobre la {activeObject.singular.toLowerCase()} para ubicarla, o usá el control de posición del visor.
                           </p>
                           <PlacementControls value={artPlacement} onChange={setArtPlacement} flat />
                         </div>
