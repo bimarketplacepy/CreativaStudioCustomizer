@@ -1667,13 +1667,13 @@ export default function Customizer() {
         {(!isMobile || mobileStep === designStepIndex) && (
         <div className={isMobile ? "pb-28" : undefined}>
         {/* STEP 3 — CUSTOMIZE */}
-        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 lg:gap-8 lg:items-start">
 
           {/* PREVIEW AREA */}
           {/* On mobile the preview wrapper is sticky within the tall flex column,
               so the live 3D stays pinned at the top while the editor scrolls
               beneath it — same single canvas, no second WebGL context. */}
-          <div className="w-full lg:col-span-4 relative max-lg:sticky max-lg:top-0 max-lg:z-30 self-start">
+          <div className="w-full min-w-0 lg:col-span-4 relative max-lg:sticky max-lg:top-0 max-lg:z-30 lg:self-start">
             <div className="lg:sticky lg:top-24 z-20 bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[280px] md:min-h-[520px] max-lg:shadow-lg max-lg:shadow-black/5">
               {isGlass ? (
                 // Glass needs an environment to reflect and a graded backdrop to
@@ -1847,7 +1847,7 @@ export default function Customizer() {
           </div>
 
           {/* CONTROLS AREA */}
-          <div className="lg:col-span-8 bg-white rounded-2xl border border-border">
+          <div className="w-full min-w-0 lg:col-span-8 bg-white rounded-2xl border border-border">
             {isDrinkware ? (
               <Tabs value={drinkTab} onValueChange={setDrinkTab} className="w-full">
                 <div className="px-4 sm:px-6 pt-4 pb-1">
