@@ -12,6 +12,9 @@ const PricingEngraving = lazy(() => import("@/components/pricing-engraving"));
 const Gallery = lazy(() => import("@/components/gallery"));
 const Footer = lazy(() => import("@/components/footer"));
 const WhatsAppButton = lazy(() => import("@/components/whatsapp-button"));
+// First-visit onboarding modal: plays a mini demo of the customizer when the
+// #customizer section scrolls into view. Independent overlay — touches nothing.
+const CustomizerTutorial = lazy(() => import("@/components/customizer-tutorial"));
 
 /** Minimal placeholder while a lazy section streams in — reserves vertical
  *  space so nothing jumps (keeps CLS at 0). */
@@ -42,6 +45,9 @@ export default function Home() {
       </Suspense>
       <Suspense fallback={null}>
         <WhatsAppButton />
+      </Suspense>
+      <Suspense fallback={null}>
+        <CustomizerTutorial />
       </Suspense>
     </div>
   );

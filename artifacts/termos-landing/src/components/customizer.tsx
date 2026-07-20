@@ -1149,17 +1149,18 @@ export default function Customizer() {
   );
 
   // Setters that keep placements inside the rectangle while in single-face mode.
-  const applyTextPlacement = (next: Placement) => setTextPlacement(singleFace ? clampTextP(next) : next);
-  const applyArtPlacement = (next: Placement) => setArtPlacement(singleFace ? clampArtP(next) : next);
+  // Flat blanks skip it: their face renderer clamps against the real face edges.
+  const applyTextPlacement = (next: Placement) => setTextPlacement(singleFace && !is3DObject ? clampTextP(next) : next);
+  const applyArtPlacement = (next: Placement) => setArtPlacement(singleFace && !is3DObject ? clampArtP(next) : next);
 
   // Re-clamp when growing the mark or the product changes could push the box out
   // of bounds (typing a longer name, a bigger plan image, switching size, …).
   React.useEffect(() => {
-    if (singleFace) setTextPlacement(p => clampTextP(p));
-  }, [singleFace, clampTextP]);
+    if (singleFace && !is3DObject) setTextPlacement(p => clampTextP(p));
+  }, [singleFace, is3DObject, clampTextP]);
   React.useEffect(() => {
-    if (singleFace) setArtPlacement(p => clampArtP(p));
-  }, [singleFace, clampArtP]);
+    if (singleFace && !is3DObject) setArtPlacement(p => clampArtP(p));
+  }, [singleFace, is3DObject, clampArtP]);
 
   // ── Design drag / nudge (posicionamiento sobre el 3D) ───────────────────────
   // Which mark a drag-on-3D gesture or the floating d-pad moves: follow the open
@@ -1193,6 +1194,15 @@ export default function Customizer() {
   // applies straight to u/v (u wraps around the body).
   const moveActivePlacement = React.useCallback((dPadX: number, dPadY: number) => {
     const apply = (p: Placement, clampFn: (q: Placement) => Placement): Placement => {
+      // Flat blanks (billetera, tabla, caja…): the whole face is the canvas, so
+      // u/v walk it edge to edge — corners included. The face renderer
+      // (drawPlaced in engraving-face.ts) already stops the mark's bounding box
+      // at the face border, so no product-specific clamp is needed here. The
+      // termo front-area clamp below would confine the mark to a small central
+      // window that doesn't exist on these products.
+      if (is3DObject) {
+        return { ...p, u: clamp01(p.u + dPadX), v: clamp01(p.v + dPadY) };
+      }
       if (singleFace) {
         const pad = placementToPad(p.u, p.v);
         const np = padToPlacement(
@@ -1207,14 +1217,18 @@ export default function Customizer() {
     };
     if (activeDesignKind === "text") setTextPlacement(p => apply(p, clampTextP));
     else if (activeDesignKind === "art") setArtPlacement(p => apply(p, clampArtP));
-  }, [singleFace, activeDesignKind, clampTextP, clampArtP]);
+  }, [singleFace, is3DObject, activeDesignKind, clampTextP, clampArtP]);
 
   const centerActivePlacement = React.useCallback(() => {
+    // Face centre for flat blanks; centre of the front-face rectangle (same
+    // 0.5/0.5, but run through the termo clamp) for drinkware.
     const c = padToPlacement(0.5, 0.5);
-    if (activeDesignKind === "text") setTextPlacement(p => clampTextP({ ...p, u: c.u, v: c.v }));
-    else if (activeDesignKind === "art") setArtPlacement(p => clampArtP({ ...p, u: c.u, v: c.v }));
+    const clampT = is3DObject ? (p: Placement) => p : clampTextP;
+    const clampA = is3DObject ? (p: Placement) => p : clampArtP;
+    if (activeDesignKind === "text") setTextPlacement(p => clampT({ ...p, u: c.u, v: c.v }));
+    else if (activeDesignKind === "art") setArtPlacement(p => clampA({ ...p, u: c.u, v: c.v }));
     flashGuides();
-  }, [activeDesignKind, clampTextP, clampArtP, flashGuides]);
+  }, [is3DObject, activeDesignKind, clampTextP, clampArtP, flashGuides]);
 
   // Drag delta (fraction of the canvas) → pad delta. The front face fills roughly
   // the middle half of the canvas, so a gain just under 2 tracks the finger.
