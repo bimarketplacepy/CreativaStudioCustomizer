@@ -1,3 +1,15 @@
 <svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+  <rect width="180" height="180" rx="36" fill="#2a2a2a"/>
+  <!-- Lightbulb outer shape -->
+  <path d="M90 32 C62 32 40 54 40 82 C40 100 50 116 65 124 L65 138 C65 141 68 144 71 144 L109 144 C112 144 115 141 115 138 L115 124 C130 116 140 100 140 82 C140 54 118 32 90 32 Z" stroke="white" stroke-width="7" stroke-linejoin="round" fill="none"/>
+  <!-- Base band 1 -->
+  <line x1="68" y1="150" x2="112" y2="150" stroke="white" stroke-width="7" stroke-linecap="round"/>
+  <!-- Base band 2 -->
+  <line x1="74" y1="159" x2="106" y2="159" stroke="white" stroke-width="6" stroke-linecap="round"/>
+  <!-- Pencil body (diagonal inside bulb) -->
+  <line x1="82" y1="114" x2="100" y2="52" stroke="white" stroke-width="6" stroke-linecap="round"/>
+  <!-- Pencil tip -->
+  <path d="M100 52 L107 64 L93 68 Z" fill="white"/>
+  <!-- Pencil eraser end -->
+  <line x1="79" y1="118" x2="84" y2="110" stroke="white" stroke-width="5" stroke-linecap="round"/>
 </svg>
