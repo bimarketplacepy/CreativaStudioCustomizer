@@ -186,9 +186,9 @@ function HoppieLid({ sil }: { sil: Silhouette }) {
  * customer sees exactly the box their design is trapped inside. Built straight
  * from the same `FRONT_FACE` config the clamp uses, so guide and limit agree.
  */
-function FrontFaceGuide({ sil }: { sil: Silhouette }) {
+function FrontFaceGuide({ sil, product }: { sil: Silhouette; product: ProductDef }) {
   const object = useMemo(() => {
-    const b = frontAreaBounds();
+    const b = frontAreaBounds(product);
     const bandTopY = sil.band[1]; // placement v = 0 (band top)
     const bandBotY = sil.band[0]; // placement v = 1 (band bottom)
     const yAtV = (v: number) => bandTopY + (bandBotY - bandTopY) * v;
@@ -235,7 +235,7 @@ function FrontFaceGuide({ sil }: { sil: Silhouette }) {
     const line = new THREE.LineLoop(geo, mat);
     line.computeLineDistances();
     return line;
-  }, [sil]);
+  }, [sil, product]);
 
   useEffect(() => () => {
     object.geometry.dispose();
@@ -664,7 +664,7 @@ function ThermosMesh({
       )}
 
       {/* Front-face editable area outline (single-face mode, guides visible) */}
-      {singleFace && showGuides && <FrontFaceGuide sil={sil} />}
+      {singleFace && showGuides && <FrontFaceGuide sil={sil} product={product} />}
     </group>
   );
 }

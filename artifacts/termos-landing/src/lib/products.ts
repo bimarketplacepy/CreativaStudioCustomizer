@@ -28,6 +28,13 @@ export interface ProductDef {
    * Excludes the cap/lid and the rounded base, which we never engrave.
    */
   band: [number, number];
+  /**
+   * Per-product override of the single-face editable area (defaults live in
+   * face-area.ts FRONT_FACE). Use it when the body is far from cylindrical and
+   * the default rectangle would wedge its margins into a narrowing part of the
+   * silhouette (e.g. the copa's bowl curving down into the stem).
+   */
+  frontFace?: { uHalfWidth?: number; vCenter?: number; vHeightFrac?: number };
   sizes: ProductSize[];
 }
 
@@ -166,6 +173,13 @@ export const PRODUCTS: ProductDef[] = [
       [0.41,  1.20],
     ],
     band: [-0.20, 1.02],
+    // El bombé no es cilíndrico: el radio pasa de 0.28 (abajo, camino al tallo)
+    // a 0.48 (panza) y 0.41 (borde). Con el área default, el margen inferior
+    // caía en la zona cónica que se estrecha → esquinas "pellizcadas". Se centra
+    // el área en la parte alta del bombé (radio casi constante 0.43-0.48) y se
+    // acorta el arco horizontal para que los bordes laterales se vean rectos
+    // de frente en la superficie curva.
+    frontFace: { uHalfWidth: 0.18, vCenter: 0.43, vHeightFrac: 0.72 },
     sizes: [
       { id: "copa-sm", name: "Chica",   label: "300ml", scale: 0.88 },
       { id: "copa-md", name: "Mediana", label: "450ml", scale: 1.00 },

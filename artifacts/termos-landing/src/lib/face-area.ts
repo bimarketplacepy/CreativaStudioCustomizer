@@ -1,4 +1,5 @@
 import type { Placement } from "./placement";
+import type { ProductDef } from "./products";
 
 /**
  * "Edición en una cara" (single-face) mode: the design is confined to one
@@ -38,6 +39,24 @@ export const FRONT_FACE = {
   textPadFrac: 0.05,
 } as const;
 
+/**
+ * Effective front-face config for a product: the global FRONT_FACE defaults,
+ * overridden per product via `ProductDef.frontFace`. Strongly non-cylindrical
+ * bodies (the copa's flared bowl) tune the area so its margins follow the
+ * object's real shape instead of wedging into the narrow parts.
+ */
+export interface FaceConfig {
+  uCenter: number;
+  uHalfWidth: number;
+  vCenter: number;
+  vHeightFrac: number;
+  textPadFrac: number;
+}
+
+export function faceConfigFor(product?: Pick<ProductDef, "frontFace">): FaceConfig {
+  return { ...FRONT_FACE, ...product?.frontFace };
+}
+
 /** Rectangle bounds in placement space: u fraction of circumference, v fraction of the band. */
 export interface FrontAreaBounds {
   uMin: number;
@@ -47,12 +66,13 @@ export interface FrontAreaBounds {
   vMax: number;
 }
 
-export function frontAreaBounds(): FrontAreaBounds {
+export function frontAreaBounds(product?: Pick<ProductDef, "frontFace">): FrontAreaBounds {
+  const f = faceConfigFor(product);
   return {
-    uMin: FRONT_FACE.uCenter - FRONT_FACE.uHalfWidth,
-    uMax: FRONT_FACE.uCenter + FRONT_FACE.uHalfWidth,
-    vMin: FRONT_FACE.vCenter - FRONT_FACE.vHeightFrac / 2,
-    vMax: FRONT_FACE.vCenter + FRONT_FACE.vHeightFrac / 2,
+    uMin: f.uCenter - f.uHalfWidth,
+    uMax: f.uCenter + f.uHalfWidth,
+    vMin: f.vCenter - f.vHeightFrac / 2,
+    vMax: f.vCenter + f.vHeightFrac / 2,
   };
 }
 
@@ -80,8 +100,12 @@ export interface MarkHalfExtents {
  * margin, not even partially. Used both for the drag pad (nearest valid point)
  * and when switching from "libre" into "una cara".
  */
-export function clampPlacementToFrontArea(p: Placement, half: MarkHalfExtents): Placement {
-  const b = frontAreaBounds();
+export function clampPlacementToFrontArea(
+  p: Placement,
+  half: MarkHalfExtents,
+  product?: Pick<ProductDef, "frontFace">,
+): Placement {
+  const b = frontAreaBounds(product);
   return {
     ...p,
     u: collapseClamp(p.u, b.uMin + half.halfU, b.uMax - half.halfU),
@@ -90,8 +114,12 @@ export function clampPlacementToFrontArea(p: Placement, half: MarkHalfExtents): 
 }
 
 /** Pad coordinates (0..1 within the rectangle) → placement u/v. */
-export function padToPlacement(padX: number, padY: number): { u: number; v: number } {
-  const b = frontAreaBounds();
+export function padToPlacement(
+  padX: number,
+  padY: number,
+  product?: Pick<ProductDef, "frontFace">,
+): { u: number; v: number } {
+  const b = frontAreaBounds(product);
   return {
     u: b.uMin + padX * (b.uMax - b.uMin),
     v: b.vMin + padY * (b.vMax - b.vMin),
@@ -99,8 +127,12 @@ export function padToPlacement(padX: number, padY: number): { u: number; v: numb
 }
 
 /** Placement u/v → pad coordinates (0..1 within the rectangle). */
-export function placementToPad(u: number, v: number): { padX: number; padY: number } {
-  const b = frontAreaBounds();
+export function placementToPad(
+  u: number,
+  v: number,
+  product?: Pick<ProductDef, "frontFace">,
+): { padX: number; padY: number } {
+  const b = frontAreaBounds(product);
   return {
     padX: (u - b.uMin) / (b.uMax - b.uMin),
     padY: (v - b.vMin) / (b.vMax - b.vMin),

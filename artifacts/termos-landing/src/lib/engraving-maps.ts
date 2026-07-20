@@ -7,7 +7,7 @@ import {
 import {
   layoutText, fillLinesAligned, measureLinesWidth, fitText,
 } from "./engraving-text";
-import { FRONT_FACE, type MarkHalfExtents } from "./face-area";
+import { faceConfigFor, type MarkHalfExtents } from "./face-area";
 
 /** Text wraps once a row passes this fraction of the wrap-around circumference. */
 const TEXT_WRAP_FRAC = 0.5;
@@ -48,7 +48,9 @@ export function bandMetrics(product: ProductDef, W: number, H: number) {
   const maxR = Math.max(...product.profile.map(p => p[0]));
   const hPxPerUnit = W / (2 * Math.PI * maxR);
   const vPxPerUnit = (botPx - topPx) / (product.band[1] - product.band[0]);
-  return { topPx, botPx, aspect: vPxPerUnit / hPxPerUnit };
+  // Resolved single-face area for THIS product (copa overrides the default) so
+  // every consumer of the metrics clamps against the same rectangle.
+  return { topPx, botPx, aspect: vPxPerUnit / hPxPerUnit, face: faceConfigFor(product) };
 }
 
 type BandMetrics = ReturnType<typeof bandMetrics>;
@@ -82,15 +84,16 @@ function drawPlaced(
   // rendered extents guarantee nothing crosses the margin, even partially.
   if (singleFace) {
     const bandH = m.botPx - m.topPx;
+    const f = m.face;
     cx = clamp(
       cx,
-      (FRONT_FACE.uCenter - FRONT_FACE.uHalfWidth) * W + boundHalfW,
-      (FRONT_FACE.uCenter + FRONT_FACE.uHalfWidth) * W - boundHalfW,
+      (f.uCenter - f.uHalfWidth) * W + boundHalfW,
+      (f.uCenter + f.uHalfWidth) * W - boundHalfW,
     );
     cy = clamp(
       cy,
-      m.topPx + bandH * (FRONT_FACE.vCenter - FRONT_FACE.vHeightFrac / 2) + boundHalfH,
-      m.topPx + bandH * (FRONT_FACE.vCenter + FRONT_FACE.vHeightFrac / 2) - boundHalfH,
+      m.topPx + bandH * (f.vCenter - f.vHeightFrac / 2) + boundHalfH,
+      m.topPx + bandH * (f.vCenter + f.vHeightFrac / 2) - boundHalfH,
     );
   }
 
@@ -249,9 +252,9 @@ export function computeFaceTextLayout(
   if (singleFace && opts.text) {
     // Room for the block in square px. Turning the text vertical swaps which
     // area dimension constrains the block's own width vs. height.
-    const pad = 1 - 2 * FRONT_FACE.textPadFrac;
-    const areaWcyl = 2 * FRONT_FACE.uHalfWidth * W;                // circumference px
-    const areaHcyl = FRONT_FACE.vHeightFrac * (m.botPx - m.topPx); // texture px
+    const pad = 1 - 2 * m.face.textPadFrac;
+    const areaWcyl = 2 * m.face.uHalfWidth * W;                // circumference px
+    const areaHcyl = m.face.vHeightFrac * (m.botPx - m.topPx); // texture px
     const areaHsq = areaHcyl / m.aspect;                          // square px
     const availW = (rot ? areaHsq : areaWcyl) * pad;
     const availH = (rot ? areaWcyl : areaHsq) * pad;

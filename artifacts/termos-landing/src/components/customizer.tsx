@@ -10,7 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import {
   Check, Palette, Type, Box, Pipette, ImageIcon, MoveHorizontal, MoveVertical,
   Shapes, Zap, Sparkles, Wallet, TreePine, Square, PenLine, Wine, CupSoda, Snowflake, MessageCircle,
-  Minus, Plus, Move, Focus, Globe,
+  Minus, Plus, Move,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
   WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
   ChevronUp, Crosshair, CirclePlay,
@@ -30,7 +30,7 @@ import {
   markHalfExtents, computeFaceTextLayout, bandMetrics, TEXTURE_W, TEXTURE_H, type MarkSpec,
 } from "@/lib/engraving-maps";
 import {
-  FRONT_FACE, frontAreaBounds, padToPlacement, placementToPad,
+  FRONT_FACE, padToPlacement, placementToPad,
   clampPlacementToFrontArea, type MarkHalfExtents,
 } from "@/lib/face-area";
 import {
@@ -515,51 +515,6 @@ function PlacementControls({
   );
 }
 
-type EditMode = "single" | "free";
-
-/**
- * The mode selector shown above "Texto Personalizado". Two modes decide where
- * a design (text, icon or image) may live on the termo:
- *   - "Edición en una cara" — locked to a rectangle on the front face.
- *   - "Edición libre"       — anywhere around the 360° body.
- * Reused across the Texto / Íconos / Imagen tabs so the choice is always visible.
- */
-function EditModeToggle({ mode, onMode, productName }: { mode: EditMode; onMode: (m: EditMode) => void; productName: string }) {
-  const options: { id: EditMode; name: string; Icon: React.ComponentType<{ className?: string }>; help: string }[] = [
-    { id: "single", name: "Edición en una cara", Icon: Focus, help: `El diseño se coloca dentro de un área fija en la cara frontal del ${productName}. Ideal para un logo o nombre bien centrado.` },
-    { id: "free",   name: "Edición libre",       Icon: Globe, help: `Coloque el diseño en cualquier parte del ${productName}, girándolo en los 360°. La tapa y la base quedan siempre libres.` },
-  ];
-  const active = options.find(o => o.id === mode) ?? options[0];
-  return (
-    <div className="mb-6 rounded-xl border border-border bg-secondary/30 p-3">
-      <Label className="text-xs font-semibold text-foreground mb-2 block">Modo de edición</Label>
-      <div className="grid grid-cols-2 gap-2" role="tablist" aria-label="Modo de edición">
-        {options.map(o => {
-          const isActive = mode === o.id;
-          return (
-            <button
-              key={o.id}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => onMode(o.id)}
-              className={`flex items-center justify-center gap-2 p-2.5 border rounded-lg text-sm font-medium transition-all active:scale-[0.97] ${
-                isActive ? activeCard : idleCard
-              }`}
-            >
-              <o.Icon className="w-4 h-4" />
-              {o.name}
-            </button>
-          );
-        })}
-      </div>
-      <p className="text-xs text-muted-foreground mt-2.5 leading-relaxed">
-        <span className="font-medium text-foreground">{active.name}:</span> {active.help}
-      </p>
-    </div>
-  );
-}
-
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
 /** Editor-style alignment buttons for multi-line text (left/center/right/justify). */
@@ -1014,10 +969,10 @@ export default function Customizer() {
   const [customImage, setCustomImage] = useState<ProcessedImage | null>(null);
   const [textPlacement, setTextPlacement] = useState<Placement>(DEFAULT_TEXT_PLACEMENT);
   const [artPlacement, setArtPlacement] = useState<Placement>(DEFAULT_ART_PLACEMENT);
-  // Placement mode. "single" (front-face rectangle) is the default; "free" is
-  // the original 360° behaviour. Shared by text, icons and images.
-  const [editMode, setEditMode] = useState<EditMode>("single");
-  const singleFace = editMode === "single";
+  // Placement mode: siempre "edición en una cara" (rectángulo en la cara
+  // frontal). La "edición libre" 360° se retiró de la UI para simplificar el
+  // personalizador; el resto del código conserva la rama libre por si vuelve.
+  const singleFace = true;
 
   const [technique, setTechnique] = useState<TechniqueId>("laser");
   // Eufy (colour) is drinkware-with-coating only; everything else is laser-only.
@@ -1133,18 +1088,18 @@ export default function Customizer() {
   // Shape of the editable rectangle (w/h), so the drag pad mirrors it.
   const faceAreaAspect = React.useMemo(() => {
     const m = bandMetrics(product, TEXTURE_W, TEXTURE_H);
-    const AW = 2 * FRONT_FACE.uHalfWidth * TEXTURE_W;
-    const AH = FRONT_FACE.vHeightFrac * (m.botPx - m.topPx);
+    const AW = 2 * m.face.uHalfWidth * TEXTURE_W;
+    const AH = m.face.vHeightFrac * (m.botPx - m.topPx);
     return AH > 0 ? AW / AH : 1;
   }, [product]);
 
   // Nearest valid placement inside the front-face rectangle for a given mark.
   const clampTextP = React.useCallback(
-    (p: Placement) => clampPlacementToFrontArea(p, markHalfExtents(product, textSpec, p, true)),
+    (p: Placement) => clampPlacementToFrontArea(p, markHalfExtents(product, textSpec, p, true), product),
     [product, textSpec],
   );
   const clampArtP = React.useCallback(
-    (p: Placement) => clampPlacementToFrontArea(p, markHalfExtents(product, artSpec, p, true)),
+    (p: Placement) => clampPlacementToFrontArea(p, markHalfExtents(product, artSpec, p, true), product),
     [product, artSpec],
   );
 
@@ -1204,10 +1159,11 @@ export default function Customizer() {
         return { ...p, u: clamp01(p.u + dPadX), v: clamp01(p.v + dPadY) };
       }
       if (singleFace) {
-        const pad = placementToPad(p.u, p.v);
+        const pad = placementToPad(p.u, p.v, product);
         const np = padToPlacement(
           Math.max(0, Math.min(1, pad.padX + dPadX)),
           Math.max(0, Math.min(1, pad.padY + dPadY)),
+          product,
         );
         return clampFn({ ...p, u: np.u, v: np.v });
       }
@@ -1217,18 +1173,18 @@ export default function Customizer() {
     };
     if (activeDesignKind === "text") setTextPlacement(p => apply(p, clampTextP));
     else if (activeDesignKind === "art") setArtPlacement(p => apply(p, clampArtP));
-  }, [singleFace, is3DObject, activeDesignKind, clampTextP, clampArtP]);
+  }, [singleFace, is3DObject, product, activeDesignKind, clampTextP, clampArtP]);
 
   const centerActivePlacement = React.useCallback(() => {
     // Face centre for flat blanks; centre of the front-face rectangle (same
-    // 0.5/0.5, but run through the termo clamp) for drinkware.
-    const c = padToPlacement(0.5, 0.5);
+    // u, product-tuned v centre, run through the clamp) for drinkware.
+    const c = is3DObject ? { u: 0.5, v: 0.5 } : padToPlacement(0.5, 0.5, product);
     const clampT = is3DObject ? (p: Placement) => p : clampTextP;
     const clampA = is3DObject ? (p: Placement) => p : clampArtP;
     if (activeDesignKind === "text") setTextPlacement(p => clampT({ ...p, u: c.u, v: c.v }));
     else if (activeDesignKind === "art") setArtPlacement(p => clampA({ ...p, u: c.u, v: c.v }));
     flashGuides();
-  }, [is3DObject, activeDesignKind, clampTextP, clampArtP, flashGuides]);
+  }, [is3DObject, product, activeDesignKind, clampTextP, clampArtP, flashGuides]);
 
   // Drag delta (fraction of the canvas) → pad delta. The front face fills roughly
   // the middle half of the canvas, so a gain just under 2 tracks the finger.
@@ -1650,7 +1606,6 @@ export default function Customizer() {
     rows.push(["Texto", text ? `"${text}" · ${activeFont.name}` : "Sin texto"]);
     if (selectedIcon) rows.push(["Ícono", selectedIcon.name]);
     else if (customImage) rows.push(["Imagen", "Logo/foto adjunta"]);
-    rows.push(["Ubicación", singleFace ? "Cara frontal (área fija)" : "Libre (360°)"]);
     return rows;
   };
 
@@ -2052,11 +2007,6 @@ export default function Customizer() {
 
                   {/* TEXT TAB */}
                   <TabsContent value="text" className="mt-0 space-y-5">
-                    {/* Modo de edición — decisión principal (dónde vive el diseño),
-                        global a Texto / Íconos / Imagen. Siempre visible: define
-                        cómo se coloca todo lo demás, así que no va oculto en avanzados. */}
-                    <EditModeToggle mode={editMode} onMode={setEditMode} productName={product.singular.toLowerCase()} />
-
                     {/* BÁSICO — escribir, elegir técnica de grabado y orientación. */}
                     <div className="space-y-4">
                       <div>
@@ -2117,8 +2067,7 @@ export default function Customizer() {
                       <IconPicker value={iconId} onChange={handlePickIcon} />
                     </div>
 
-                    {/* Modo de edición vive sólo en el tab Texto (global). Aquí sólo
-                        el pad de ubicación del ícono, y sólo cuando hay uno elegido. */}
+                    {/* Tamaño/orientación del ícono, sólo cuando hay uno elegido. */}
                     {selectedIcon && (
                     <AdvancedOptions>
                       <div>
