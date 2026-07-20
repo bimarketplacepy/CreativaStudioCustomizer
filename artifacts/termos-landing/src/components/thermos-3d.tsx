@@ -737,8 +737,10 @@ function ThermosMesh({
       {handleGeo && handle && product.id !== "hoppie" && (
         <mesh geometry={handleGeo} position={handle.position} castShadow>
           {handle.mat === "plastic" ? (
-            // Matte plastic — no metal, no clearcoat sheen. Colour matches the body.
-            <meshPhysicalMaterial color={colorHex} roughness={0.9} metalness={0.0} clearcoat={0.04} clearcoatRoughness={0.9} envMapIntensity={0.6} />
+            // Matte plastic — no metal, no clearcoat sheen. Colour matches the
+            // body, except on bare stainless (inox): there the grip is black
+            // plastic instead of body-grey.
+            <meshPhysicalMaterial color={finish === "inox" ? "#1f1f21" : colorHex} roughness={0.9} metalness={0.0} clearcoat={0.04} clearcoatRoughness={0.9} envMapIntensity={0.6} />
           ) : handle.mat === "powder" ? (
             // Powder-coat como el cuerpo (chopera). En inox la manija sigue en acero.
             finish === "inox" ? (
