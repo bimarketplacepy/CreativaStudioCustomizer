@@ -1,0 +1,16 @@
+# Creativa Studio
+
+> Taller de personalización premium dentro de MarketPlace (Avda. España, Paraguay). Termos, vasos, guampas, tablas, cajas, billeteras y más, grabados a medida con láser o impresión a color.
+
+## Secciones
+
+- [Personalizador 3D](https://creativastudiopy.com/#customizer): elegí formato, color y grabado y previsualizá la pieza en 3D.
+- [Precios y grabado](https://creativastudiopy.com/#precios): planes de grabado láser e impresión a color.
+- [Trabajos realizados](https://creativastudiopy.com/#inicio): galería de piezas ya personalizadas.
+- [Contacto](https://creativastudiopy.com/#contacto): WhatsApp, Instagram y ubicación del taller.
+
+## Contacto
+
+- WhatsApp: +595 971 300 945
+- Instagram: https://www.instagram.com/creativastudio.py
+- Ubicación: Local dentro de MarketPlace, Avda. España, Paraguay

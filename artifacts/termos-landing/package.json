@@ -8,7 +8,9 @@
     "build": "vite build --config vite.config.ts",
     "start": "node server.mjs",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check:prod": "node scripts/check-prod.mjs",
+    "check:local": "node scripts/check-prod.mjs --local"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -39,6 +39,12 @@ export default function Gallery() {
             >
               <img
                 src={img.src}
+                // Same -700/900 pair the hero uses. The grid cell renders at
+                // ~190px on mobile (2 cols) / ~296px on desktop (4 cols), so
+                // the browser picks the 700px file instead of always paying
+                // for the 900px one (~222 KiB saved page-wide per Lighthouse).
+                srcSet={`${img.src.replace(/\.webp$/, "-700.webp")} 700w, ${img.src} 900w`}
+                sizes="(min-width: 1280px) 296px, (min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw"
                 alt={img.caption}
                 width={900}
                 height={900}

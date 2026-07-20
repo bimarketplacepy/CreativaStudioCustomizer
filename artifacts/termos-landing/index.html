@@ -4,12 +4,32 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <!-- Google Tag Manager -->
-    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-    })(window,document,'script','dataLayer','GTM-5T5V9NTQ');</script>
+    <!-- Google Tag Manager — deferred.
+         gtm.js weighs ~113 KB compressed; injected eagerly it competes with the
+         entry JS/CSS/LCP image for bandwidth and main thread on mobile. The
+         dataLayer starts queueing immediately (no events are lost), but the
+         script itself loads on the FIRST of: user interaction (pointer/key/
+         scroll) or 3s after window.load. The preconnect warms the connection so
+         the eventual fetch is fast. -->
+    <link rel="preconnect" href="https://www.googletagmanager.com">
+    <script>
+    window.dataLayer=window.dataLayer||[];
+    window.dataLayer.push({'gtm.start':new Date().getTime(),event:'gtm.js'});
+    (function(){
+      var done=false;
+      function load(){
+        if(done)return;done=true;
+        var j=document.createElement('script');j.async=true;
+        j.src='https://www.googletagmanager.com/gtm.js?id=GTM-5T5V9NTQ';
+        document.head.appendChild(j);
+        evs.forEach(function(e){removeEventListener(e,load)});
+      }
+      var evs=['pointerdown','keydown','scroll','touchstart'];
+      evs.forEach(function(e){addEventListener(e,load,{passive:true,once:true})});
+      if(document.readyState==='complete'){setTimeout(load,3000);}
+      else{addEventListener('load',function(){setTimeout(load,3000)});}
+    })();
+    </script>
     <!-- End Google Tag Manager -->
 
     <title>Creativa Studio — Personalización Premium | MarketPlace</title>
@@ -18,6 +38,9 @@
       content="Termos, vasos, guampas, tablas, cajas, billeteras y más, grabados a medida con láser o impresión a color. Personalice su pieza en nuestro taller dentro de MarketPlace, Avda. España."
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Canonical: the SPA fallback answers 200 on ANY path, so without this
+         every stray URL indexes as a duplicate of the home. -->
+    <link rel="canonical" href="https://creativastudiopy.com/" />
 
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="es_PY" />
@@ -27,8 +50,29 @@
       property="og:description"
       content="Personalice su pieza exclusiva: termos, vasos, guampas, tablas, cajas y más, grabados a medida."
     />
-    <meta property="og:image" content="/opengraph.jpg" />
+    <meta property="og:url" content="https://creativastudiopy.com/" />
+    <!-- Absolute URL: WhatsApp and several scrapers ignore relative og:image. -->
+    <meta property="og:image" content="https://creativastudiopy.com/opengraph.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Structured data: physical shop inside MarketPlace -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "LocalBusiness",
+      "name": "Creativa Studio",
+      "description": "Taller de personalización premium: termos, vasos, guampas, tablas, cajas, billeteras y más, grabados a medida con láser o impresión a color.",
+      "url": "https://creativastudiopy.com/",
+      "image": "https://creativastudiopy.com/opengraph.jpg",
+      "telephone": "+595971300945",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "MarketPlace, Avda. España",
+        "addressCountry": "PY"
+      },
+      "sameAs": ["https://www.instagram.com/creativastudio.py"]
+    }
+    </script>
 
     <!-- Fonts are now self-hosted (see @font-face in index.css) — no third-party
          connection blocks render. Preload only Inter (the body font used across

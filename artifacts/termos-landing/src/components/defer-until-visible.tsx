@@ -9,11 +9,27 @@ import React, { useEffect, useRef, useState } from "react";
  * `rootMargin` gives the chunk a head start so it's ready by the time the
  * section is actually on screen. Once shown, it stays shown.
  */
+/**
+ * Default rootMargin, responsive. On phones 600px was self-defeating: with a
+ * ~823px viewport, hero (92vh) + the section above left the customizer wrapper
+ * at ~1.090px from the top — under the 823+600px trigger line — so the ~1.1 MB
+ * Three.js chunk downloaded AT LOAD, competing with the LCP image and CSS
+ * (Lighthouse's "991 KiB unused JS"). 200px keeps the head start for a real
+ * scroll gesture without firing on first paint. Desktop keeps the generous
+ * margin: bandwidth is plentiful and the fold is taller.
+ */
+function defaultRootMargin(): string {
+  if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
+    return "200px";
+  }
+  return "600px";
+}
+
 export default function DeferUntilVisible({
   children,
   id,
   minHeight = "90vh",
-  rootMargin = "600px",
+  rootMargin,
 }: {
   children: React.ReactNode;
   /** Anchor id kept on the always-present wrapper so in-page links (e.g.
@@ -43,7 +59,7 @@ export default function DeferUntilVisible({
           io.disconnect();
         }
       },
-      { rootMargin },
+      { rootMargin: rootMargin ?? defaultRootMargin() },
     );
     io.observe(el);
     return () => io.disconnect();

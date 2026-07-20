@@ -132,17 +132,19 @@ export default function HeroCarousel({ onImageChange }: { onImageChange?: (src: 
         </button>
       </div>
 
-      {/* Barra de progreso / puntos */}
-      <div className="mt-4 flex items-center justify-center gap-1.5">
+      {/* Barra de progreso — NO interactiva. Eran 32 <button> de 6px: imposibles
+          de tocar y un fail de target-size sin arreglo real (32 targets de 24px
+          = 768px, no caben en el marco de 512px ni con la excepción de espaciado
+          de WCAG 2.5.8). La navegación táctil son las flechas de 36px y el
+          autoplay; los puntos quedan como indicador visual puro, idéntico al de
+          antes. aria-hidden: los lectores de pantalla ya tienen las flechas. */}
+      <div className="mt-4 flex items-center justify-center gap-1.5" aria-hidden="true">
         {GALLERY_IMAGES.map((img, i) => (
-          <button
+          <span
             key={img.src}
-            type="button"
-            aria-label={`Ir a ${img.caption}`}
-            onClick={() => go(i)}
             className={
               "h-1.5 rounded-full transition-all " +
-              (i === index ? "w-6 bg-[#8B1A2F]" : "w-1.5 bg-white/25 hover:bg-white/50")
+              (i === index ? "w-6 bg-[#8B1A2F]" : "w-1.5 bg-white/25")
             }
           />
         ))}

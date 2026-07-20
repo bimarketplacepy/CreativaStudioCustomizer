@@ -41,150 +41,171 @@
 
 @font-face {
   font-family: 'Cronos Pro';
-  src: url('/fonts/Cronos-Pro-Subhead.ttf') format('truetype');
+  src: url('/fonts/Cronos-Pro-Subhead.woff2') format('woff2');
   font-weight: 600;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'Cronos Pro';
-  src: url('/fonts/Cronos-Pro-Display-Italic.ttf') format('truetype');
+  src: url('/fonts/Cronos-Pro-Display-Italic.woff2') format('woff2');
   font-weight: 700;
   font-style: italic;
   font-display: swap;
 }
 @font-face {
   font-family: 'Cronos Pro';
-  src: url('/fonts/Cronos-Pro-Light.ttf') format('truetype');
+  src: url('/fonts/Cronos-Pro-Light.woff2') format('woff2');
   font-weight: 300;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'TT Rounds Neue';
-  src: url('/fonts/TTRoundsNeue.ttf') format('truetype');
+  src: url('/fonts/TTRoundsNeue.woff2') format('woff2');
   font-weight: 600;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Freestyle Script';
-  src: url('/fonts/FreestyleScript.ttf') format('truetype');
+  src: url('/fonts/FreestyleScript.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Ellisha';
-  src: url('/fonts/Ellisha.otf') format('opentype');
+  src: url('/fonts/Ellisha.woff2') format('woff2');
   font-weight: 400;
   font-style: italic;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Billion Dreams';
-  src: url('/fonts/BillionDreams.ttf') format('truetype');
+  src: url('/fonts/BillionDreams.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Amertha';
-  src: url('/fonts/Amertha.ttf') format('truetype');
+  src: url('/fonts/Amertha.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Anthony Hunter';
-  src: url('/fonts/AnthonyHunter.ttf') format('truetype');
+  src: url('/fonts/AnthonyHunter.woff2') format('woff2');
   font-weight: 400;
   font-style: italic;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Blendaria';
-  src: url('/fonts/Blendaria.otf') format('opentype');
+  src: url('/fonts/Blendaria.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Midletton Blenda';
-  src: url('/fonts/MidlettonBlenda.otf') format('opentype');
+  src: url('/fonts/MidlettonBlenda.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Party Confetti';
-  src: url('/fonts/PartyConfetti.ttf') format('truetype');
+  src: url('/fonts/PartyConfetti.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Libre Baskerville';
-  src: url('/fonts/LibreBaskerville.ttf') format('truetype');
+  src: url('/fonts/LibreBaskerville.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Heavitas';
-  src: url('/fonts/Heavitas.ttf') format('truetype');
+  src: url('/fonts/Heavitas.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Bree Serif';
-  src: url('/fonts/BreeSerif.ttf') format('truetype');
+  src: url('/fonts/BreeSerif.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Milkshake';
-  src: url('/fonts/Milkshake.ttf') format('truetype');
+  src: url('/fonts/Milkshake.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Quimil';
-  src: url('/fonts/Quimil.ttf') format('truetype');
+  src: url('/fonts/Quimil.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Kissing Season';
-  src: url('/fonts/KissingSeason.ttf') format('truetype');
+  src: url('/fonts/KissingSeason.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Impacted';
-  src: url('/fonts/Impacted.ttf') format('truetype');
+  src: url('/fonts/Impacted.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Renogare';
-  src: url('/fonts/Renogare.otf') format('opentype');
+  src: url('/fonts/Renogare.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'KG Dark Side';
-  src: url('/fonts/KGDarkSide.ttf') format('truetype');
+  src: url('/fonts/KGDarkSide.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Square 721';
-  src: url('/fonts/Square721.otf') format('opentype');
+  src: url('/fonts/Square721.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Rimouski Sb';
-  src: url('/fonts/RimouskiSb.otf') format('opentype');
+  src: url('/fonts/RimouskiSb.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'Pacifico';
-  src: url('/fonts/Pacifico.ttf') format('truetype');
+  src: url('/fonts/Pacifico.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 
 @custom-variant dark (&:is(.dark *));
@@ -281,7 +302,9 @@
   --secondary-foreground: 220 10% 30%;
 
   --muted: 220 10% 95%;
-  --muted-foreground: 220 10% 50%;
+  /* 46% (was 50%): #737b87→#69707c on white lifts contrast 4.3:1 → 4.9:1, past
+     the 4.5:1 AA bar for the small text this token paints everywhere. */
+  --muted-foreground: 220 10% 46%;
 
   --accent: 345 70% 32%;
   --accent-foreground: 0 0% 100%;
