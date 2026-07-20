@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import {
   Check, Palette, Type, Box, Pipette, ImageIcon, MoveHorizontal, MoveVertical,
   Shapes, Zap, Sparkles, Wallet, TreePine, Square, PenLine, Wine, CupSoda, Snowflake, MessageCircle,
+  Shield, Scissors,
   Minus, Plus, Move,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
   WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
@@ -123,7 +124,7 @@ function shadeHex(hex: string, amount: number): string {
 }
 
 /** Spanish article for a drinkware product name: "del termo", "de la copa". */
-const FEMININE_PRODUCTS = new Set(["copa", "guampa", "hoppie", "botella"]);
+const FEMININE_PRODUCTS = new Set(["copa", "guampa", "botella", "chopera"]);
 function productArticle(singular: string): string {
   return FEMININE_PRODUCTS.has(singular.toLowerCase()) ? "de la" : "del";
 }
@@ -135,7 +136,12 @@ const FINISHES: { id: string; name: string; material?: MaterialId }[] = [
   { id: "gradient", name: "Degradado" },
   // Solo se ofrece en material Cuero: aspecto mate tipo cuero forrado.
   { id: "cuero", name: "Cuero", material: "cuero" },
+  // Acero inoxidable natural: acabado fijo cepillado, sin pintura.
+  { id: "inox", name: "Cepillado", material: "inox" },
 ];
+
+/** Gris acero claro del acabado inoxidable natural (no se pinta). */
+const INOX_HEX = "#C7C9CC";
 
 const FONTS = [
   { id: "f1",  name: "Abril Fatface",     style: { fontFamily: "'Abril Fatface', serif", letterSpacing: "0.05em" } },
@@ -179,6 +185,7 @@ type KindId = (typeof KINDS)[number]["id"];
 
 const MATERIAL_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   cup: CupSoda,
+  steel: Shield,
   wallet: Wallet,
   tree: TreePine,
   square: Square,
@@ -900,8 +907,27 @@ function ProductGlyph({ product, className, style }: { product: ProductDef; clas
         />
       )}
 
+      {/* Square body handle (chopera): top arm → straight drop → bottom arm */}
+      {product.handle === "body-square" && (() => {
+        const bodyH = last[1] - bottomY;
+        const yT = archH + topY - (bottomY + bodyH * 0.90);
+        const yB = archH + topY - (bottomY + bodyH * 0.35);
+        const x0 = maxR * 2 * 0.97;
+        const x1 = maxR * 2.42;
+        return (
+          <path
+            d={`M ${x0} ${yT} L ${x1} ${yT} L ${x1} ${yB} L ${x0} ${yB}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={maxR * 0.15}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        );
+      })()}
+
       {/* cap-d or body side handle (non-arch products) */}
-      {!isArch && product.handle !== "none" && (
+      {!isArch && product.handle !== "none" && product.handle !== "body-square" && (
         <path
           d={`M ${hCx} ${hCy - hR} A ${hR} ${hR} 0 0 1 ${hCx} ${hCy + hR}`}
           fill="none"
@@ -935,15 +961,18 @@ export default function Customizer() {
   const isDrinkware = !!activeMProduct?.drinkwareProductId;
   // Cristal (glass) pieces render as transparent glass and have no product colour.
   const isGlass = materialId === "cristal";
+  // Acero inoxidable natural: sin paleta de colores, acabado cepillado fijo.
+  const isInox = materialId === "inox";
   // Non-lathe modelled blanks (box/flat shapes). Pens reuse the pen object.
   const activeObjectId = activeMProduct?.objectId ?? (material.pens ? "boligrafo" : undefined);
   const is3DObject = !isDrinkware && !!activeObjectId;
   const activeObject = activeObjectId ? getObject(activeObjectId) : null;
-  // Uploading a custom image is limited to stainless-steel drinkware; the steel
-  // opener and every other material only allow text or a preset icon.
-  const canUploadImage = isDrinkware && materialId === "acero";
-  // A leather-wrapped (forrado) drinkware chars like leather, not steel.
-  const drinkwareEngraveStyle = materialId === "cuero" ? "leather" : "steel";
+  // Uploading a custom image is limited to steel drinkware (painted or bare);
+  // the steel opener and every other material only allow text or a preset icon.
+  const canUploadImage = isDrinkware && (materialId === "acero" || materialId === "inox");
+  // A leather-wrapped (forrado) drinkware chars like leather; bare stainless
+  // anneals dark (grafito) instead of revealing bright metal.
+  const drinkwareEngraveStyle = materialId === "cuero" ? "leather" : isInox ? "inox" : "steel";
 
   // Drinkware base product (drives the 3D preview, sizes, band)
   const productId = activeMProduct?.drinkwareProductId ?? DEFAULT_PRODUCT_ID;
@@ -986,8 +1015,11 @@ export default function Customizer() {
   const [drinkTab, setDrinkTab] = useState("color");
 
   const baseColor = COLORS.find(c => c.id === color) || COLORS[0];
-  const activeColorHex = customHex ?? baseColor.hex;
-  const activeColorName = customHex ? `${baseColor.name} · ${customHex.toUpperCase()}` : baseColor.name;
+  // El inoxidable natural no se pinta: gris acero fijo, ignora la paleta.
+  const activeColorHex = isInox ? INOX_HEX : customHex ?? baseColor.hex;
+  const activeColorName = isInox
+    ? "Acero natural"
+    : customHex ? `${baseColor.name} · ${customHex.toUpperCase()}` : baseColor.name;
   const activePlan = ENGRAVING_PLANS.find(p => p.id === plan) || ENGRAVING_PLANS[0];
   const MaterialGlyph = MATERIAL_ICON[material.icon] ?? Box;
 
@@ -1274,21 +1306,23 @@ export default function Customizer() {
       const dp = getProduct(first.drinkwareProductId);
       setSize(dp.sizes[1]?.id ?? dp.sizes[0].id);
     }
-    // Subir imagen es exclusivo de acero: al salir limpiamos la carga, el plan
-    // y salimos de la pestaña Imagen si estaba activa.
-    if (id !== "acero") {
+    // Subir imagen es exclusivo del drinkware de acero (pintado o inox): al
+    // salir limpiamos la carga, el plan y la pestaña Imagen si estaba activa.
+    if (id !== "acero" && id !== "inox") {
       setCustomImage(null);
       setPlan(ENGRAVING_PLANS[0].id);
       setDrinkTab(t => (t === "media" ? "color" : t));
     }
     // Acabado/color coherentes con el material. Todo producto arranca en Mate
-    // por defecto; sólo cuero y cristal fijan su propio acabado.
+    // por defecto; cuero, cristal e inox fijan su propio acabado.
     if (id === "cuero") {
       setFinish("cuero");
       handleSelectColor("c6"); // Café Chocolate
     } else if (id === "cristal") {
       setFinish("glossy");
       handleSelectColor("c8"); // Blanco Perla
+    } else if (id === "inox") {
+      setFinish("inox"); // acero natural cepillado, sin pintura
     } else {
       setFinish("matte");
     }
@@ -1370,6 +1404,27 @@ export default function Customizer() {
         <div>
           <p className="text-sm font-semibold text-foreground">Cristal transparente</p>
           <p className="text-xs text-muted-foreground">El grabado se ve esmerilado sobre el vidrio.</p>
+        </div>
+      </div>
+    </div>
+  ) : isInox ? (
+    // El inoxidable natural no se pinta: en lugar de la paleta y el "Tono
+    // exacto" se muestra el único acabado disponible, ya seleccionado.
+    <div>
+      <Label className="text-sm font-medium text-foreground mb-3 block">
+        Acabado {productArticle(product.singular)} {product.singular.toLowerCase()}
+      </Label>
+      <div className="flex items-center gap-3 rounded-xl border border-primary ring-1 ring-primary/30 bg-[#f5eaec]/50 px-4 py-3">
+        <span
+          className="w-8 h-8 rounded-full border border-border shadow-inner shrink-0"
+          style={{ background: "linear-gradient(135deg, #eef0f2 0%, #c7c9cc 45%, #9ea3a8 100%)" }}
+        />
+        <div>
+          <p className="text-sm font-semibold text-foreground">Acero natural cepillado</p>
+          <p className="text-xs text-muted-foreground">
+            Este material va en su acabado natural, sin pintura. El grabado láser se ve en tono
+            oscuro sobre el metal claro.
+          </p>
         </div>
       </div>
     </div>
@@ -1678,7 +1733,7 @@ export default function Customizer() {
         {/* STEP 1 — MATERIAL */}
         <div className="mb-8">
           <Label className="text-sm font-medium text-foreground mb-3 block">1 · Tipo de material</Label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
             {MATERIALS.map(m => {
               const Icon = MATERIAL_ICON[m.icon] ?? Box;
               const active = materialId === m.id;
@@ -1714,7 +1769,7 @@ export default function Customizer() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {material.products.map(p => {
                 const active = materialProductId === p.id;
                 const dp = p.drinkwareProductId ? getProduct(p.drinkwareProductId) : null;
@@ -1832,7 +1887,7 @@ export default function Customizer() {
                         the right). Only while a design is active. */}
                     {designActive && (
                       <DesignNudgeControl
-                        side={product.handle === "body-d" ? "left" : "right"}
+                        side={product.handle === "body-d" || product.handle === "body-square" ? "left" : "right"}
                         onNudge={(dx, dy) => { moveActivePlacement(dx * NUDGE_STEP, dy * NUDGE_STEP); flashGuides(); }}
                         onCenter={centerActivePlacement}
                       />
@@ -1905,7 +1960,11 @@ export default function Customizer() {
                       {material.pens ? "Bolígrafo" : activeMProduct?.name ?? activeObject.singular}
                     </span>
                     <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground flex items-center gap-1">
-                      <Zap className="w-3 h-3" /> Grabado láser
+                      {materialId === "plastico" ? (
+                        <><Scissors className="w-3 h-3" /> Plotter de corte</>
+                      ) : (
+                        <><Zap className="w-3 h-3" /> Grabado láser</>
+                      )}
                     </span>
                   </div>
                 </div>
@@ -2338,18 +2397,32 @@ export default function Customizer() {
                   )}
                 </div>
 
-                {/* LASER-ONLY NOTE + ORDER */}
+                {/* TECHNIQUE NOTE + ORDER — plotter de corte para plástico,
+                    grabado láser para el resto de los blanks. */}
                 <div className="px-6 pb-6 pt-4 border-t border-border space-y-4">
-                  <div className="flex items-start gap-2 p-3 border rounded-xl border-border bg-secondary/40">
-                    <Zap className="w-4 h-4 mt-0.5 text-primary shrink-0" />
-                    <div>
-                      <p className="text-sm font-semibold">Grabado láser</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Grabado monocromático permanente. La impresión UV a color solo está disponible en
-                        drinkware de acero con pintura electrostática.
-                      </p>
+                  {materialId === "plastico" ? (
+                    <div className="flex items-start gap-2 p-3 border rounded-xl border-border bg-secondary/40">
+                      <Scissors className="w-4 h-4 mt-0.5 text-primary shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold">Plotter de corte</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Vinilo recortado de alta precisión y durabilidad. Además de productos plásticos,
+                          lo aplicamos sobre conservadoras y paredes.
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="flex items-start gap-2 p-3 border rounded-xl border-border bg-secondary/40">
+                      <Zap className="w-4 h-4 mt-0.5 text-primary shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold">Grabado láser</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Grabado monocromático permanente. La impresión UV a color solo está disponible en
+                          drinkware de acero con pintura electrostática.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {renderOrderActions()}
                 </div>
@@ -2488,6 +2561,34 @@ export default function Customizer() {
             >
               <MessageCircle className="w-4 h-4" strokeWidth={1.75} />
               Escríbanos
+            </a>
+          </div>
+        </div>
+
+        {/* Personalizaciones corporativas — pedidos en cantidad para empresas */}
+        <div className="mt-6">
+          <div className="rounded-3xl border border-border bg-secondary/40 px-8 py-10 md:px-14 md:py-12 flex flex-col md:flex-row md:items-center gap-6 md:gap-10">
+            <div className="flex-1">
+              <p className="text-[#8B1A2F] text-[11px] font-semibold uppercase tracking-[0.3em] mb-3">
+                Empresas
+              </p>
+              <h3 className="font-serif font-light text-2xl md:text-3xl text-[#1A1614] mb-3">
+                Personalizaciones corporativas
+              </h3>
+              <p className="text-[#5f574d] font-light text-sm md:text-base leading-relaxed max-w-2xl">
+                Regalos empresariales, merchandising y eventos: para empresas y pedidos en cantidad
+                ofrecemos descuentos por volumen. Cuéntenos qué necesita y le preparamos una
+                propuesta a medida.
+              </p>
+            </div>
+            <a
+              href={whatsappUrl("Hola, quiero consultar por personalización corporativa en cantidad.")}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 self-start md:self-center inline-flex items-center gap-2.5 bg-[#8B1A2F] hover:bg-[#721527] text-white px-8 py-4 text-[11px] font-semibold uppercase tracking-[0.25em] transition-colors"
+            >
+              <MessageCircle className="w-4 h-4" strokeWidth={1.75} />
+              Consultar por volumen
             </a>
           </div>
         </div>

@@ -1,7 +1,7 @@
-export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella";
+export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
-export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "none";
+export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
 
 export interface ProductSize {
   id: string;
@@ -89,20 +89,27 @@ export const PRODUCTS: ProductDef[] = [
     id: "hoppie",
     name: "Hoppies",
     singular: "Hoppie",
-    // Stanley Flip Straw Tumbler 887ml — tapered tumbler: narrow base that fits a
-    // cup holder, widening to the top, with a flip-straw lid and a rotating handle.
-    desc: "Vaso cónico, más angosto en la base y más ancho arriba, con tapa de sorbete y asa superior.",
-    cap: "flip",
-    handle: "cap-arch",
+    // Botella de boca ancha (h:d ≈ 2.6:1): fondo plano con fillet suave, cuerpo
+    // cilíndrico perfecto con una junta horizontal muy sutil a ~12% de la altura
+    // (unión del fondo aislante), hombro convexo tipo domo y cuello ANCHO
+    // (~63% del diámetro del cuerpo). La pintura termina donde arranca el
+    // cuello roscado de acero pulido, que se modela aparte (HoppieNeck).
+    desc: "Botella de boca ancha: cuerpo cilíndrico recto, hombro tipo domo y cuello roscado de acero, sin tapa.",
+    cap: "screw",
+    handle: "none",
     profile: [
-      [0.00, -1.35], [0.11, -1.35],
-      [0.37, -1.30], [0.41, -1.19],
-      [0.43, -1.02], [0.46, -0.70],
-      [0.50, -0.25], [0.54,  0.28],
-      [0.58,  0.78], [0.60,  1.08],
-      [0.60,  1.22],
+      [0.00, -1.35], [0.46, -1.35],
+      [0.52, -1.29],
+      [0.52, -1.08], [0.513, -1.03], [0.52, -0.98],
+      [0.52,  0.59],
+      [0.518,  0.66], [0.510,  0.72], [0.495,  0.78],
+      [0.470,  0.83], [0.435,  0.875], [0.390,  0.915],
+      [0.350,  0.940], [0.330,  0.950],
     ],
-    band: [-0.66, 1.00],
+    band: [-0.94, 0.40],
+    // El área editable queda solo en la zona cilíndrica (15–65% de la altura) y
+    // abarca ~55% del arco visible, así el decal nunca se distorsiona en el domo.
+    frontFace: { uHalfWidth: 0.14 },
     sizes: [
       { id: "hoppie-20", name: "20oz", label: "Chico",   scale: 0.86 },
       { id: "hoppie-30", name: "30oz", label: "Clásico", scale: 1.00 },
@@ -207,6 +214,30 @@ export const PRODUCTS: ProductDef[] = [
       { id: "botella-sm", name: "Chica",   label: "500ml", scale: 0.90 },
       { id: "botella-md", name: "Clásica", label: "750ml", scale: 1.00 },
       { id: "botella-lg", name: "Grande",  label: "1L",    scale: 1.12 },
+    ],
+  },
+  {
+    id: "chopera",
+    name: "Choperas",
+    singular: "Chopera",
+    // Chopera térmica 710 ml (h:d ≈ 1.75:1): vaso cilíndrico PERFECTAMENTE
+    // recto, bajo y ancho tipo jarro cervecero. El lathe cubre solo la zona
+    // pintada (0–86% de la altura); la banda de acero cepillado (86–96%), la
+    // tapa transparente y la manija cuadrada se modelan aparte (ChoperaTop y
+    // el handle "body-square" en thermos-3d).
+    desc: "Chopera térmica de 710 ml: cilindro recto con banda de acero, tapa transparente y manija angular.",
+    cap: "flip",
+    handle: "body-square",
+    profile: [
+      [0.00, -1.05], [0.54, -1.05],
+      [0.60, -0.99],
+      [0.60,  0.756],
+    ],
+    band: [-0.80, 0.52],
+    // Cara frontal a 90° de la manija; ~55% del arco visible (12–75% de altura).
+    frontFace: { uHalfWidth: 0.14 },
+    sizes: [
+      { id: "chopera-710", name: "710ml", label: "Clásica", scale: 1.00 },
     ],
   },
 ];

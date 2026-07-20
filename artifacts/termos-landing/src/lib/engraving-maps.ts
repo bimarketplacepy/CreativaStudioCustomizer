@@ -22,14 +22,17 @@ const GROOVE_BEVEL = 2.2;
 /**
  * How the laser reads on the drinkware surface. Powder-coated steel reveals
  * bright frosted metal; a leather-wrapped (forrado) piece chars to a dark
- * burn; wood chars to a deep brown. `burn === null` means the steel sheen.
+ * burn; wood chars to a deep brown; bare stainless (inox) anneals to a dark
+ * matte graphite mark over the light metal. `burn === null` means the steel
+ * sheen.
  */
-export type EngraveStyle = "steel" | "leather" | "wood";
+export type EngraveStyle = "steel" | "leather" | "wood" | "inox";
 
 const ENGRAVE_APPEARANCE: Record<EngraveStyle, { roughness: number; metalness: number; haloAlpha: number; burn: string | null }> = {
   steel:   { roughness: 0.34, metalness: 0.95, haloAlpha: 0.50, burn: null },
   leather: { roughness: 0.90, metalness: 0.00, haloAlpha: 0.60, burn: "#241109" },
   wood:    { roughness: 0.80, metalness: 0.00, haloAlpha: 0.55, burn: "#2b1708" },
+  inox:    { roughness: 0.85, metalness: 0.15, haloAlpha: 0.30, burn: "#4A4A4A" },
 };
 
 export const TEXTURE_W = 1024;
@@ -321,6 +324,20 @@ export function makeBodyMaps({
   stripe.addColorStop(1.0,  "rgba(0,0,0,0.0)");
   ctx.fillStyle = stripe;
   ctx.fillRect(0, 0, W, H);
+
+  // Acero inoxidable natural: vetas verticales sutiles para que el reflejo se
+  // lea como acero cepillado y no como plástico gris. El patrón es determinista
+  // (la textura se reconstruye en cada edición; uno aleatorio "hormiguearía").
+  if (engraveStyle === "inox") {
+    for (let i = 0; i < 140; i++) {
+      const t = Math.sin(i * 12.9898) * 43758.5453;
+      const fx = t - Math.floor(t);
+      ctx.fillStyle = i % 2 === 0
+        ? `rgba(255,255,255,${0.015 + (i % 5) * 0.006})`
+        : `rgba(40,44,48,${0.02 + (i % 4) * 0.007})`;
+      ctx.fillRect(Math.floor(fx * W), 0, 1 + (i % 3), H);
+    }
+  }
 
   // Occlusion: the cap shadows the shoulder, and the base curves away from the
   // light. Canvas y=0 is the top of the lathe, so these bracket the band.

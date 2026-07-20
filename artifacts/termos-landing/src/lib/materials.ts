@@ -1,7 +1,7 @@
 import type { ProductId } from "./products";
 import type { ObjectId } from "./objects";
 
-export type MaterialId = "acero" | "cuero" | "madera" | "boligrafos" | "cristal" | "plastico";
+export type MaterialId = "acero" | "inox" | "cuero" | "madera" | "boligrafos" | "cristal" | "plastico";
 
 export interface MaterialProduct {
   id: string;
@@ -35,14 +35,31 @@ export interface MaterialDef {
 export const MATERIALS: MaterialDef[] = [
   {
     id: "acero",
-    name: "Acero inoxidable",
+    name: "Acero con pintura recubierta",
     icon: "cup",
-    desc: "Drinkware de acero inox: termos, vasos, hoppies, guampas y abridores de botellas.",
+    desc: "Drinkware de acero con recubrimiento de pintura electroestática de alta durabilidad: termos, vasos, hoppies, guampas y choperas.",
     products: [
       { id: "termo",   name: "Termo",   drinkwareProductId: "termo" },
       { id: "vaso",    name: "Vaso",    drinkwareProductId: "vaso" },
       { id: "hoppie",  name: "Hoppie",  drinkwareProductId: "hoppie" },
       { id: "guampa",  name: "Guampa",  drinkwareProductId: "guampa" },
+      { id: "chopera", name: "Chopera", desc: "Chopera térmica de 710 ml con manija angular y tapa transparente.", drinkwareProductId: "chopera" },
+    ],
+  },
+  {
+    // Los mismos productos que "Acero con pintura recubierta", pero en su
+    // acabado de acero natural sin pintar. Es una variante de acabado sobre los
+    // mismos modelos 3D, no un catálogo aparte.
+    id: "inox",
+    name: "Acero inoxidable",
+    icon: "steel",
+    desc: "Acero inoxidable en su acabado natural cepillado, sin pintura: un estilo clásico y atemporal.",
+    products: [
+      { id: "termo",   name: "Termo",   drinkwareProductId: "termo" },
+      { id: "vaso",    name: "Vaso",    drinkwareProductId: "vaso" },
+      { id: "hoppie",  name: "Hoppie",  drinkwareProductId: "hoppie" },
+      { id: "guampa",  name: "Guampa",  drinkwareProductId: "guampa" },
+      { id: "chopera", name: "Chopera", desc: "Chopera térmica de 710 ml con manija angular y tapa transparente.", drinkwareProductId: "chopera" },
       { id: "abridor", name: "Abridor", desc: "Abridor de botellas de metal, plano y alargado.", objectId: "abridor" },
     ],
   },
@@ -88,7 +105,7 @@ export const MATERIALS: MaterialDef[] = [
     id: "plastico",
     name: "Plástico",
     icon: "cooler",
-    desc: "Conservadoras de plástico personalizadas.",
+    desc: "Productos plásticos personalizados con plotter de corte (vinilo), aplicable también a conservadoras y paredes.",
     products: [
       { id: "conservadora", name: "Conservadora", desc: "Conservadora de plástico rectangular con tapa.", objectId: "conservadora" },
     ],
@@ -115,13 +132,13 @@ export function getMaterial(id: string): MaterialDef {
 }
 
 /**
- * UV print (full colour) is only offered on powder-coated steel drinkware — the
- * pieces that carry an electrostatic paint layer. Bare steel (abridores), lined
- * pieces (forrados), glass (copas, botellas), wood, leather, acrylic, plastic
- * and pens are all laser-engraving only. The steel guampa is engraving-only too.
+ * UV print (full colour) is offered on steel drinkware — both the powder-coated
+ * pieces and the bare stainless (inox) finish. Bare-steel openers (abridores),
+ * lined pieces (forrados), glass (copas, botellas), wood, leather, acrylic,
+ * plastic and pens are all laser-engraving only. The guampa is engraving-only too.
  */
 export function allowsColorPrint(materialId: string, product?: MaterialProduct): boolean {
-  return materialId === "acero"
+  return (materialId === "acero" || materialId === "inox")
     && !!product?.drinkwareProductId
     && product.drinkwareProductId !== "guampa";
 }

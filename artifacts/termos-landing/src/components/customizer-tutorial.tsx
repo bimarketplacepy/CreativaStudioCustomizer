@@ -409,7 +409,7 @@ export default function CustomizerTutorial() {
           <div className={`tuto-escena${paso === 0 ? " tuto-activa" : ""}`}>
             <div className="tuto-lbl">Material</div>
             <div className="tuto-fila">
-              <span ref={pillAceroRef} className={`tuto-pill${selAcero ? " tuto-sel" : ""}`}>🛡 Acero inoxidable</span>
+              <span ref={pillAceroRef} className={`tuto-pill${selAcero ? " tuto-sel" : ""}`}>🛡 Acero con pintura recubierta</span>
               <span className="tuto-pill">Cuero</span>
             </div>
             <div className="tuto-lbl" style={{ marginTop: 10 }}>Producto</div>

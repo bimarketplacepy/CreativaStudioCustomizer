@@ -98,12 +98,17 @@ export default function Hero() {
             </p>
 
             <h1 className="font-serif font-light text-[clamp(2.6rem,6vw,4.75rem)] leading-[1.05] tracking-[-0.015em] text-white/95 mb-8">
-              Personalice su propia<br />
-              <span className="italic">pieza exclusiva.</span>
+              Personalice su<br />
+              <span className="italic">propio producto.</span>
             </h1>
 
-            <p className="text-white/70 text-base md:text-lg max-w-md mb-12 leading-relaxed font-light">
+            <p className="text-white/70 text-base md:text-lg max-w-md mb-6 leading-relaxed font-light">
               Elija el formato, el color y el grabado. Una pieza de excelencia, tan única como quien la lleva.
+            </p>
+
+            <p className="text-white/55 text-sm max-w-md mb-12 leading-relaxed font-light border-l-2 border-[#8B1A2F] pl-4">
+              ¿Ya tiene su termo o su vaso? Tráigalo y lo personalizamos igual: también trabajamos
+              sobre productos que no fueron comprados en nuestra tienda.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4">

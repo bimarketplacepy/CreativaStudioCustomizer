@@ -73,6 +73,8 @@ interface Silhouette {
   scale: number;
   /** Widest radius of the body. */
   maxR: number;
+  /** Radius used to fit the camera by width — includes a side handle's reach. */
+  fitR: number;
   bottomY: number;
   /** Y of the topmost profile point (where the cap seats). */
   neckY: number;
@@ -97,8 +99,12 @@ function buildSilhouette(product: ProductDef, scale: number): Silhouette {
   const capH = (product.cap === "screw" ? 0.42 : product.cap === "flip" ? 0.30 : product.cap === "lid" ? 0.18 : 0) * scale;
   const capR = neckR * (product.cap === "screw" ? 1.16 : product.cap === "flip" ? 1.08 : 1.06);
 
+  // La manija cuadrada de la chopera sobresale del cuerpo: el encuadre por
+  // ancho debe contemplarla para que nunca quede recortada.
+  const fitR = product.handle === "body-square" ? maxR + 0.23 * scale : maxR;
+
   return {
-    points, scale, maxR, bottomY, neckY, neckR, capR, capH,
+    points, scale, maxR, fitR, bottomY, neckY, neckR, capR, capH,
     topY: neckY + capH,
     band: [product.band[0] * scale, product.band[1] * scale] as [number, number],
   };
@@ -113,68 +119,110 @@ function fitCamera(sil: Silhouette) {
   const height = sil.topY - sil.bottomY;
   const centerY = (sil.topY + sil.bottomY) / 2;
   const fitByHeight = (height / 2) * 1.18 / HALF_FOV_TAN;
-  const fitByWidth = sil.maxR * 1.35 / (HALF_FOV_TAN * CANVAS_ASPECT);
+  const fitByWidth = sil.fitR * 1.35 / (HALF_FOV_TAN * CANVAS_ASPECT);
   return { fov: FOV, camY: centerY, camZ: Math.max(fitByHeight, fitByWidth), shadowY: sil.bottomY };
 }
 
 /**
- * Detailed flip-straw lid for the Hoppie (Stanley Flip Straw Tumbler 887ml):
- * a stepped lid seated on the body, a hinged flip spout with the straw
- * mouthpiece poking out, and a rotating carry-handle arch across the top.
- * Replaces the generic cylinder cap + torus handle for this product.
+ * Cuello roscado de acero del Hoppie (botella de boca ancha): la pintura del
+ * cuerpo termina en un labio; de ahí hacia arriba todo es acero inoxidable
+ * pulido a la vista — pared del cuello, rosca externa de 3 vueltas (anillos
+ * toroidales apilados) y la boca abierta sin tapa, con su cara superior
+ * anular visible y el interior oscuro. Reemplaza la tapa genérica.
  */
-function HoppieLid({ sil }: { sil: Silhouette }) {
+function HoppieNeck({ sil }: { sil: Silhouette }) {
   const s = sil.scale;
-  const { neckY, neckR, capR } = sil;
+  const r = sil.neckR;
+  const y0 = sil.neckY;
+  const h = sil.topY - y0;
+  const innerR = r * 0.82;
 
-  const lid = { color: "#1c1c1e", roughness: 0.55, metalness: 0.2, clearcoat: 0.35, clearcoatRoughness: 0.25, envMapIntensity: 1.2 };
-  const accent = { color: "#0f0f10", roughness: 0.5, metalness: 0.25, clearcoat: 0.4, clearcoatRoughness: 0.2, envMapIntensity: 1.2 };
-
-  const collarY = neckY + 0.05 * s;
-  const bodyY = neckY + 0.17 * s;
-  const topY = neckY + 0.27 * s;
+  const steel = { color: "#dfe3e6", roughness: 0.15, metalness: 1.0, envMapIntensity: 2.2 };
 
   return (
     <group>
-      {/* Collar seating on the body rim */}
-      <mesh position={[0, collarY, 0]} castShadow>
-        <cylinderGeometry args={[capR, neckR * 1.02, 0.10 * s, 64]} />
-        <meshPhysicalMaterial {...lid} />
-      </mesh>
-      {/* Lid body */}
-      <mesh position={[0, bodyY, 0]} castShadow>
-        <cylinderGeometry args={[capR * 0.98, capR, 0.16 * s, 64]} />
-        <meshPhysicalMaterial {...lid} />
-      </mesh>
-      {/* Domed top plate */}
-      <mesh position={[0, topY, 0]} castShadow>
-        <cylinderGeometry args={[capR * 0.86, capR * 0.98, 0.06 * s, 64]} />
-        <meshPhysicalMaterial {...lid} />
+      {/* Anillo/labio donde termina la pintura */}
+      <mesh position={[0, y0, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <torusGeometry args={[r * 1.02, 0.032 * s, 10, 64]} />
+        <meshPhysicalMaterial {...steel} />
       </mesh>
 
-      {/* Flip-spout hinge block near the +X edge */}
-      <mesh position={[capR * 0.4, topY + 0.03 * s, 0]} castShadow>
-        <boxGeometry args={[capR * 0.5, 0.10 * s, capR * 0.52]} />
-        <meshPhysicalMaterial {...accent} />
+      {/* Pared del cuello */}
+      <mesh position={[0, y0 + h / 2, 0]} castShadow>
+        <cylinderGeometry args={[r, r, h, 64, 1, true]} />
+        <meshPhysicalMaterial {...steel} side={THREE.DoubleSide} />
       </mesh>
-      {/* Flip nozzle (the spout you flip up to drink), angled outward */}
-      <group position={[capR * 0.5, topY + 0.06 * s, 0]} rotation={[0, 0, -0.5]}>
-        <mesh position={[0, 0.11 * s, 0]} castShadow>
-          <cylinderGeometry args={[0.085 * s, 0.10 * s, 0.22 * s, 24]} />
-          <meshPhysicalMaterial {...accent} />
-        </mesh>
-        {/* Straw mouthpiece tip protruding from the nozzle */}
-        <mesh position={[0, 0.25 * s, 0]} castShadow>
-          <cylinderGeometry args={[0.05 * s, 0.055 * s, 0.11 * s, 20]} />
-          <meshPhysicalMaterial color="#3a3a3d" roughness={0.4} metalness={0.1} clearcoat={0.3} />
-        </mesh>
-      </group>
 
-      {/* Rotating carry handle: half-torus arch across the top (front↔back),
-          seated opposite the spout so the two never collide. */}
-      <mesh position={[-capR * 0.12, topY + 0.02 * s, 0]} rotation={[0, Math.PI / 2, 0]} castShadow>
-        <torusGeometry args={[capR * 0.5, 0.055 * s, 12, 40, Math.PI]} />
-        <meshPhysicalMaterial {...lid} />
+      {/* Rosca externa: 3 vueltas apiladas */}
+      {[0.30, 0.50, 0.70].map(f => (
+        <mesh key={f} position={[0, y0 + h * f, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <torusGeometry args={[r * 1.015, 0.024 * s, 8, 64]} />
+          <meshPhysicalMaterial {...steel} />
+        </mesh>
+      ))}
+
+      {/* Cara superior anular de la boca abierta */}
+      <mesh position={[0, y0 + h, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[innerR, r, 64]} />
+        <meshPhysicalMaterial {...steel} roughness={0.22} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* Interior oscuro */}
+      <mesh position={[0, y0 + h - (h * 0.92) / 2, 0]}>
+        <cylinderGeometry args={[innerR, innerR, h * 0.92, 48, 1, true]} />
+        <meshPhysicalMaterial color="#101214" roughness={0.9} metalness={0.2} side={THREE.BackSide} />
+      </mesh>
+      <mesh position={[0, y0 + h * 0.06, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[innerR, 48]} />
+        <meshPhysicalMaterial color="#0b0c0d" roughness={0.95} />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * Remate de la Chopera: banda superior de acero inoxidable cepillado (mismo
+ * diámetro que el cuerpo — solo cambia el material, con transición horizontal
+ * nítida donde termina la pintura), disco metálico interior apenas visible y
+ * tapa plástica transparente press-fit: pestaña que envuelve el borde y disco
+ * superior levemente abombado que sobresale del vaso.
+ */
+function ChoperaTop({ sil }: { sil: Silhouette }) {
+  const s = sil.scale;
+  const R = sil.maxR;
+  const y0 = sil.neckY;    // fin de la zona pintada (~86% de la altura)
+  const bandH = 0.21 * s;  // banda de acero 86–96%
+  const lidY = y0 + bandH; // borde superior del vaso
+
+  const clear = {
+    color: "#d9dcdf", transparent: true, opacity: 0.32, roughness: 0.1, metalness: 0,
+    clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 1.6, depthWrite: false,
+  };
+
+  return (
+    <group>
+      {/* Banda de acero cepillado */}
+      <mesh position={[0, y0 + bandH / 2, 0]} castShadow>
+        <cylinderGeometry args={[R, R, bandH, 96, 1, true]} />
+        <meshPhysicalMaterial color="#c9cdd1" roughness={0.3} metalness={1.0} envMapIntensity={1.9} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* Disco metálico interior, apenas visible bajo la tapa */}
+      <mesh position={[0, y0 + bandH * 0.72, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[R * 0.95, 64]} />
+        <meshPhysicalMaterial color="#b6bbc0" roughness={0.35} metalness={0.9} />
+      </mesh>
+
+      {/* Pestaña de la tapa envolviendo el borde */}
+      <mesh position={[0, lidY - 0.045 * s, 0]}>
+        <cylinderGeometry args={[R * 1.025, R * 1.025, 0.11 * s, 96, 1, true]} />
+        <meshPhysicalMaterial {...clear} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* Domo superior levemente abombado (~2% por encima del borde) */}
+      <mesh position={[0, lidY, 0]} scale={[1, 0.08, 1]}>
+        <sphereGeometry args={[R * 1.02, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2]} />
+        <meshPhysicalMaterial {...clear} side={THREE.DoubleSide} />
       </mesh>
     </group>
   );
@@ -305,6 +353,8 @@ function ThermosMesh({
         return { kind: "torus" as const, mat: "metal" as const, r: sil.maxR * 0.58, tube: sil.maxR * 0.10, position: [sil.maxR, 0.05 * sil.scale, 0] as [number, number, number] };
       case "body-d":
         return { kind: "d-grip" as const, mat: "plastic" as const, position: [0, 0, 0] as [number, number, number] };
+      case "body-square":
+        return { kind: "square-grip" as const, mat: "powder" as const, position: [0, 0, 0] as [number, number, number] };
       default:
         return null;
     }
@@ -312,6 +362,37 @@ function ThermosMesh({
 
   const handleGeo = useMemo(() => {
     if (!handle) return null;
+    if (handle.kind === "square-grip") {
+      // Manija de la chopera: perfil cuadrado/rectangular redondeado, angular y
+      // moderno. Brazo superior horizontal a ~78% de la altura que se extiende
+      // ~35–40% del diámetro hacia afuera, bajada vertical recta, retorno
+      // horizontal a ~30% de altura y remate en gancho suave hacia abajo. Las
+      // esquinas exteriores quedan redondeadas por la propia curva; los dos
+      // extremos nacen enterrados en la pared para leerse anclados.
+      const s = sil.scale;
+      const R = sil.maxR;
+      const out = R + 0.42 * s;
+      const yT = 0.588 * s;
+      const yB = -0.42 * s;
+      const curve = new THREE.CatmullRomCurve3(
+        [
+          new THREE.Vector3(R * 0.88, yT, 0),
+          new THREE.Vector3(R + 0.26 * s, yT, 0),
+          new THREE.Vector3(out - 0.03 * s, yT - 0.03 * s, 0),
+          new THREE.Vector3(out, yT - 0.16 * s, 0),
+          new THREE.Vector3(out, (yT + yB) / 2, 0),
+          new THREE.Vector3(out, yB + 0.16 * s, 0),
+          new THREE.Vector3(out - 0.03 * s, yB + 0.03 * s, 0),
+          new THREE.Vector3(R + 0.26 * s, yB, 0),
+          new THREE.Vector3(R * 0.96, yB, 0),
+          new THREE.Vector3(R * 0.90, yB - 0.12 * s, 0),
+        ],
+        false,
+        "catmullrom",
+        0.35
+      );
+      return new THREE.TubeGeometry(curve, 72, 0.048 * s, 12, false);
+    }
     if (handle.kind === "d-grip") {
       // Rigid D grip on the +X body wall. The path starts inside the wall
       // (buried, so it reads as anchored), bows out, runs down the outside,
@@ -390,14 +471,21 @@ function ThermosMesh({
   // PBR material params per finish
   const matProps = useMemo(() => {
     const base = { roughness: 0.35, metalness: 0.15, clearcoat: 0.8, clearcoatRoughness: 0.15 };
-    if (finish === "matte")    return { ...base, roughness: 0.88, metalness: 0.0, clearcoat: 0.0, clearcoatRoughness: 0.8 };
+    if (finish === "matte") {
+      // Hoppie y chopera llevan powder-coat real: mate con cuerpo, no tiza.
+      if (product.id === "hoppie" || product.id === "chopera")
+        return { ...base, roughness: 0.6, metalness: 0.1, clearcoat: 0.06, clearcoatRoughness: 0.7 };
+      return { ...base, roughness: 0.88, metalness: 0.0, clearcoat: 0.0, clearcoatRoughness: 0.8 };
+    }
     if (finish === "glossy")   return { ...base, roughness: 0.05, metalness: 0.10, clearcoat: 1.0, clearcoatRoughness: 0.02 };
     if (finish === "metallic") return { ...base, roughness: 0.18, metalness: 0.90, clearcoat: 0.6, clearcoatRoughness: 0.08 };
     if (finish === "gradient") return { ...base, roughness: 0.22, metalness: 0.20, clearcoat: 0.9, clearcoatRoughness: 0.05 };
     // Cuero forrado: superficie muy mate, sin metal ni barniz, con un leve satinado.
     if (finish === "cuero")    return { ...base, roughness: 0.95, metalness: 0.0, clearcoat: 0.06, clearcoatRoughness: 0.9 };
+    // Acero inoxidable natural: cepillado, no espejo.
+    if (finish === "inox")     return { ...base, roughness: 0.32, metalness: 0.95, clearcoat: 0.12, clearcoatRoughness: 0.3 };
     return base;
-  }, [finish]);
+  }, [finish, product.id]);
 
   const maxAnisotropy = useMemo(() => gl.capabilities.getMaxAnisotropy(), [gl]);
 
@@ -628,17 +716,18 @@ function ThermosMesh({
             clearcoatMap={maps!.grooveMap}
             clearcoat={matProps.clearcoat}
             clearcoatRoughness={matProps.clearcoatRoughness}
-            envMapIntensity={finish === "metallic" ? 2.0 : finish === "glossy" ? 1.8 : 1.4}
+            envMapIntensity={finish === "metallic" || finish === "inox" ? 2.0 : finish === "glossy" ? 1.8 : 1.4}
           />
         </mesh>
       )}
 
-      {/* Hoppie gets a bespoke detailed flip-straw lid; everything else uses the
-          generic cap + handle below. */}
-      {product.id === "hoppie" && <HoppieLid sil={sil} />}
+      {/* Piezas a medida: cuello de acero del hoppie y remate (banda de acero +
+          tapa transparente) de la chopera. El resto usa cap/handle genéricos. */}
+      {product.id === "hoppie" && <HoppieNeck sil={sil} />}
+      {product.id === "chopera" && <ChoperaTop sil={sil} />}
 
       {/* Cap / lid */}
-      {capGeo && product.id !== "hoppie" && (
+      {capGeo && product.id !== "hoppie" && product.id !== "chopera" && (
         <mesh geometry={capGeo} position={[0, capCenterY, 0]} castShadow>
           <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
         </mesh>
@@ -650,14 +739,21 @@ function ThermosMesh({
           {handle.mat === "plastic" ? (
             // Matte plastic — no metal, no clearcoat sheen. Colour matches the body.
             <meshPhysicalMaterial color={colorHex} roughness={0.9} metalness={0.0} clearcoat={0.04} clearcoatRoughness={0.9} envMapIntensity={0.6} />
+          ) : handle.mat === "powder" ? (
+            // Powder-coat como el cuerpo (chopera). En inox la manija sigue en acero.
+            finish === "inox" ? (
+              <meshPhysicalMaterial color={colorHex} roughness={0.32} metalness={0.95} envMapIntensity={2.0} />
+            ) : (
+              <meshPhysicalMaterial color={colorHex} roughness={0.6} metalness={0.1} clearcoat={0.06} clearcoatRoughness={0.7} envMapIntensity={0.9} />
+            )
           ) : (
             <meshPhysicalMaterial color={colorHex} roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
           )}
         </mesh>
       )}
 
-      {/* Metal collar seam ring */}
-      {collarGeo && (
+      {/* Metal collar seam ring (el hoppie trae su propio labio en HoppieNeck) */}
+      {collarGeo && product.id !== "hoppie" && (
         <mesh geometry={collarGeo} position={[0, collarY, 0]}>
           <meshPhysicalMaterial color="#aaaaaa" roughness={0.12} metalness={0.98} clearcoat={0.6} envMapIntensity={2.2} />
         </mesh>
