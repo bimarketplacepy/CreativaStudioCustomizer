@@ -13,7 +13,7 @@ import {
   Minus, Plus, Move, Focus, Globe,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
   WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
-  ChevronUp, Crosshair,
+  ChevronUp, Crosshair, CirclePlay,
 } from "lucide-react";
 import Thermos3D from "./thermos-3d";
 import Object3D from "./object-3d";
@@ -1688,9 +1688,23 @@ export default function Customizer() {
       <div className="max-w-7xl mx-auto">
         {/* Header — compact on mobile (the long copy is desktop-only). */}
         <div className="mb-6 md:mb-10">
-          <p className="text-[#8B1A2F] text-[11px] font-semibold uppercase tracking-[0.3em] mb-4">
-            El personalizador
-          </p>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <p className="text-[#8B1A2F] text-[11px] font-semibold uppercase tracking-[0.3em]">
+              El personalizador
+            </p>
+            {/* Subtle replay of the onboarding demo (customizer-tutorial.tsx
+                listens for this event; works even after "No volver a mostrar"). */}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event("tuto:abrir"))}
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors shrink-0"
+            >
+              <CirclePlay className="w-3.5 h-3.5" />
+              <span className="underline underline-offset-4 decoration-border hover:decoration-current">
+                Ver cómo funciona
+              </span>
+            </button>
+          </div>
           <h2 className="font-serif font-light text-3xl md:text-5xl text-[#1A1614] mb-4 leading-[1.1]">
             Cree su pieza
           </h2>

@@ -19,8 +19,17 @@ const SECTION_ID = "customizer";
 
 const TITULOS = ["Producto", "Estilo", "Diseño", "Resumen"];
 const CAPTIONS = [
-  "Elegí tu producto y material",
+  "Elegí tu material y producto",
   "Tocá un color y velo en vivo",
+  "Escribí tu nombre o marca",
+  "Confirmá y pedilo por WhatsApp",
+];
+// Desktop variant: the customizer there is tabs + panels (no numbered wizard),
+// so the modal shows an editor-style tab strip instead of "PASO X DE 4" bars.
+const TABS_DESKTOP = ["Producto", "Color", "Texto", "Resumen"];
+const CAPTIONS_DESKTOP = [
+  "Elegí tu material y producto",
+  "Hacé clic en un color y velo en vivo",
   "Escribí tu nombre o marca",
   "Confirmá y pedilo por WhatsApp",
 ];
@@ -168,8 +177,26 @@ const CSS = `
   color: #8a8a8e; font-size: .8rem; cursor: pointer; text-decoration: underline;
 }
 
+.tuto-tabs {
+  display: flex; gap: 4px; background: #f2f2f4;
+  border-radius: 999px; padding: 4px; margin-bottom: 12px;
+}
+.tuto-tabs span {
+  flex: 1; text-align: center; font-size: .78rem; font-weight: 600;
+  color: #8a8a8e; padding: 6px 4px; border-radius: 999px;
+  transition: background .3s, color .3s;
+}
+.tuto-tabs span.tuto-on {
+  background: #fff; color: var(--tuto-brand);
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+
+@media (min-width: 768px) {
+  .tuto-card { max-width: 440px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .tuto-tap, .tuto-escena, .tuto-overlay, .tuto-card, .tuto-visor, .tuto-bars i { transition: none; }
+  .tuto-tap, .tuto-escena, .tuto-overlay, .tuto-card, .tuto-visor, .tuto-bars i, .tuto-tabs span { transition: none; }
   .tuto-wsp.tuto-pulso, .tuto-caret { animation: none; }
 }
 `;
@@ -179,6 +206,10 @@ export default function CustomizerTutorial() {
   // visitor opts out (or after the close fade finishes).
   const [habilitado, setHabilitado] = useState(false);
   const [visible, setVisible] = useState(false);
+  // Snapshot at mount: which chrome the modal shows (wizard bars vs tab strip).
+  const [esDesktop] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches,
+  );
   const [paso, setPaso] = useState(0);
   const [selTermo, setSelTermo] = useState(false);
   const [selAcero, setSelAcero] = useState(false);
@@ -236,9 +267,9 @@ export default function CustomizerTutorial() {
     setGrabado(false);
     setPulso(false);
 
-    // Scene 1 — product + material
-    wait(() => tocar(pillTermoRef.current, () => setSelTermo(true)), 700);
-    wait(() => tocar(pillAceroRef.current, () => setSelAcero(true)), 2100);
+    // Scene 1 — material first, then product (mirrors the real step 1 order)
+    wait(() => tocar(pillAceroRef.current, () => setSelAcero(true)), 700);
+    wait(() => tocar(pillTermoRef.current, () => setSelTermo(true)), 2100);
     wait(() => irA(1), 3600);
 
     // Scene 2 — colour (termo recolours live)
@@ -264,32 +295,40 @@ export default function CustomizerTutorial() {
     if (recordar) {
       try { localStorage.setItem(STORAGE_KEY, "nunca"); } catch { /* private mode */ }
     }
-    // Let the fade-out play, then drop the whole layer from the DOM.
-    window.setTimeout(() => setHabilitado(false), 300);
   };
 
-  // Trigger: first time 35% of the customizer section is on screen.
+  // Auto-trigger: first time 35% of the customizer section is on screen (unless
+  // opted out). The layer also stays mounted listening for "tuto:abrir", the
+  // manual replay event fired by the subtle "Ver cómo funciona" link in the
+  // customizer header — that one works even after opting out.
   useEffect(() => {
-    try {
-      if (localStorage.getItem(STORAGE_KEY) === "nunca") return;
-    } catch { /* localStorage unavailable: still show once */ }
     setHabilitado(true);
 
-    const seccion = document.getElementById(SECTION_ID);
-    if (!seccion || typeof IntersectionObserver === "undefined") return;
+    const abrirManual = () => { yaMostradoRef.current = true; setVisible(true); };
+    window.addEventListener("tuto:abrir", abrirManual);
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting) && !yaMostradoRef.current) {
-          yaMostradoRef.current = true;
-          observer.disconnect();
-          setVisible(true);
-        }
-      },
-      { threshold: 0.35 },
-    );
-    observer.observe(seccion);
-    return () => observer.disconnect();
+    let optedOut = false;
+    try { optedOut = localStorage.getItem(STORAGE_KEY) === "nunca"; } catch { /* show once */ }
+
+    let observer: IntersectionObserver | undefined;
+    const seccion = document.getElementById(SECTION_ID);
+    if (!optedOut && seccion && typeof IntersectionObserver !== "undefined") {
+      observer = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting) && !yaMostradoRef.current) {
+            yaMostradoRef.current = true;
+            observer?.disconnect();
+            setVisible(true);
+          }
+        },
+        { threshold: 0.35 },
+      );
+      observer.observe(seccion);
+    }
+    return () => {
+      window.removeEventListener("tuto:abrir", abrirManual);
+      observer?.disconnect();
+    };
   }, []);
 
   // While open: lock body scroll, close on Escape, run the animation loop.
@@ -319,13 +358,25 @@ export default function CustomizerTutorial() {
     >
       <style>{CSS}</style>
       <div className="tuto-card" ref={cardRef}>
-        <div className="tuto-head">
-          <span className="tuto-paso">PASO {paso + 1} DE 4</span>
-          <span className="tuto-titulo">{TITULOS[paso]}</span>
-        </div>
-        <div className="tuto-bars">
-          {TITULOS.map((_, i) => <i key={i} className={i <= paso ? "tuto-on" : ""} />)}
-        </div>
+        {esDesktop ? (
+          // Desktop chrome: an editor-style tab strip, like the real desktop
+          // customizer (which has tabs/panels, not a numbered wizard).
+          <div className="tuto-tabs">
+            {TABS_DESKTOP.map((t, i) => (
+              <span key={t} className={i === paso ? "tuto-on" : ""}>{t}</span>
+            ))}
+          </div>
+        ) : (
+          <>
+            <div className="tuto-head">
+              <span className="tuto-paso">PASO {paso + 1} DE 4</span>
+              <span className="tuto-titulo">{TITULOS[paso]}</span>
+            </div>
+            <div className="tuto-bars">
+              {TITULOS.map((_, i) => <i key={i} className={i <= paso ? "tuto-on" : ""} />)}
+            </div>
+          </>
+        )}
 
         {/* Visor: termo SVG that recolours and gets engraved live */}
         <div className={`tuto-visor${selVerde ? " tuto-verde" : ""}`}>
@@ -353,18 +404,19 @@ export default function CustomizerTutorial() {
 
         {/* Scene panel */}
         <div className="tuto-panel">
-          {/* Scene 1: product + material */}
+          {/* Scene 1: material first, then the products it offers — the same
+              top-to-bottom order as the real customizer's step 1. */}
           <div className={`tuto-escena${paso === 0 ? " tuto-activa" : ""}`}>
-            <div className="tuto-lbl">Producto</div>
+            <div className="tuto-lbl">Material</div>
+            <div className="tuto-fila">
+              <span ref={pillAceroRef} className={`tuto-pill${selAcero ? " tuto-sel" : ""}`}>🛡 Acero inoxidable</span>
+              <span className="tuto-pill">Cuero</span>
+            </div>
+            <div className="tuto-lbl" style={{ marginTop: 10 }}>Producto</div>
             <div className="tuto-fila">
               <span ref={pillTermoRef} className={`tuto-pill${selTermo ? " tuto-sel" : ""}`}>Termo</span>
               <span className="tuto-pill">Vaso</span>
               <span className="tuto-pill">Hoppie</span>
-            </div>
-            <div className="tuto-lbl" style={{ marginTop: 10 }}>Material</div>
-            <div className="tuto-fila">
-              <span ref={pillAceroRef} className={`tuto-pill${selAcero ? " tuto-sel" : ""}`}>🛡 Acero inoxidable</span>
-              <span className="tuto-pill">Cuero</span>
             </div>
           </div>
 
@@ -413,7 +465,7 @@ export default function CustomizerTutorial() {
           </div>
         </div>
 
-        <p className="tuto-caption">{CAPTIONS[paso]}</p>
+        <p className="tuto-caption">{(esDesktop ? CAPTIONS_DESKTOP : CAPTIONS)[paso]}</p>
         <button className="tuto-cta" type="button" onClick={() => cerrar(false)}>
           ¡Quiero personalizar el mío!
         </button>
