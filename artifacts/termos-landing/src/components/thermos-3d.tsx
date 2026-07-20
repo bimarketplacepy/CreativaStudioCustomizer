@@ -747,7 +747,9 @@ function ThermosMesh({
               <meshPhysicalMaterial color={colorHex} roughness={0.6} metalness={0.1} clearcoat={0.06} clearcoatRoughness={0.7} envMapIntensity={0.9} />
             )
           ) : (
-            <meshPhysicalMaterial color={colorHex} roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
+            // Metal handle keeps a fixed dark charcoal — never inherits the body colour
+            // so it reads well against both natural steel and any painted finish.
+            <meshPhysicalMaterial color="#1c1e22" roughness={0.55} metalness={0.25} clearcoat={0.12} clearcoatRoughness={0.6} envMapIntensity={0.8} />
           )}
         </mesh>
       )}
