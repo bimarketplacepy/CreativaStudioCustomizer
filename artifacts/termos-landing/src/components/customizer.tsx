@@ -40,8 +40,8 @@ import {
 } from "@/lib/materials";
 import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
 import { whatsappUrl } from "@/lib/contact";
-import { downloadDataUrl } from "@/lib/share";
-import { Download } from "lucide-react";
+import { dataUrlToJpeg, downloadDataUrl, uploadPreview } from "@/lib/share";
+import { Download, Loader2 } from "lucide-react";
 
 /** Text scale bounds. Capped low so a name never blows out past the band. */
 const TEXT_SCALE_MIN = 0.3;
@@ -1045,6 +1045,10 @@ export default function Customizer() {
   const [font, setFont] = useState(FONTS[0].id);
   const activeFont = FONTS.find(f => f.id === font) || FONTS[0];
   const [isOrdered, setIsOrdered] = useState(false);
+  // Subida del preview al tocar "Continuar por WhatsApp": estado de carga del
+  // botón y aviso sutil cuando la imagen no pudo adjuntarse al mensaje.
+  const [isPreparing, setIsPreparing] = useState(false);
+  const [uploadFailed, setUploadFailed] = useState(false);
   // PNG snapshot of the finished 3D piece, shown in the Step 4 summary and sent
   // with the WhatsApp message. Captured from the live canvas while it's mounted.
   const [previewImg, setPreviewImg] = useState<string | null>(null);
@@ -1174,8 +1178,9 @@ export default function Customizer() {
     [product, textSpec, textPlacement, singleFace, fontTick],
   );
   const artExtents = React.useMemo<MarkHalfExtents>(
-    () => markHalfExtents(product, artSpec, artPlacement, singleFace),
-    [product, artSpec, artPlacement, singleFace],
+    // El arte se edita siempre en una cara (la edición libre es solo del texto).
+    () => markHalfExtents(product, artSpec, artPlacement, true),
+    [product, artSpec, artPlacement],
   );
 
   // Full text layout (wrap + auto-shrink) so the UI can flag when the size was
@@ -1254,8 +1259,10 @@ export default function Customizer() {
 
   // Setters that keep placements inside the rectangle while in single-face mode.
   // Flat blanks skip it: their face renderer clamps against the real face edges.
+  // El arte (ícono/imagen) se clampa SIEMPRE: la edición libre del Envolvente
+  // 360° aplica únicamente al texto.
   const applyTextPlacement = (next: Placement) => setTextPlacement(singleFace && !is3DObject ? clampTextP(next) : next);
-  const applyArtPlacement = (next: Placement) => setArtPlacement(singleFace && !is3DObject ? clampArtP(next) : next);
+  const applyArtPlacement = (next: Placement) => setArtPlacement(!is3DObject ? clampArtP(next) : next);
 
   // Re-clamp when growing the mark or the product changes could push the box out
   // of bounds (typing a longer name, a bigger plan image, switching size, …).
@@ -1263,8 +1270,8 @@ export default function Customizer() {
     if (singleFace && !is3DObject) setTextPlacement(p => clampTextP(p));
   }, [singleFace, is3DObject, clampTextP]);
   React.useEffect(() => {
-    if (singleFace && !is3DObject) setArtPlacement(p => clampArtP(p));
-  }, [singleFace, is3DObject, clampArtP]);
+    if (!is3DObject) setArtPlacement(p => clampArtP(p));
+  }, [is3DObject, clampArtP]);
 
   // ── Design drag / nudge (posicionamiento sobre el 3D) ───────────────────────
   // Which mark a drag-on-3D gesture or the floating d-pad moves: follow the open
@@ -1276,6 +1283,12 @@ export default function Customizer() {
     : (drinkTab === "icons" || drinkTab === "media") ? (hasArt ? "art" : hasText ? "text" : null)
     : hasText ? "text" : hasArt ? "art" : null;
   const designActive = activeDesignKind !== null;
+
+  // Modo de edición vigente sobre el visor 3D. La "edición libre" del
+  // Envolvente 360° es exclusiva del texto: al pasar a Íconos o Imagen (arte
+  // activo) volvemos al rectángulo de una cara para poder arrastrar el ícono o
+  // la foto, aunque el texto siga envolviendo el producto.
+  const editSingleFace = activeDesignKind === "art" ? true : singleFace;
 
   // Dashed front-face guides appear ONLY while the design is being moved — a drag
   // holds them on; a nudge/center tap flashes them briefly.
@@ -1297,7 +1310,9 @@ export default function Customizer() {
   // the delta walks the pad and re-clamps into the rectangle; in free mode it
   // applies straight to u/v (u wraps around the body).
   const moveActivePlacement = React.useCallback((dPadX: number, dPadY: number) => {
-    const apply = (p: Placement, clampFn: (q: Placement) => Placement): Placement => {
+    // `sf`: modo una-cara del elemento que se mueve — el texto según su
+    // disposición, el arte siempre.
+    const apply = (p: Placement, clampFn: (q: Placement) => Placement, sf: boolean): Placement => {
       // Flat blanks (billetera, tabla, caja…): the whole face is the canvas, so
       // u/v walk it edge to edge — corners included. The face renderer
       // (drawPlaced in engraving-face.ts) already stops the mark's bounding box
@@ -1307,7 +1322,7 @@ export default function Customizer() {
       if (is3DObject) {
         return { ...p, u: clamp01(p.u + dPadX), v: clamp01(p.v + dPadY) };
       }
-      if (singleFace) {
+      if (sf) {
         const pad = placementToPad(p.u, p.v, product);
         const np = padToPlacement(
           Math.max(0, Math.min(1, pad.padX + dPadX)),
@@ -1320,8 +1335,8 @@ export default function Customizer() {
       const v = Math.max(0, Math.min(1, p.v + dPadY));
       return { ...p, u, v };
     };
-    if (activeDesignKind === "text") setTextPlacement(p => apply(p, clampTextP));
-    else if (activeDesignKind === "art") setArtPlacement(p => apply(p, clampArtP));
+    if (activeDesignKind === "text") setTextPlacement(p => apply(p, clampTextP, singleFace));
+    else if (activeDesignKind === "art") setArtPlacement(p => apply(p, clampArtP, true));
   }, [singleFace, is3DObject, product, activeDesignKind, clampTextP, clampArtP]);
 
   const centerActivePlacement = React.useCallback(() => {
@@ -1350,10 +1365,10 @@ export default function Customizer() {
   const thermosSnapRef = useRef<((u: number) => void) | null>(null);
 
   // u que debe quedar de frente: el centro de la cara frontal en "una cara", o
-  // la posición real del diseño activo en modo libre.
-  const designFaceU = singleFace
+  // la posición real del texto cuando el modo de edición vigente es libre (el
+  // arte se edita siempre en la cara frontal).
+  const designFaceU = editSingleFace
     ? FRONT_FACE.uCenter
-    : activeDesignKind === "art" ? artPlacement.u
     : activeDesignKind === "text" ? textPlacement.u
     : FRONT_FACE.uCenter;
 
@@ -1369,7 +1384,8 @@ export default function Customizer() {
       // Upscale the captured frame so the longest side reaches ~1600px (never
       // downscale below native). With the canvas rendering at dpr ≥1.5 the
       // buffer is already large, so the upscale factor stays small and the
-      // downloaded image keeps real detail.
+      // downloaded image keeps real detail. (The WhatsApp upload derives a
+      // lighter ~1080px JPEG from this via dataUrlToJpeg.)
       const TARGET = 1600;
       const factor = Math.max(1, TARGET / Math.max(sw, sh));
       const ow = Math.round(sw * factor);
@@ -1470,29 +1486,105 @@ export default function Customizer() {
     if (id) setCustomImage(null);
   };
   const handleUploadImage = (img: ProcessedImage | null) => {
+    const isNew = !!img && img.svgDataUrl !== customImage?.svgDataUrl && img.svgDataUrl !== customImage?.other?.svgDataUrl;
     setCustomImage(img);
-    // Images size by plan (no size slider), so drop any leftover icon scale.
-    if (img) { setIconId(null); setArtPlacement(p => ({ ...p, scale: 1 })); }
+    if (img) {
+      setIconId(null);
+      // Images size by plan (no size slider), so drop any leftover icon scale.
+      // Swapping cut-out/original keeps the placement the customer already set.
+      if (isNew) setArtPlacement(p => ({ ...p, scale: 1 }));
+      // Toda imagen subida (archivo o URL, chica o grande) se muestra a todo
+      // color: la técnica pasa a impresión UV por defecto. El cliente puede
+      // volver a láser a mano si lo prefiere.
+      if (canEufy) setTechnique("eufy");
+    }
   };
 
-  /** Mensaje simple del CTA: el detalle del diseño se conversa en el chat. */
-  const ORDER_MESSAGE =
-    "¡Hola! 😊 Estuve personalizando un producto en la página y me gustaría seguir con el pedido.";
+  /** Campos del pedido — ÚNICA fuente de datos del "Resumen de tu
+   *  personalización" (Paso 4) y del mensaje de WhatsApp. Campos sin dato se
+   *  omiten por completo (nunca "Texto: —"). */
+  const orderFields = (): [string, string][] => {
+    // Solo el TIPO de producto (Termo, Chopera, Copa…), sin tamaño ni material.
+    const productName = isDrinkware
+      ? product.singular
+      : material.pens ? "Bolígrafo" : (activeMProduct?.name ?? activeObject?.singular ?? material.name);
+    const techniqueName = isDrinkware
+      ? activeTechnique.name
+      : materialId === "plastico" ? "Plotter de corte" : "Grabado láser";
 
-  /** Abre WhatsApp con el mensaje simple. La imagen del diseño no viaja sola:
-   *  el cliente puede descargarla con el botón de abajo y adjuntarla al chat. */
-  const handleOrder = () => {
-    // window.open debe salir sincrónico al click (bloqueadores de pop-ups).
-    setIsOrdered(true);
-    window.open(whatsappUrl(ORDER_MESSAGE), "_blank", "noopener");
-    // Con el canvas en pantalla (desktop / paso de diseño): girar el diseño de
-    // frente, esperar el repintado y refrescar la captura para "Descargar imagen".
-    thermosSnapRef.current?.(designFaceU);
-    setTimeout(() => {
-      const img = capturePreview() ?? previewImgRef.current;
-      if (img) { setPreviewImg(img); previewImgRef.current = img; }
-    }, 150);
-    setTimeout(() => setIsOrdered(false), 5000);
+    const rows: [string, string][] = [
+      ["Producto", productName],
+      ["Técnica", techniqueName],
+    ];
+    const trimmedText = text.trim();
+    if (trimmedText) rows.push(["Texto", `${trimmedText} (${activeFont.name})`]);
+    if (selectedIcon) rows.push(["Ícono", selectedIcon.name]);
+    else if (customImage) rows.push(["Logo/foto adjunta", "Sí"]);
+    return rows;
+  };
+
+  const buildOrderMessage = (imageUrl: string | null): string => {
+    const lines = orderFields().map(([k, v]) => `- ${k}: ${v}`);
+    const header = "¡Hola! 😊 Estuve creando mi diseño en el personalizador y me encantaría encargarlo. Estos son los detalles:";
+    const footer = imageUrl ? `\n\n📷 Así quedó mi diseño: ${imageUrl}` : "";
+    return `${header}\n${lines.join("\n")}${footer}`;
+  };
+
+  /** Máximo que esperamos la subida del preview antes de abrir WhatsApp sin la
+   *  línea de imagen (el cliente siempre puede descargarla y adjuntarla). */
+  const UPLOAD_TIMEOUT_MS = 8000;
+
+  /** Captura el diseño de frente, lo sube al backend y abre WhatsApp con las
+   *  especificaciones + la URL pública de la imagen. Si la subida falla o tarda
+   *  más de UPLOAD_TIMEOUT_MS, el mensaje sale igual sin la línea de imagen. */
+  const handleOrder = async () => {
+    if (isOrdered || isPreparing) return;
+    setUploadFailed(false);
+    setIsPreparing(true);
+
+    // La pestaña debe abrirse sincrónica al click (si no, el bloqueador de
+    // pop-ups la mata); la URL de WhatsApp se asigna cuando el mensaje está
+    // listo. Mientras tanto muestra un texto de espera.
+    const win = window.open("", "_blank");
+    if (win) {
+      try {
+        win.document.write(
+          '<title>Preparando tu diseño…</title><body style="margin:0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;color:#5f574d">Preparando tu diseño…</body>'
+        );
+      } catch { /* pestaña en blanco un instante; nada que hacer */ }
+    }
+
+    try {
+      // Girar el área personalizada de frente y esperar el repintado, para que
+      // la captura muestre el diseño completo.
+      thermosSnapRef.current?.(designFaceU);
+      await new Promise(resolve => setTimeout(resolve, 150));
+
+      // Captura nítida para el resumen/descarga; para subir se re-encodea a
+      // JPEG ~1080px (mucho más liviano que el PNG: sube rápido y nunca pisa
+      // el límite de tamaño del endpoint).
+      const full = capturePreview() ?? previewImgRef.current;
+      if (full) { setPreviewImg(full); previewImgRef.current = full; }
+
+      let imageUrl: string | null = null;
+      if (full) {
+        imageUrl = await Promise.race([
+          dataUrlToJpeg(full, 1080).then(uploadPreview),
+          new Promise<null>(resolve => setTimeout(() => resolve(null), UPLOAD_TIMEOUT_MS)),
+        ]);
+        // El aviso solo tiene sentido si había una imagen para adjuntar.
+        if (!imageUrl) setUploadFailed(true);
+      }
+
+      const url = whatsappUrl(buildOrderMessage(imageUrl));
+      if (win && !win.closed) win.location.replace(url);
+      else window.open(url, "_blank", "noopener");
+
+      setIsOrdered(true);
+      setTimeout(() => setIsOrdered(false), 5000);
+    } finally {
+      setIsPreparing(false);
+    }
   };
 
   // Precios viven únicamente en la sección "Tarifas"; el CTA del personalizador
@@ -1673,12 +1765,20 @@ export default function Customizer() {
     <>
       <Button
         onClick={handleOrder}
-        disabled={isOrdered}
+        disabled={isOrdered || isPreparing}
         size="lg"
         className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
       >
-        {isOrdered ? "Abriendo WhatsApp..." : ctaLabel}
+        {isPreparing ? (
+          <><Loader2 className="w-4 h-4 animate-spin" /> Preparando tu diseño...</>
+        ) : isOrdered ? "Abriendo WhatsApp..." : ctaLabel}
       </Button>
+
+      {uploadFailed && (
+        <p className="text-xs text-amber-700 text-center leading-relaxed">
+          No pudimos adjuntar la imagen, podés enviarla manualmente al chat.
+        </p>
+      )}
 
       {previewImg && (
         <button
@@ -1765,22 +1865,8 @@ export default function Customizer() {
   );
 
   // Paso 4 — Resumen: imagen del diseño + detalle legible + envío por WhatsApp.
-  // (Sin planes ni precios: eso vive en la sección "Tarifas".)
-  const drinkSummaryRows = (): [string, string][] => {
-    const rows: [string, string][] = [
-      ["Producto", `${product.singular} · ${activeSize.name}`],
-      ["Material", isGlass ? "Cristal transparente" : material.name],
-    ];
-    if (!isGlass) rows.push(["Color", activeColorName]);
-    rows.push(["Acabado", FINISHES.find(f => f.id === finish)?.name ?? "—"]);
-    rows.push(["Técnica", activeTechnique.name]);
-    if (isColorPrint) rows.push(["Color del texto/diseño", textColor.toUpperCase()]);
-    rows.push(["Texto", text ? `"${text}" · ${activeFont.name}` : "Sin texto"]);
-    if (selectedIcon) rows.push(["Ícono", selectedIcon.name]);
-    else if (customImage) rows.push(["Imagen", "Logo/foto adjunta"]);
-    return rows;
-  };
-
+  // (Sin planes ni precios: eso vive en la sección "Tarifas".) Los campos salen
+  // de orderFields(), la misma fuente que arma el mensaje de WhatsApp.
   const renderDrinkSummary = () => (
     <div className="space-y-4">
       {/* Imagen de vista previa del diseño final, capturada del 3D. */}
@@ -1797,7 +1883,7 @@ export default function Customizer() {
       <div>
         <Label className="text-sm font-medium mb-2 block">Resumen de tu personalización</Label>
         <dl className="rounded-xl border border-border divide-y divide-border overflow-hidden text-sm bg-white">
-          {drinkSummaryRows().map(([k, v]) => (
+          {orderFields().map(([k, v]) => (
             <div key={k} className="flex items-baseline justify-between gap-3 px-3 py-2">
               <dt className="text-muted-foreground shrink-0">{k}</dt>
               <dd className="font-medium text-foreground text-right break-words">{v}</dd>
@@ -1990,6 +2076,7 @@ export default function Customizer() {
                       textColor={textColor}
                       engraveStyle={drinkwareEngraveStyle}
                       singleFace={singleFace}
+                      editSingleFace={editSingleFace}
                       showGuides={guidesActive}
                       frontFaceU={FRONT_FACE.uCenter}
                       glass={isGlass}
@@ -2018,7 +2105,7 @@ export default function Customizer() {
                       {wrapSpin
                         ? "Girando para mostrar el texto envolvente…"
                         : designActive
-                        ? (singleFace ? "Arrastre el diseño sobre el producto" : "Arrastre para girar")
+                        ? (editSingleFace ? "Arrastre el diseño sobre el producto" : "Arrastre para girar")
                         : "Arrastre para girar"}
                     </p>
                   </div>
@@ -2282,7 +2369,7 @@ export default function Customizer() {
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Suba su logo o su foto. Le quitamos el fondo automáticamente y la grabamos sobre el {product.singular.toLowerCase()}.
+                        Suba su logo o su foto: se imprime a todo color (impresión UV) sobre el {product.singular.toLowerCase()}. Si tiene un fondo liso se lo quitamos automáticamente.
                       </p>
 
                       {activePlan.allowsImage ? (
@@ -2294,7 +2381,7 @@ export default function Customizer() {
                           />
                           <p className="text-xs text-muted-foreground mt-3">
                             Con el plan <span className="font-medium text-foreground">{activePlan.shortLabel}</span> la
-                            imagen se graba en tamano {activePlan.imageSize === "large" ? "grande (logo)" : "chico (dibujo)"}, ya definido por el plan.
+                            imagen va en tamaño {activePlan.imageSize === "large" ? "grande (logo)" : "chico (dibujo)"}, ya definido por el plan.
                           </p>
 
                           {customImage && (

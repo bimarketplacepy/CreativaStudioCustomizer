@@ -40,6 +40,12 @@ interface Thermos3DProps {
   engraveStyle?: EngraveStyle;
   /** "Edición en una cara": confine the design to the front-face rectangle. */
   singleFace?: boolean;
+  /**
+   * Modo de edición vigente sobre el visor (arrastre, snap de cámara y guías).
+   * Permite editar el arte en una cara mientras el TEXTO envuelve 360°
+   * (singleFace=false solo afecta el render del texto). Default: singleFace.
+   */
+  editSingleFace?: boolean;
   /** Draw the dashed front-face guide (single-face mode only). */
   showGuides?: boolean;
   /** Which u faces the camera when single-face is entered. Defaults to config. */
@@ -302,7 +308,7 @@ function FrontFaceGuide({ sil, product }: { sil: Silhouette; product: ProductDef
 
 function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
-  textPlacement, artPlacement, colorPrint, textColor, engraveStyle, singleFace, showGuides, frontFaceU, glass,
+  textPlacement, artPlacement, colorPrint, textColor, engraveStyle, singleFace, editSingleFace, showGuides, frontFaceU, glass,
   designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, snapToURef,
   autoSpin = false, rotationLocked = false,
 }: {
@@ -311,7 +317,7 @@ function ThermosMesh({
   customImageUrl: string | null; imageSize: "none" | "small" | "large";
   textPlacement: Placement; artPlacement: Placement; colorPrint: boolean; textColor?: string;
   engraveStyle: EngraveStyle;
-  singleFace: boolean; showGuides: boolean; frontFaceU: number; glass: boolean;
+  singleFace: boolean; editSingleFace: boolean; showGuides: boolean; frontFaceU: number; glass: boolean;
   designActive: boolean;
   onDesignMove?: (dxFrac: number, dyFrac: number) => void;
   onDesignDragStart?: () => void;
@@ -332,8 +338,8 @@ function ThermosMesh({
 
   // Latest design-drag inputs, read inside the (stable) pointer listeners so we
   // don't re-attach them every render when the callbacks change identity.
-  const designRef = useRef({ designActive, singleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd });
-  designRef.current = { designActive, singleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd };
+  const designRef = useRef({ designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd });
+  designRef.current = { designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd };
 
   const bodyGeo = useMemo(() => {
     const geo = new THREE.LatheGeometry(sil.points, 128);
@@ -553,7 +559,7 @@ function ThermosMesh({
       // With a design active in single-face mode, this gesture repositions the
       // mark on the frozen front face instead of rotating the piece.
       const d = designRef.current;
-      const mode = d.designActive && d.singleFace ? "design" : "rotate";
+      const mode = d.designActive && d.editSingleFace ? "design" : "rotate";
       // Envolvente 360° while typing: manual rotation is locked (the piece is
       // auto-spinning); ignore the gesture entirely until the input blurs.
       if (mode === "rotate" && d.rotationLocked) return;
@@ -614,12 +620,12 @@ function ThermosMesh({
   // entered (and if the configured front angle changes), so the customer looks
   // straight at the editable area. Still fully draggable afterwards.
   useEffect(() => {
-    if (!singleFace || !groupRef.current) return;
+    if (!editSingleFace || !groupRef.current) return;
     groupRef.current.rotation.y = -frontFaceU * Math.PI * 2;
     groupRef.current.rotation.x = 0;
     velYaw.current = 0;
     velPitch.current = 0;
-  }, [singleFace, frontFaceU]);
+  }, [editSingleFace, frontFaceU]);
 
   // Expose the same "swing u to camera" move imperatively, so the parent can
   // face the personalized area right before capturing the summary snapshot.
@@ -652,7 +658,7 @@ function ThermosMesh({
     // Idle auto-spin only while the piece is blank; freeze once the customer is
     // placing text/icon/image so they can position it calmly (still draggable).
     // Single-face mode also freezes, keeping the front face pointed at the camera.
-    const hasContent = singleFace || !!text || (!!customImageUrl && imageSize !== "none");
+    const hasContent = editSingleFace || !!text || (!!customImageUrl && imageSize !== "none");
     const hasYawInertia   = Math.abs(velYaw.current) > 0.001;
     const hasPitchInertia = Math.abs(velPitch.current) > 0.001;
 
@@ -789,8 +795,8 @@ function ThermosMesh({
         </mesh>
       )}
 
-      {/* Front-face editable area outline (single-face mode, guides visible) */}
-      {singleFace && showGuides && <FrontFaceGuide sil={sil} product={product} />}
+      {/* Front-face editable area outline (edit mode una-cara, guides visible) */}
+      {editSingleFace && showGuides && <FrontFaceGuide sil={sil} product={product} />}
     </group>
   );
 }
@@ -1117,6 +1123,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           textColor={props.textColor}
           engraveStyle={props.engraveStyle ?? "steel"}
           singleFace={props.singleFace ?? false}
+          editSingleFace={props.editSingleFace ?? props.singleFace ?? false}
           showGuides={props.showGuides ?? true}
           frontFaceU={props.frontFaceU ?? FRONT_FACE.uCenter}
           glass={props.glass ?? false}

@@ -7,6 +7,12 @@ export interface ProcessedImage {
    * then kept whole rather than risk cutting into the artwork.
    */
   backgroundRemoved: boolean;
+  /**
+   * The alternative rendition, when one exists: the untouched original while
+   * the cut-out is active, and vice versa. Lets the customer swap versions if
+   * the automatic cut looks off. Never nested more than one level.
+   */
+  other?: ProcessedImage;
 }
 
 const MAX_DIM = 1200;
@@ -20,8 +26,10 @@ const FAR = 72;
 
 /** How closely border pixels must agree before we call the background flat. */
 const BORDER_TOLERANCE = 34;
-/** ...and how much of the border has to agree. */
-const MIN_BORDER_AGREEMENT = 0.82;
+/** ...and how much of the border has to agree. A busy border (photo, gradient,
+ *  collage) fails this and the image is kept whole — a wrong cut looks far
+ *  worse than no cut. */
+const MIN_BORDER_AGREEMENT = 0.86;
 
 /** A fill that clears less than this found an edge artifact, not a background. */
 const MIN_REMOVED_FRACTION = 0.04;
@@ -36,7 +44,7 @@ const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 /** Perceptual luminance, 0–255. */
 const luminance = (r: number, g: number, b: number) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-function loadImage(file: File): Promise<HTMLImageElement> {
+function loadImage(file: Blob): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -50,6 +58,35 @@ function loadImage(file: File): Promise<HTMLImageElement> {
     };
     img.src = url;
   });
+}
+
+/**
+ * Downloads an image from a remote URL as a Blob ready for `fileToProcessedSvg`.
+ * Most image hosts don't send CORS headers, so a direct fetch is tried first
+ * and, if it fails, the request is retried through the images.weserv.nl proxy,
+ * which serves any public image with CORS enabled.
+ */
+export async function fetchImageBlob(url: string): Promise<Blob> {
+  const attempts = [url, `https://images.weserv.nl/?url=${encodeURIComponent(url)}`];
+  let lastError: unknown = null;
+
+  for (const attempt of attempts) {
+    try {
+      const res = await fetch(attempt, { mode: "cors" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      // Some hosts omit or genericise the content type; the decoder is the
+      // final judge, so only clearly-not-an-image responses are rejected here.
+      if (blob.type && !blob.type.startsWith("image/") && blob.type !== "application/octet-stream") {
+        throw new Error(`Tipo de contenido no soportado: ${blob.type}`);
+      }
+      return blob;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("No se pudo descargar la imagen.");
 }
 
 function drawScaled(img: CanvasImageSource, srcW: number, srcH: number, maxDim: number): HTMLCanvasElement {
@@ -201,7 +238,9 @@ function eraseFlatBackground(
   return removed / (width * height);
 }
 
-/** Bounding box of everything that survived the cut-out. */
+/** Bounding box of everything that survived the cut-out. The alpha threshold
+ *  is deliberately near zero: a fill that half-faded the artwork's light edges
+ *  must never also crop them away. */
 function contentBounds(data: Uint8ClampedArray, width: number, height: number) {
   let minX = width;
   let minY = height;
@@ -209,7 +248,7 @@ function contentBounds(data: Uint8ClampedArray, width: number, height: number) {
   let maxY = -1;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if (data[(y * width + x) * 4 + 3] > 10) {
+      if (data[(y * width + x) * 4 + 3] > 2) {
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
@@ -219,7 +258,7 @@ function contentBounds(data: Uint8ClampedArray, width: number, height: number) {
   }
   if (maxX < 0) return { minX: 0, minY: 0, maxX: width - 1, maxY: height - 1 };
 
-  const pad = Math.round(Math.max(width, height) * 0.02);
+  const pad = Math.round(Math.max(width, height) * 0.03);
   return {
     minX: Math.max(0, minX - pad),
     minY: Math.max(0, minY - pad),
@@ -252,7 +291,7 @@ function canvasToSvgDataUrl(canvas: HTMLCanvasElement): string {
  * fill that swallows the subject all fall back to the untouched image, because
  * a bad cut-out engraves worse than no cut-out at all.
  */
-export async function fileToProcessedSvg(file: File): Promise<ProcessedImage> {
+export async function fileToProcessedSvg(file: Blob): Promise<ProcessedImage> {
   const img = await loadImage(file);
   const canvas = drawScaled(img, img.naturalWidth, img.naturalHeight, MAX_DIM);
   const { width, height } = canvas;
@@ -261,29 +300,54 @@ export async function fileToProcessedSvg(file: File): Promise<ProcessedImage> {
   const imageData = ctx.getImageData(0, 0, width, height);
   const data = imageData.data;
 
-  let backgroundRemoved = false;
+  // The file already ships its own cut-out: trust it, just trim the margins.
   if (hasOwnTransparency(data)) {
-    backgroundRemoved = true;
-  } else {
-    const bg = sampleBorder(data, width, height);
-    if (bg && bg.agreement >= MIN_BORDER_AGREEMENT) {
-      const removed = eraseFlatBackground(data, width, height, bg);
-      if (removed >= MIN_REMOVED_FRACTION && removed <= MAX_REMOVED_FRACTION) {
-        // Only now does the erase become visible — a rejected fill leaves the
-        // canvas exactly as it was drawn.
-        ctx.putImageData(imageData, 0, 0);
-        backgroundRemoved = true;
+    const output = crop(canvas, contentBounds(data, width, height));
+    return {
+      svgDataUrl: canvasToSvgDataUrl(output),
+      width: output.width,
+      height: output.height,
+      backgroundRemoved: true,
+    };
+  }
+
+  const bg = sampleBorder(data, width, height);
+  if (bg && bg.agreement >= MIN_BORDER_AGREEMENT) {
+    const removed = eraseFlatBackground(data, width, height, bg);
+    if (removed >= MIN_REMOVED_FRACTION && removed <= MAX_REMOVED_FRACTION) {
+      // Nearly-invisible remnants of the fill's soft rim read as dirty halos
+      // around the cut — drop them before measuring the content bounds.
+      for (let i = 3; i < data.length; i += 4) {
+        if (data[i] > 0 && data[i] < 12) data[i] = 0;
       }
+
+      // The untouched rendition is kept alongside the cut-out so the customer
+      // can swap back when the automatic cut misfires on their artwork.
+      const original: ProcessedImage = {
+        svgDataUrl: canvasToSvgDataUrl(canvas),
+        width: canvas.width,
+        height: canvas.height,
+        backgroundRemoved: false,
+      };
+
+      ctx.putImageData(imageData, 0, 0);
+      const output = crop(canvas, contentBounds(data, width, height));
+      return {
+        svgDataUrl: canvasToSvgDataUrl(output),
+        width: output.width,
+        height: output.height,
+        backgroundRemoved: true,
+        other: original,
+      };
     }
   }
 
-  const output = backgroundRemoved ? crop(canvas, contentBounds(data, width, height)) : canvas;
-
+  // No provable flat background — keep the image whole.
   return {
-    svgDataUrl: canvasToSvgDataUrl(output),
-    width: output.width,
-    height: output.height,
-    backgroundRemoved,
+    svgDataUrl: canvasToSvgDataUrl(canvas),
+    width: canvas.width,
+    height: canvas.height,
+    backgroundRemoved: false,
   };
 }
 

@@ -103,12 +103,25 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
-    // No manualChunks on purpose: the React.lazy boundaries in home.tsx are the
-    // split points. Rollup naturally moves Three.js (and the whole customizer)
-    // into an async chunk that only downloads when the customizer mounts, and
-    // keeps the shared runtime helpers in the always-loaded entry. Forcing a
-    // dedicated "three" vendor chunk made the entry statically depend on it and
-    // pulled ~200 KB into first paint — the opposite of what we want.
+    // The React.lazy boundaries in home.tsx are the primary split points: the
+    // customizer (and Three.js with it) only downloads when its section nears
+    // the viewport. On top of that, Three.js gets its own chunk so the two
+    // download in parallel and — since the library never changes between
+    // publishes while the customizer code changes constantly — returning
+    // visitors keep the ~700 KB of Three.js cached (assets are served
+    // immutable) and only re-fetch the app code. The function form matters:
+    // only chunks that actually import three reference it, so the entry keeps
+    // no static dependency on it and first paint stays untouched.
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/three/")) return "three";
+        },
+      },
+    },
+    // The dedicated three chunk necessarily exceeds Rollup's 500 KB advisory
+    // limit; it's a cached-forever vendor library, so the warning is noise.
+    chunkSizeWarningLimit: 800,
   },
   server: {
     port,
