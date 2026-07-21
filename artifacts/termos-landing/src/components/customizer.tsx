@@ -1045,10 +1045,8 @@ export default function Customizer() {
   const [font, setFont] = useState(FONTS[0].id);
   const activeFont = FONTS.find(f => f.id === font) || FONTS[0];
   const [isOrdered, setIsOrdered] = useState(false);
-  // Subida del preview al tocar "Continuar por WhatsApp": estado de carga del
-  // botón y aviso sutil cuando la imagen no pudo adjuntarse al mensaje.
+  // Subida del preview al tocar "Continuar por WhatsApp": estado de carga del botón.
   const [isPreparing, setIsPreparing] = useState(false);
-  const [uploadFailed, setUploadFailed] = useState(false);
   // PNG snapshot of the finished 3D piece, shown in the Step 4 summary and sent
   // with the WhatsApp message. Captured from the live canvas while it's mounted.
   const [previewImg, setPreviewImg] = useState<string | null>(null);
@@ -1525,21 +1523,24 @@ export default function Customizer() {
 
   const buildOrderMessage = (imageUrl: string | null): string => {
     const lines = orderFields().map(([k, v]) => `- ${k}: ${v}`);
-    const header = "¡Hola! 😊 Estuve creando mi diseño en el personalizador y me encantaría encargarlo. Estos son los detalles:";
-    const footer = imageUrl ? `\n\n📷 Así quedó mi diseño: ${imageUrl}` : "";
+    // Sin emojis: en algunos dispositivos llegan rotos ("�") al prellenar wa.me.
+    const header = "¡Hola! Estuve creando mi diseño en el personalizador y me encantaría personalizar mi producto. Estos son los detalles:";
+    const footer = imageUrl ? `\n\nAsí quedó mi diseño: ${imageUrl}` : "";
     return `${header}\n${lines.join("\n")}${footer}`;
   };
 
-  /** Máximo que esperamos la subida del preview antes de abrir WhatsApp sin la
-   *  línea de imagen (el cliente siempre puede descargarla y adjuntarla). */
-  const UPLOAD_TIMEOUT_MS = 8000;
+  /** Máximo que esperamos la subida del preview antes de seguir sin la línea
+   *  de imagen. Generoso porque el fallo no se muestra: la pestaña "Preparando
+   *  tu diseño…" ya le explica la espera al cliente. */
+  const UPLOAD_TIMEOUT_MS = 12000;
 
   /** Captura el diseño de frente, lo sube al backend y abre WhatsApp con las
-   *  especificaciones + la URL pública de la imagen. Si la subida falla o tarda
-   *  más de UPLOAD_TIMEOUT_MS, el mensaje sale igual sin la línea de imagen. */
+   *  especificaciones + la URL pública de la imagen. Si la URL no se pudo
+   *  generar, el mensaje sale igual, solo con las especificaciones: nunca se
+   *  abre la hoja de compartir del sistema ni se adjunta un archivo del
+   *  dispositivo (el cliente tiene "Descargar imagen" si la quiere sumar). */
   const handleOrder = async () => {
     if (isOrdered || isPreparing) return;
-    setUploadFailed(false);
     setIsPreparing(true);
 
     // La pestaña debe abrirse sincrónica al click (si no, el bloqueador de
@@ -1568,12 +1569,11 @@ export default function Customizer() {
 
       let imageUrl: string | null = null;
       if (full) {
+        const jpeg = await dataUrlToJpeg(full, 1080);
         imageUrl = await Promise.race([
-          dataUrlToJpeg(full, 1080).then(uploadPreview),
+          uploadPreview(jpeg),
           new Promise<null>(resolve => setTimeout(() => resolve(null), UPLOAD_TIMEOUT_MS)),
         ]);
-        // El aviso solo tiene sentido si había una imagen para adjuntar.
-        if (!imageUrl) setUploadFailed(true);
       }
 
       const url = whatsappUrl(buildOrderMessage(imageUrl));
@@ -1773,12 +1773,6 @@ export default function Customizer() {
           <><Loader2 className="w-4 h-4 animate-spin" /> Preparando tu diseño...</>
         ) : isOrdered ? "Abriendo WhatsApp..." : ctaLabel}
       </Button>
-
-      {uploadFailed && (
-        <p className="text-xs text-amber-700 text-center leading-relaxed">
-          No pudimos adjuntar la imagen, podés enviarla manualmente al chat.
-        </p>
-      )}
 
       {previewImg && (
         <button
