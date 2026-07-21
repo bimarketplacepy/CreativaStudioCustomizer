@@ -154,7 +154,9 @@ const CSS = `
   transition: opacity .35s ease, transform .45s cubic-bezier(.34,1.5,.64,1);
 }
 .fd-burbuja.fd-show { opacity: 1; transform: none; }
-.fd-burbuja-msg { bottom: 84px; font-size: 9.5px; color: #2c3a2c; }
+/* The image bubble below is ~98px tall from bottom:10 — keep the message
+   bubble clear above it with a little breathing room. */
+.fd-burbuja-msg { bottom: 120px; font-size: 9.5px; color: #2c3a2c; }
 .fd-burbuja-img { bottom: 10px; }
 .fd-burbuja-foto {
   background: #fff; border-radius: 7px; padding: 4px 10px;
