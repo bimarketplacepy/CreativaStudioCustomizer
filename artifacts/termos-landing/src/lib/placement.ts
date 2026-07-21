@@ -7,13 +7,15 @@ export type TextAlign = "left" | "center" | "right" | "justify";
 
 /**
  * How the engraving text is split into lines:
- *  - "auto"   — flow the text and wrap only when a row no longer fits the area.
- *  - "stack"  — one word per line, always, regardless of whether they'd fit
- *               together (e.g. "MATEO MEDINA" → "MATEO" / "MEDINA").
- *  - "manual" — respect exactly the line breaks the user typed (Enter), no
- *               automatic wrapping.
+ *  - "auto"    — flow the text and wrap only when a row no longer fits the area.
+ *  - "stack"   — one word per line, always, regardless of whether they'd fit
+ *                together (e.g. "MATEO MEDINA" → "MATEO" / "MEDINA").
+ *  - "manual"  — respect exactly the line breaks the user typed (Enter), no
+ *                automatic wrapping.
+ *  - "wrap360" — a single line that wraps the full circumference of the body
+ *                (free-edit only; auto-shrinks so it never overlaps itself).
  */
-export type TextLayout = "auto" | "stack" | "manual";
+export type TextLayout = "auto" | "stack" | "manual" | "wrap360";
 
 /** Line-spacing presets (multiple of the font size), for the interlineado control. */
 export const LINE_HEIGHT_PRESETS = { compacto: 0.92, normal: 1.12, amplio: 1.5 } as const;

@@ -6,8 +6,10 @@ import DeferUntilVisible from "@/components/defer-until-visible";
 // above-the-fold section, so it stays in the initial bundle; the rest —
 // including the heavy Three.js customizer (~600 KB) — is split into separate
 // chunks that download while the visitor reads the hero.
+const FunnelDemo = lazy(() => import("@/components/funnel-demo"));
 const PersonalizationInfo = lazy(() => import("@/components/personalization-info"));
 const Customizer = lazy(() => import("@/components/customizer"));
+const CustomRequests = lazy(() => import("@/components/custom-requests"));
 const PricingEngraving = lazy(() => import("@/components/pricing-engraving"));
 const Gallery = lazy(() => import("@/components/gallery"));
 const Footer = lazy(() => import("@/components/footer"));
@@ -26,14 +28,20 @@ export default function Home() {
   return (
     <div className="min-h-[100dvh] w-full flex flex-col overflow-x-hidden">
       <Hero />
-      <Suspense fallback={<SectionFallback minH="40vh" />}>
-        <PersonalizationInfo />
+      <Suspense fallback={<SectionFallback minH="70vh" />}>
+        <FunnelDemo />
       </Suspense>
       <DeferUntilVisible id="customizer" minHeight="90vh">
         <Suspense fallback={<SectionFallback minH="90vh" />}>
           <Customizer />
         </Suspense>
       </DeferUntilVisible>
+      <Suspense fallback={<SectionFallback minH="40vh" />}>
+        <PersonalizationInfo />
+      </Suspense>
+      <Suspense fallback={<SectionFallback minH="40vh" />}>
+        <CustomRequests />
+      </Suspense>
       <Suspense fallback={<SectionFallback minH="60vh" />}>
         <PricingEngraving />
       </Suspense>

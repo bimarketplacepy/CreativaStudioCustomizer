@@ -22,7 +22,7 @@ const TECHNIQUES = [
 
 export default function PersonalizationInfo() {
   return (
-    <section id="personalizaciones" className="py-12 md:py-28 px-4 sm:px-6 bg-white border-b border-border">
+    <section id="personalizaciones" className="py-12 md:py-28 px-4 sm:px-6 bg-[#faf7f2] border-b border-border">
       <div className="max-w-7xl mx-auto">
         <div className="mb-7 md:mb-14 max-w-2xl">
           <p className="text-[#8B1A2F] text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.25em] sm:tracking-[0.3em] mb-2 md:mb-4">
@@ -32,7 +32,7 @@ export default function PersonalizationInfo() {
             ¿Qué puede personalizar?
           </h2>
           <p className="text-[#5f574d] leading-relaxed font-light text-sm sm:text-base md:text-lg">
-            Algunos ejemplos de lo que se puede grabar o imprimir. En el personalizador de abajo podrá
+            Algunos ejemplos de lo que se puede grabar o imprimir. En el personalizador podrá
             ver cómo queda su pieza con su texto, un ícono o su logo.
           </p>
         </div>
@@ -40,8 +40,8 @@ export default function PersonalizationInfo() {
         {/* What can be personalized */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-5 mb-2.5 sm:mb-5">
           {WHAT.map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="bg-[#faf7f2] border border-[#ece4d8] rounded-xl sm:rounded-2xl p-3.5 sm:p-6">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white text-[#8B1A2F] border border-[#ece4d8] flex items-center justify-center mb-2.5 sm:mb-4">
+            <div key={title} className="bg-white border border-[#ece4d8] rounded-xl sm:rounded-2xl p-3.5 sm:p-6">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#faf7f2] text-[#8B1A2F] border border-[#ece4d8] flex items-center justify-center mb-2.5 sm:mb-4">
                 <Icon className="w-4 h-4 sm:w-[18px] sm:h-[18px]" strokeWidth={1.5} />
               </div>
               <h3 className="font-medium text-[13px] sm:text-base text-[#1A1614] mb-1 sm:mb-1.5 leading-snug">{title}</h3>
@@ -53,8 +53,8 @@ export default function PersonalizationInfo() {
         {/* Los dos acabados de acero */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-5 mb-2.5 sm:mb-5">
           {STEELS.map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="bg-[#faf7f2] border border-[#ece4d8] rounded-xl sm:rounded-2xl p-3.5 sm:p-6 flex items-start gap-3 sm:gap-4">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 shrink-0 rounded-full bg-white text-[#8B1A2F] border border-[#ece4d8] flex items-center justify-center">
+            <div key={title} className="bg-white border border-[#ece4d8] rounded-xl sm:rounded-2xl p-3.5 sm:p-6 flex items-start gap-3 sm:gap-4">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 shrink-0 rounded-full bg-[#faf7f2] text-[#8B1A2F] border border-[#ece4d8] flex items-center justify-center">
                 <Icon className="w-4 h-4 sm:w-[18px] sm:h-[18px]" strokeWidth={1.5} />
               </div>
               <div>
@@ -68,8 +68,8 @@ export default function PersonalizationInfo() {
         {/* Techniques */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-5">
           {TECHNIQUES.map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="bg-[#faf7f2] border border-[#ece4d8] rounded-xl sm:rounded-2xl p-3.5 sm:p-6 flex items-start gap-3 sm:gap-4">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 shrink-0 rounded-full bg-white text-[#8B1A2F] border border-[#ece4d8] flex items-center justify-center">
+            <div key={title} className="bg-white border border-[#ece4d8] rounded-xl sm:rounded-2xl p-3.5 sm:p-6 flex items-start gap-3 sm:gap-4">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 shrink-0 rounded-full bg-[#faf7f2] text-[#8B1A2F] border border-[#ece4d8] flex items-center justify-center">
                 <Icon className="w-4 h-4 sm:w-[18px] sm:h-[18px]" strokeWidth={1.5} />
               </div>
               <div>

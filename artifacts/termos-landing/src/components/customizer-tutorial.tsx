@@ -1,48 +1,38 @@
 import React, { useEffect, useRef, useState } from "react";
 
 /**
- * Onboarding modal with a self-playing preview of the customizer.
+ * Guía del personalizador — a short 3-step guide.
  *
- * Opens automatically the first time the visitor scrolls the #customizer
- * section into view (35% threshold — works the same for touch scroll, mouse
- * wheel or the "Comenzar" anchor). Inside, a ~13s looping animation replays a
- * full use case: pick product + material → tap a colour (the thermos recolours
- * live) → type a name (engraved onto the piece) → summary + WhatsApp.
+ * No longer opens automatically (the funnel animation between the hero and the
+ * customizer already explains the flow): it only opens on demand, via the
+ * "tuto:abrir" event fired by the "Ver cómo funciona" link in the customizer
+ * header.
+ *
+ * Three short steps, advanced manually ("Siguiente" / "Saltar" always visible,
+ * X in the corner, tap outside or Escape to close). Each step plays a small
+ * self-contained animation in the visor.
  *
  * Fully self-contained layer: own `tuto-`-prefixed CSS, no globals touched
- * besides the body scroll lock while open, and a localStorage flag
- * ("tutoPersonalizadorVisto") when the visitor opts out for good.
+ * besides the body scroll lock while open.
  */
 
+// Kept for continuity with the auto-open era: closing still records the flag,
+// so if the auto-trigger ever returns, visitors who already saw it stay opted
+// out. Harmless otherwise (the modal is now manual-only).
 const STORAGE_KEY = "tutoPersonalizadorVisto";
-const SECTION_ID = "customizer";
+const marcarVisto = () => {
+  try { localStorage.setItem(STORAGE_KEY, "nunca"); } catch { /* private mode */ }
+};
 
-const TITULOS = ["Producto", "Estilo", "Diseño", "Resumen"];
-const CAPTIONS = [
-  "Elegí tu material y producto",
-  "Tocá un color y velo en vivo",
-  "Escribí tu nombre o marca",
-  "Confirmá y pedilo por WhatsApp",
+const PASOS = [
+  { tab: "Producto", titulo: "Elegí tu producto", caption: "Material primero, producto después." },
+  { tab: "Diseño", titulo: "Escribí tu nombre y mirálo en 3D", caption: "El texto se graba en la pieza al instante." },
+  { tab: "Enviar", titulo: "Envialo por WhatsApp", caption: "Confirmás el diseño y coordinamos el resto." },
 ];
-// Desktop variant: the customizer there is tabs + panels (no numbered wizard),
-// so the modal shows an editor-style tab strip instead of "PASO X DE 4" bars.
-const TABS_DESKTOP = ["Producto", "Color", "Texto", "Resumen"];
-const CAPTIONS_DESKTOP = [
-  "Elegí tu material y producto",
-  "Hacé clic en un color y velo en vivo",
-  "Escribí tu nombre o marca",
-  "Confirmá y pedilo por WhatsApp",
-];
-
-// Real brand palette (see COLORS in customizer.tsx). The demo termo starts in
-// "Rojo Marketplace" and recolours to "Verde Esmeralda" on tap.
-const ROJO = "#C1121F";
-const ROJO_MANIJA = "#8f0d16";
-const VERDE = "#27AE60";
-const VERDE_MANIJA = "#1e8a4c";
-const SWATCHES = [ROJO, "#1E3A5F", VERDE, "#F4A261", "#023E8A", "#6D4C41", "#111111", "#DDDDDD"];
 
 const FRASE = "Tu Marca";
+const ROJO = "#C1121F";
+const ROJO_MANIJA = "#8f0d16";
 
 const CSS = `
 .tuto-overlay {
@@ -60,6 +50,7 @@ const CSS = `
   --tuto-brand: hsl(var(--primary));
   background: #fff; color: #1c1c1e;
   border-radius: 18px; max-width: 400px; width: 100%;
+  max-height: calc(100dvh - 24px); overflow-y: auto;
   padding: 20px 18px 16px;
   box-shadow: 0 20px 60px rgba(0,0,0,.3);
   position: relative;
@@ -68,7 +59,15 @@ const CSS = `
 }
 .tuto-overlay.tuto-visible .tuto-card { transform: none; }
 
-.tuto-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.tuto-x {
+  position: absolute; top: 10px; right: 10px; z-index: 6;
+  width: 30px; height: 30px; border: 0; border-radius: 50%;
+  background: #f2f2f4; color: #8a8a8e; cursor: pointer;
+  display: grid; place-items: center; font-size: 14px; line-height: 1;
+}
+.tuto-x:hover { color: #1c1c1e; }
+
+.tuto-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; padding-right: 30px; }
 .tuto-head .tuto-paso { color: var(--tuto-brand); font-weight: 800; font-size: .8rem; letter-spacing: .04em; }
 .tuto-head .tuto-titulo { font-size: .85rem; color: #8a8a8e; }
 
@@ -77,12 +76,10 @@ const CSS = `
 .tuto-bars i.tuto-on { background: var(--tuto-brand); }
 
 .tuto-visor {
-  background: #f5eaec; border-radius: 14px; height: 190px;
+  background: #f5eaec; border-radius: 14px; height: 170px;
   display: flex; align-items: center; justify-content: center;
   position: relative; overflow: hidden;
-  transition: background .5s;
 }
-.tuto-visor.tuto-verde { background: #EAF4EC; }
 
 .tuto-termo-txt {
   font-size: 9px; font-weight: 700; fill: #fff;
@@ -91,7 +88,7 @@ const CSS = `
 }
 .tuto-termo-txt.tuto-show { opacity: 1; }
 
-.tuto-panel { margin-top: 12px; min-height: 132px; position: relative; }
+.tuto-panel { margin-top: 12px; min-height: 158px; position: relative; }
 .tuto-escena {
   position: absolute; inset: 0;
   opacity: 0; transform: translateX(14px);
@@ -110,18 +107,6 @@ const CSS = `
   white-space: nowrap;
 }
 .tuto-pill.tuto-sel { border-color: var(--tuto-brand); color: var(--tuto-brand); background: #fdf3f6; font-weight: 700; }
-
-.tuto-dot {
-  width: 26px; height: 26px; border-radius: 50%;
-  border: 2px solid transparent; position: relative;
-  transition: border-color .2s, transform .2s;
-}
-.tuto-dot.tuto-sel { border-color: var(--tuto-brand); transform: scale(1.12); }
-.tuto-dot.tuto-sel::after {
-  content: "\\2713"; position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  color: #fff; font-size: .7rem; font-weight: 800;
-}
 
 .tuto-fake-input {
   border: 1.5px solid #d9d9de; border-radius: 10px;
@@ -166,20 +151,24 @@ const CSS = `
   text-align: center; font-size: .82rem; color: #8a8a8e;
   margin: 10px 0 12px; min-height: 18px;
 }
+
+.tuto-botones { display: flex; gap: 10px; align-items: center; }
+.tuto-saltar {
+  flex: 0 0 auto; background: none; border: 0; cursor: pointer;
+  color: #8a8a8e; font-size: .85rem; padding: 12px 14px;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.tuto-saltar:hover { color: #1c1c1e; }
 .tuto-cta {
-  width: 100%; padding: 12px; border: 0; border-radius: 999px;
+  flex: 1; padding: 12px; border: 0; border-radius: 999px;
   background: var(--tuto-brand); color: #fff;
-  font-size: .95rem; font-weight: 700; cursor: pointer;
+  font-size: .92rem; font-weight: 700; cursor: pointer;
 }
 .tuto-cta:active { transform: scale(.98); }
-.tuto-skip {
-  display: block; margin: 8px auto 0; background: none; border: 0;
-  color: #8a8a8e; font-size: .8rem; cursor: pointer; text-decoration: underline;
-}
 
 .tuto-tabs {
   display: flex; gap: 4px; background: #f2f2f4;
-  border-radius: 999px; padding: 4px; margin-bottom: 12px;
+  border-radius: 999px; padding: 4px; margin-bottom: 12px; margin-right: 34px;
 }
 .tuto-tabs span {
   flex: 1; text-align: center; font-size: .78rem; font-weight: 600;
@@ -202,18 +191,15 @@ const CSS = `
 `;
 
 export default function CustomizerTutorial() {
-  // Mounted only while the tutorial can still show; removed for good once the
-  // visitor opts out (or after the close fade finishes).
   const [habilitado, setHabilitado] = useState(false);
   const [visible, setVisible] = useState(false);
-  // Snapshot at mount: which chrome the modal shows (wizard bars vs tab strip).
+  // Snapshot at mount: which chrome the modal shows (step bars vs tab strip).
   const [esDesktop] = useState(
     () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches,
   );
   const [paso, setPaso] = useState(0);
   const [selTermo, setSelTermo] = useState(false);
   const [selAcero, setSelAcero] = useState(false);
-  const [selVerde, setSelVerde] = useState(false);
   const [typed, setTyped] = useState("");
   const [grabado, setGrabado] = useState(false);
   const [pulso, setPulso] = useState(false);
@@ -222,9 +208,7 @@ export default function CustomizerTutorial() {
   const tapRef = useRef<HTMLDivElement>(null);
   const pillTermoRef = useRef<HTMLSpanElement>(null);
   const pillAceroRef = useRef<HTMLSpanElement>(null);
-  const dotVerdeRef = useRef<HTMLSpanElement>(null);
   const btnWspRef = useRef<HTMLButtonElement>(null);
-  const yaMostradoRef = useRef(false);
   const timeoutsRef = useRef<number[]>([]);
 
   const wait = (fn: () => void, ms: number) => {
@@ -250,101 +234,74 @@ export default function CustomizerTutorial() {
     wait(() => { tap.classList.remove("tuto-pressing"); luego(); }, 750);
   };
 
-  const irA = (n: number) => {
-    setPaso(n);
-    tapRef.current?.classList.remove("tuto-show");
-  };
-
-  /** Full ~13.5s script. Resets every visual state, replays the four scenes
-   *  and re-invokes itself to loop until the modal closes. */
-  const reproducir = () => {
-    limpiar();
-    irA(0);
-    setSelTermo(false);
-    setSelAcero(false);
-    setSelVerde(false);
-    setTyped("");
-    setGrabado(false);
-    setPulso(false);
-
-    // Scene 1 — material first, then product (mirrors the real step 1 order)
-    wait(() => tocar(pillAceroRef.current, () => setSelAcero(true)), 700);
-    wait(() => tocar(pillTermoRef.current, () => setSelTermo(true)), 2100);
-    wait(() => irA(1), 3600);
-
-    // Scene 2 — colour (termo recolours live)
-    wait(() => tocar(dotVerdeRef.current, () => setSelVerde(true)), 4300);
-    wait(() => irA(2), 6200);
-
-    // Scene 3 — typing, then the engraving fades onto the termo
-    FRASE.split("").forEach((_, i) => {
-      wait(() => setTyped(FRASE.slice(0, i + 1)), 6900 + i * 130);
-    });
-    wait(() => setGrabado(true), 6900 + FRASE.length * 130 + 300);
-    wait(() => irA(3), 9600);
-
-    // Scene 4 — summary + WhatsApp pulse, then loop
-    wait(() => tocar(btnWspRef.current, () => setPulso(true)), 10200);
-    wait(reproducir, 13500);
-  };
-
-  const cerrar = (recordar: boolean) => {
+  /** Closing by any path (X, Saltar, outside, Escape, completing) counts as
+   *  seen: the modal never auto-opens again. Manual replay stays available. */
+  const cerrar = () => {
     limpiar();
     setVisible(false);
     document.body.style.overflow = "";
-    if (recordar) {
-      try { localStorage.setItem(STORAGE_KEY, "nunca"); } catch { /* private mode */ }
-    }
+    marcarVisto();
   };
 
-  // Auto-trigger: first time 35% of the customizer section is on screen (unless
-  // opted out). The layer also stays mounted listening for "tuto:abrir", the
-  // manual replay event fired by the subtle "Ver cómo funciona" link in the
-  // customizer header — that one works even after opting out.
+  const siguiente = () => {
+    if (paso >= PASOS.length - 1) { cerrar(); return; }
+    setPaso(p => p + 1);
+  };
+
+  // Manual-only: the modal opens exclusively via "tuto:abrir", the event fired
+  // by the "Ver cómo funciona" link in the customizer header. (The scroll
+  // auto-trigger was removed — the funnel animation already explains the flow.)
   useEffect(() => {
     setHabilitado(true);
 
-    const abrirManual = () => { yaMostradoRef.current = true; setVisible(true); };
+    const abrirManual = () => {
+      setPaso(0);
+      setVisible(true);
+    };
     window.addEventListener("tuto:abrir", abrirManual);
-
-    let optedOut = false;
-    try { optedOut = localStorage.getItem(STORAGE_KEY) === "nunca"; } catch { /* show once */ }
-
-    let observer: IntersectionObserver | undefined;
-    const seccion = document.getElementById(SECTION_ID);
-    if (!optedOut && seccion && typeof IntersectionObserver !== "undefined") {
-      observer = new IntersectionObserver(
-        (entries) => {
-          if (entries.some((e) => e.isIntersecting) && !yaMostradoRef.current) {
-            yaMostradoRef.current = true;
-            observer?.disconnect();
-            setVisible(true);
-          }
-        },
-        { threshold: 0.35 },
-      );
-      observer.observe(seccion);
-    }
     return () => {
       window.removeEventListener("tuto:abrir", abrirManual);
-      observer?.disconnect();
     };
   }, []);
 
-  // While open: lock body scroll, close on Escape, run the animation loop.
+  // While open: lock body scroll and close on Escape.
   useEffect(() => {
     if (!visible) return;
     document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") cerrar(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") cerrar(); };
     document.addEventListener("keydown", onKey);
-    reproducir();
     return () => {
       document.removeEventListener("keydown", onKey);
-      limpiar();
       document.body.style.overflow = "";
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  // Per-step micro-animation: replays whenever the step (re)shows.
+  useEffect(() => {
+    if (!visible) return;
+    limpiar();
+    tapRef.current?.classList.remove("tuto-show");
+    if (paso === 0) {
+      setSelAcero(false);
+      setSelTermo(false);
+      wait(() => tocar(pillAceroRef.current, () => setSelAcero(true)), 600);
+      wait(() => tocar(pillTermoRef.current, () => setSelTermo(true)), 2000);
+      wait(() => tapRef.current?.classList.remove("tuto-show"), 3400);
+    } else if (paso === 1) {
+      setTyped("");
+      setGrabado(false);
+      FRASE.split("").forEach((_, i) => {
+        wait(() => setTyped(FRASE.slice(0, i + 1)), 500 + i * 130);
+      });
+      wait(() => setGrabado(true), 500 + FRASE.length * 130 + 300);
+    } else {
+      setPulso(false);
+      wait(() => tocar(btnWspRef.current, () => setPulso(true)), 600);
+    }
+    return limpiar;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, paso]);
 
   if (!habilitado) return null;
 
@@ -354,41 +311,43 @@ export default function CustomizerTutorial() {
       role="dialog"
       aria-modal="true"
       aria-label="Cómo funciona el personalizador"
-      onClick={(e) => { if (e.target === e.currentTarget) cerrar(false); }}
+      onClick={(e) => { if (e.target === e.currentTarget) cerrar(); }}
     >
       <style>{CSS}</style>
       <div className="tuto-card" ref={cardRef}>
+        <button className="tuto-x" type="button" aria-label="Cerrar" onClick={cerrar}>✕</button>
+
         {esDesktop ? (
           // Desktop chrome: an editor-style tab strip, like the real desktop
           // customizer (which has tabs/panels, not a numbered wizard).
           <div className="tuto-tabs">
-            {TABS_DESKTOP.map((t, i) => (
-              <span key={t} className={i === paso ? "tuto-on" : ""}>{t}</span>
+            {PASOS.map((p, i) => (
+              <span key={p.tab} className={i === paso ? "tuto-on" : ""}>{p.tab}</span>
             ))}
           </div>
         ) : (
           <>
             <div className="tuto-head">
-              <span className="tuto-paso">PASO {paso + 1} DE 4</span>
-              <span className="tuto-titulo">{TITULOS[paso]}</span>
+              <span className="tuto-paso">PASO {paso + 1} DE {PASOS.length}</span>
+              <span className="tuto-titulo">{PASOS[paso].tab}</span>
             </div>
             <div className="tuto-bars">
-              {TITULOS.map((_, i) => <i key={i} className={i <= paso ? "tuto-on" : ""} />)}
+              {PASOS.map((_, i) => <i key={i} className={i <= paso ? "tuto-on" : ""} />)}
             </div>
           </>
         )}
 
-        {/* Visor: termo SVG that recolours and gets engraved live */}
-        <div className={`tuto-visor${selVerde ? " tuto-verde" : ""}`}>
-          <svg width="92" height="160" viewBox="0 0 92 160" aria-hidden="true">
+        {/* Visor: termo SVG that gets engraved live */}
+        <div className="tuto-visor">
+          <svg width="86" height="150" viewBox="0 0 92 160" aria-hidden="true">
             <ellipse cx="46" cy="152" rx="30" ry="5" fill="rgba(0,0,0,.12)" />
             <path
               d="M22 55 q-16 0 -16 18 v20 q0 18 16 18 v-10 q-8 0 -8 -9 v-18 q0-9 8-9 z"
-              style={{ fill: selVerde ? VERDE_MANIJA : ROJO_MANIJA, transition: "fill .6s" }}
+              fill={ROJO_MANIJA}
             />
             <path
               d="M24 45 q0-10 10-11 h24 q10 1 10 11 v92 q0 14 -14 15 h-16 q-14 -1 -14 -15 z"
-              style={{ fill: selVerde ? VERDE : ROJO, transition: "fill .6s" }}
+              fill={ROJO}
             />
             <rect x="30" y="48" width="7" height="95" rx="3.5" fill="rgba(255,255,255,.35)" />
             <path d="M32 34 q0-8 8-8 h12 q8 0 8 8 v4 h-28 z" fill="#151515" />
@@ -402,9 +361,9 @@ export default function CustomizerTutorial() {
           </svg>
         </div>
 
-        {/* Scene panel */}
+        {/* Step panel */}
         <div className="tuto-panel">
-          {/* Scene 1: material first, then the products it offers — the same
+          {/* Paso 1: material first, then the products it offers — the same
               top-to-bottom order as the real customizer's step 1. */}
           <div className={`tuto-escena${paso === 0 ? " tuto-activa" : ""}`}>
             <div className="tuto-lbl">Material</div>
@@ -420,26 +379,8 @@ export default function CustomizerTutorial() {
             </div>
           </div>
 
-          {/* Scene 2: colour */}
+          {/* Paso 2: text — typed live and engraved onto the 3D piece */}
           <div className={`tuto-escena${paso === 1 ? " tuto-activa" : ""}`}>
-            <div className="tuto-lbl">Color base del termo</div>
-            <div className="tuto-fila" style={{ gap: 10 }}>
-              {SWATCHES.map((hex) => (
-                <span
-                  key={hex}
-                  ref={hex === VERDE ? dotVerdeRef : undefined}
-                  className={`tuto-dot${hex === VERDE && selVerde ? " tuto-sel" : ""}`}
-                  style={{ background: hex }}
-                />
-              ))}
-            </div>
-            <div className="tuto-lbl" style={{ marginTop: 10, color: "#8a8a8e", fontWeight: 500 }}>
-              {selVerde ? "● Verde Esmeralda" : " "}
-            </div>
-          </div>
-
-          {/* Scene 3: text */}
-          <div className={`tuto-escena${paso === 2 ? " tuto-activa" : ""}`}>
             <div className="tuto-lbl">Texto personalizado</div>
             <div className="tuto-fake-input">
               <span>{typed}</span>
@@ -452,11 +393,11 @@ export default function CustomizerTutorial() {
             </div>
           </div>
 
-          {/* Scene 4: summary */}
-          <div className={`tuto-escena${paso === 3 ? " tuto-activa" : ""}`}>
+          {/* Paso 3: summary + WhatsApp */}
+          <div className={`tuto-escena${paso === 2 ? " tuto-activa" : ""}`}>
             <div className="tuto-resumen">
               <div><span>Producto</span><span>Termo · 32oz</span></div>
-              <div><span>Color</span><span>Verde Esmeralda</span></div>
+              <div><span>Material</span><span>Acero pintado</span></div>
               <div><span>Texto</span><span>"{FRASE}"</span></div>
             </div>
             <button ref={btnWspRef} className={`tuto-wsp${pulso ? " tuto-pulso" : ""}`} tabIndex={-1} type="button">
@@ -465,13 +406,17 @@ export default function CustomizerTutorial() {
           </div>
         </div>
 
-        <p className="tuto-caption">{(esDesktop ? CAPTIONS_DESKTOP : CAPTIONS)[paso]}</p>
-        <button className="tuto-cta" type="button" onClick={() => cerrar(false)}>
-          ¡Quiero personalizar el mío!
-        </button>
-        <button className="tuto-skip" type="button" onClick={() => cerrar(true)}>
-          No volver a mostrar
-        </button>
+        <p className="tuto-caption">{PASOS[paso].titulo} — {PASOS[paso].caption}</p>
+
+        {/* Siguiente + Saltar, always visible */}
+        <div className="tuto-botones">
+          <button className="tuto-saltar" type="button" onClick={cerrar}>
+            Saltar
+          </button>
+          <button className="tuto-cta" type="button" onClick={siguiente}>
+            {paso >= PASOS.length - 1 ? "Empezar a personalizar" : "Siguiente"}
+          </button>
+        </div>
 
         {/* The animated "finger" (imperatively positioned; purely decorative) */}
         <div className="tuto-tap" ref={tapRef} aria-hidden="true" />

@@ -100,6 +100,10 @@ export function layoutText(
       return stackWords(ctx, text, maxWidth);
     case "manual":
       return manualLines(text);
+    case "wrap360":
+      // One single line that wraps the whole circumference: newlines collapse
+      // to spaces, no width wrapping (the wrap-around fitter shrinks instead).
+      return [text.replace(/\n+/g, " ").trim() || text];
     case "auto":
     default:
       return wrapToWidth(ctx, text, maxWidth);
@@ -111,6 +115,47 @@ export function measureLinesWidth(ctx: CanvasRenderingContext2D, lines: string[]
   let w = 0;
   for (const l of lines) w = Math.max(w, ctx.measureText(l).width);
   return w;
+}
+
+/** Visual ink extents of a laid-out block, in canvas pixels. */
+export interface LinesBox {
+  /** Widest painted row — includes glyph overhangs (script tails/swashes) that
+   *  the advance width misses. Never smaller than the advance width. */
+  boxW: number;
+  /** Painted block height — real ascenders/descenders, not just fontPx rows. */
+  boxH: number;
+}
+
+/**
+ * Ink bounding box of the rows as they will actually paint (textBaseline
+ * "middle", rows `lineHeight` apart). Calligraphic fonts overshoot their em box
+ * — long tails, swashes, tall ascenders — so clamping by fontSize alone would
+ * crop them; this measures the real TextMetrics box, falling back to the em
+ * metrics on engines without actualBoundingBox support.
+ */
+export function measureLinesBox(
+  ctx: CanvasRenderingContext2D,
+  lines: string[],
+  fontPx: number,
+  lineHeight: number,
+): LinesBox {
+  if (!lines.length) return { boxW: 0, boxH: 0 };
+  const prevBaseline = ctx.textBaseline;
+  ctx.textBaseline = "middle";
+  let boxW = 0;
+  let maxAsc = 0;
+  let maxDesc = 0;
+  for (const l of lines) {
+    const m = ctx.measureText(l);
+    const left = Number.isFinite(m.actualBoundingBoxLeft) ? m.actualBoundingBoxLeft : 0;
+    const right = Number.isFinite(m.actualBoundingBoxRight) ? m.actualBoundingBoxRight : m.width;
+    boxW = Math.max(boxW, m.width, left + right);
+    maxAsc = Math.max(maxAsc, Number.isFinite(m.actualBoundingBoxAscent) ? m.actualBoundingBoxAscent : fontPx / 2);
+    maxDesc = Math.max(maxDesc, Number.isFinite(m.actualBoundingBoxDescent) ? m.actualBoundingBoxDescent : fontPx / 2);
+  }
+  ctx.textBaseline = prevBaseline;
+  const boxH = (lines.length - 1) * lineHeight + maxAsc + maxDesc;
+  return { boxW, boxH: Math.max(boxH, lines.length * lineHeight) };
 }
 
 /**
@@ -185,10 +230,14 @@ export interface FitResult {
   /** Final font size in px (may be smaller than requested — auto-shrink). */
   fontPx: number;
   lineHeight: number;
-  /** Widest row width in px. */
+  /** Widest row advance width in px (alignment field width). */
   blockW: number;
   /** Total block height in px (rows × line height). */
   blockH: number;
+  /** Visual ink width incl. glyph overhangs — what clamping must use. */
+  boxW: number;
+  /** Visual ink height incl. real ascenders/descenders. */
+  boxH: number;
   /** True when the font was shrunk below the requested size to fit the area. */
   shrunk: boolean;
 }
@@ -219,6 +268,7 @@ export function fitText(
   let lineHeight = 0;
   let blockW = 0;
   let blockH = 0;
+  let box: LinesBox = { boxW: 0, boxH: 0 };
 
   for (let i = 0; i < 12; i++) {
     ctx.font = makeFont(fontPx);
@@ -226,8 +276,11 @@ export function fitText(
     lines = layoutText(ctx, text, layout, maxWidth);
     blockW = measureLinesWidth(ctx, lines);
     blockH = lines.length * lineHeight;
-    const wRatio = blockW > maxWidth ? maxWidth / blockW : 1;
-    const hRatio = blockH > maxHeight ? maxHeight / blockH : 1;
+    // Fit against the painted ink box, not the em box: script tails and
+    // swashes that overhang the advance width must stay inside the area too.
+    box = measureLinesBox(ctx, lines, fontPx, lineHeight);
+    const wRatio = box.boxW > maxWidth ? maxWidth / box.boxW : 1;
+    const hRatio = box.boxH > maxHeight ? maxHeight / box.boxH : 1;
     const ratio = Math.min(wRatio, hRatio);
     if (ratio >= 1 || fontPx <= minFontPx) break;
     // Shrink toward the binding dimension (a hair extra so we converge, not oscillate).
@@ -236,5 +289,5 @@ export function fitText(
     fontPx = next;
   }
 
-  return { lines, fontPx, lineHeight, blockW, blockH, shrunk: fontPx < requestedFontPx - 0.5 };
+  return { lines, fontPx, lineHeight, blockW, blockH, boxW: box.boxW, boxH: box.boxH, shrunk: fontPx < requestedFontPx - 0.5 };
 }

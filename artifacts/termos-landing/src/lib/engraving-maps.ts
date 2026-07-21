@@ -5,12 +5,22 @@ import {
   type Placement, type TextAlign, type TextLayout,
 } from "./placement";
 import {
-  layoutText, fillLinesAligned, measureLinesWidth, fitText,
+  layoutText, fillLinesAligned, measureLinesWidth, measureLinesBox, fitText,
 } from "./engraving-text";
 import { faceConfigFor, type MarkHalfExtents } from "./face-area";
 
 /** Text wraps once a row passes this fraction of the wrap-around circumference. */
 const TEXT_WRAP_FRAC = 0.5;
+
+/** "Envolvente 360°": gap kept between the end and the start of the wrapped
+ *  line, as a fraction of the circumference, so the text never meets itself. */
+export const WRAP360_MARGIN_FRAC = 0.05;
+/** Legibility floor for the wrap-around text, in texture px (matches the
+ *  smallest slider size). `wrap360Fits` gates the input against it: text that
+ *  can't complete the lap at this size gets its extra characters blocked. The
+ *  renderer itself may shrink further (hard floor 8px) so that — whatever state
+ *  it is handed — the lap can never overlap itself. */
+export const MIN_WRAP_FONT_PX = 40;
 
 /** Bare stainless steel, revealed where the laser ablates the powder coat. */
 const STEEL_LIGHT = "#e6eaee";
@@ -217,6 +227,9 @@ export interface FaceTextLayout {
   lineHeight: number;
   blockW: number;
   blockH: number;
+  /** Painted ink extents (incl. script tails/swashes) — what clamps must use. */
+  boxW: number;
+  boxH: number;
   shrunk: boolean;
   align: TextAlign;
 }
@@ -252,6 +265,30 @@ export function computeFaceTextLayout(
   const rot = opts.orientation === "vertical";
   const ctx = measureCtx();
 
+  // "Envolvente 360°" — free-edit only: one line around the full circumference,
+  // auto-shrunk so the painted ink can NEVER meet itself: it must fit within
+  // the perimeter minus the seam margin, down to the legibility floor.
+  if (layout === "wrap360" && opts.text) {
+    const avail = W * (1 - WRAP360_MARGIN_FRAC);
+    const HARD_MIN = 8; // absolute floor: overlap is never allowed to render
+    let fontPx = requestedFont;
+    let lines: string[] = [];
+    let box = { boxW: 0, boxH: 0 };
+    for (let i = 0; i < 8; i++) {
+      ctx.font = makeTextFont(fontPx, fontFamily);
+      lines = layoutText(ctx, opts.text, "wrap360", avail);
+      box = measureLinesBox(ctx, lines, fontPx, fontPx * lhMul);
+      if (box.boxW <= avail || fontPx <= HARD_MIN) break;
+      fontPx = Math.max(HARD_MIN, fontPx * (avail / box.boxW) * 0.99);
+    }
+    const lineHeight = fontPx * lhMul;
+    const blockW = measureLinesWidth(ctx, lines);
+    return {
+      lines, fontPx, lineHeight, blockW, blockH: lines.length * lineHeight,
+      boxW: box.boxW, boxH: box.boxH, shrunk: fontPx < requestedFont - 0.5, align,
+    };
+  }
+
   if (singleFace && opts.text) {
     // Room for the block in square px. Turning the text vertical swaps which
     // area dimension constrains the block's own width vs. height.
@@ -270,7 +307,49 @@ export function computeFaceTextLayout(
   const lineHeight = fontPx * lhMul;
   const lines = opts.text ? layoutText(ctx, opts.text, layout, W * TEXT_WRAP_FRAC) : [];
   const blockW = measureLinesWidth(ctx, lines);
-  return { lines, fontPx, lineHeight, blockW, blockH: lines.length * lineHeight, shrunk: false, align };
+  const box = measureLinesBox(ctx, lines, fontPx, lineHeight);
+  return { lines, fontPx, lineHeight, blockW, blockH: lines.length * lineHeight, boxW: box.boxW, boxH: box.boxH, shrunk: false, align };
+}
+
+/**
+ * Largest text-scale (slider value) at which `text` still fits one full wrap
+ * without overlapping itself. Ink width scales ~linearly with the font, so a
+ * single reference measurement at scale 1 gives the bound; the auto-shrink in
+ * `computeFaceTextLayout` absorbs any residual non-linearity.
+ */
+export function wrap360MaxScale(opts: {
+  text: string;
+  fontFamily?: string;
+  colorPrint?: boolean;
+  lineHeight?: number;
+}): number {
+  if (!opts.text) return Infinity;
+  const W = TEXTURE_W;
+  const avail = W * (1 - WRAP360_MARGIN_FRAC);
+  const fontFamily = opts.fontFamily ?? "Inter, system-ui, sans-serif";
+  const refFont = W * (opts.colorPrint ? 0.10 : 0.13); // font at scale = 1
+  const ctx = measureCtx();
+  ctx.font = makeTextFont(refFont, fontFamily);
+  const lines = layoutText(ctx, opts.text, "wrap360", avail);
+  const box = measureLinesBox(ctx, lines, refFont, refFont * (opts.lineHeight ?? DEFAULT_LINE_HEIGHT));
+  if (box.boxW <= 0) return Infinity;
+  return avail / box.boxW;
+}
+
+/**
+ * Can `text` complete the wrap at the legibility floor? When false, the input
+ * must not accept more characters for this disposition.
+ */
+export function wrap360Fits(opts: { text: string; fontFamily?: string; lineHeight?: number }): boolean {
+  if (!opts.text) return true;
+  const W = TEXTURE_W;
+  const avail = W * (1 - WRAP360_MARGIN_FRAC);
+  const fontFamily = opts.fontFamily ?? "Inter, system-ui, sans-serif";
+  const ctx = measureCtx();
+  ctx.font = makeTextFont(MIN_WRAP_FONT_PX, fontFamily);
+  const lines = layoutText(ctx, opts.text, "wrap360", avail);
+  const box = measureLinesBox(ctx, lines, MIN_WRAP_FONT_PX, MIN_WRAP_FONT_PX * (opts.lineHeight ?? DEFAULT_LINE_HEIGHT));
+  return box.boxW <= avail;
 }
 
 /**
@@ -378,7 +457,7 @@ export function makeBodyMaps({
         textPlacement.scale,
         singleFace,
       );
-      drawPlaced(ctx, m, W, textPlacement, L.blockW / 2, L.blockH / 2, () => {
+      drawPlaced(ctx, m, W, textPlacement, L.boxW / 2, L.boxH / 2, () => {
         ctx.font = makeTextFont(L.fontPx, fontFamily);
         ctx.textBaseline = "middle";
         ctx.fillStyle = textColor;
@@ -523,8 +602,8 @@ export function markHalfExtents(
         placement.scale,
         singleFace,
       );
-      halfWpx = L.blockW / 2;
-      halfHpx = L.blockH / 2;
+      halfWpx = L.boxW / 2;
+      halfHpx = L.boxH / 2;
     }
   } else if (spec.imageSize !== "none" && spec.artW > 0 && spec.artH > 0) {
     const maxDim = W * (spec.imageSize === "large" ? 0.34 : 0.19) * placement.scale;
@@ -587,7 +666,7 @@ function drawEngravingMark(
       textPlacement.scale,
       singleFace,
     );
-    drawPlaced(mk, m, W, textPlacement, L.blockW / 2, L.blockH / 2, () => {
+    drawPlaced(mk, m, W, textPlacement, L.boxW / 2, L.boxH / 2, () => {
       mk.font = makeTextFont(L.fontPx, fontFamily);
       mk.textBaseline = "middle";
       mk.fillStyle = "#ffffff";

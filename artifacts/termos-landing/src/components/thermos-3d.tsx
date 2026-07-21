@@ -60,6 +60,13 @@ interface Thermos3DProps {
   /** A design drag ended. */
   onDesignDragEnd?: () => void;
   /**
+   * "Envolvente 360°" while typing: spin the piece slowly and continuously so
+   * the customer sees the text wrapping live. Exclusive to that disposition.
+   */
+  autoSpin?: boolean;
+  /** Ignore manual rotation drags (used together with autoSpin while typing). */
+  rotationLocked?: boolean;
+  /**
    * Imperative snap hook: the parent stores here a fn that rotates the piece so
    * the given texture-u faces the camera (upright, no inertia). Used before
    * capturing the summary snapshot, so the personalized area is fully visible.
@@ -297,6 +304,7 @@ function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
   textPlacement, artPlacement, colorPrint, textColor, engraveStyle, singleFace, showGuides, frontFaceU, glass,
   designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, snapToURef,
+  autoSpin = false, rotationLocked = false,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
@@ -309,6 +317,7 @@ function ThermosMesh({
   onDesignDragStart?: () => void;
   onDesignDragEnd?: () => void;
   snapToURef?: React.MutableRefObject<((u: number) => void) | null>;
+  autoSpin?: boolean; rotationLocked?: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
@@ -323,8 +332,8 @@ function ThermosMesh({
 
   // Latest design-drag inputs, read inside the (stable) pointer listeners so we
   // don't re-attach them every render when the callbacks change identity.
-  const designRef = useRef({ designActive, singleFace, onDesignMove, onDesignDragStart, onDesignDragEnd });
-  designRef.current = { designActive, singleFace, onDesignMove, onDesignDragStart, onDesignDragEnd };
+  const designRef = useRef({ designActive, singleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd });
+  designRef.current = { designActive, singleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd };
 
   const bodyGeo = useMemo(() => {
     const geo = new THREE.LatheGeometry(sil.points, 128);
@@ -445,7 +454,10 @@ function ThermosMesh({
     const families = fontFamily.split(",").map(f => f.trim().replace(/['"]/g, ""));
     const primary = families[0];
     if (!primary) return;
-    document.fonts.load(`400 32px "${primary}"`).then(() => {
+    // Load the same weight the engraving draws with (see FONT_WEIGHT in
+    // engraving-maps): measuring before the real face is in would fit/clamp
+    // against the fallback font's metrics.
+    document.fonts.load(`900 32px "${primary}"`).then(() => {
       setFontReady(n => n + 1);
     });
   }, [fontFamily]);
@@ -538,16 +550,20 @@ function ThermosMesh({
     const canvas = gl.domElement;
 
     const onDown = (e: PointerEvent) => {
+      // With a design active in single-face mode, this gesture repositions the
+      // mark on the frozen front face instead of rotating the piece.
+      const d = designRef.current;
+      const mode = d.designActive && d.singleFace ? "design" : "rotate";
+      // Envolvente 360° while typing: manual rotation is locked (the piece is
+      // auto-spinning); ignore the gesture entirely until the input blurs.
+      if (mode === "rotate" && d.rotationLocked) return;
       isDragging.current = true;
       velYaw.current = 0;
       velPitch.current = 0;
       lastX.current = e.clientX;
       lastY.current = e.clientY;
       lastTime.current = performance.now();
-      // With a design active in single-face mode, this gesture repositions the
-      // mark on the frozen front face instead of rotating the piece.
-      const d = designRef.current;
-      dragMode.current = d.designActive && d.singleFace ? "design" : "rotate";
+      dragMode.current = mode;
       if (dragMode.current === "design") d.onDesignDragStart?.();
       canvas.setPointerCapture(e.pointerId);
     };
@@ -622,6 +638,16 @@ function ThermosMesh({
   useFrame((_, delta) => {
     if (!groupRef.current) return;
     if (isDragging.current) return;
+
+    // Envolvente 360° while typing: slow continuous spin so the customer sees
+    // the text wrap the piece live. Overrides inertia/idle behaviour.
+    if (autoSpin) {
+      groupRef.current.rotation.y += delta * 0.45;
+      groupRef.current.rotation.x *= 0.95; // ease back upright
+      velYaw.current = 0;
+      velPitch.current = 0;
+      return;
+    }
 
     // Idle auto-spin only while the piece is blank; freeze once the customer is
     // placing text/icon/image so they can position it calmly (still draggable).
@@ -1099,6 +1125,8 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           onDesignDragStart={props.onDesignDragStart}
           onDesignDragEnd={props.onDesignDragEnd}
           snapToURef={props.snapToURef}
+          autoSpin={props.autoSpin ?? false}
+          rotationLocked={props.rotationLocked ?? false}
         />
 
         {/* Single, stable ground shadow. Re-renders every frame so it tracks the

@@ -9,12 +9,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import {
   Check, Palette, Type, Box, Pipette, ImageIcon, MoveHorizontal, MoveVertical,
-  Shapes, Zap, Sparkles, Wallet, TreePine, Square, PenLine, Wine, CupSoda, Snowflake, MessageCircle,
+  Shapes, Zap, Sparkles, Wallet, TreePine, Square, PenLine, Wine, CupSoda, Snowflake,
   Shield, Scissors,
   Minus, Plus, Move,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
   WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
-  ChevronUp, Crosshair, CirclePlay,
+  ChevronUp, Crosshair, CirclePlay, Orbit,
 } from "lucide-react";
 import Thermos3D from "./thermos-3d";
 import Object3D from "./object-3d";
@@ -28,7 +28,8 @@ import {
   type Placement, type TextAlign, type TextLayout, type LineHeightPreset,
 } from "@/lib/placement";
 import {
-  markHalfExtents, computeFaceTextLayout, bandMetrics, TEXTURE_W, TEXTURE_H, type MarkSpec,
+  markHalfExtents, computeFaceTextLayout, bandMetrics, TEXTURE_W, TEXTURE_H,
+  wrap360MaxScale, wrap360Fits, type MarkSpec,
 } from "@/lib/engraving-maps";
 import {
   FRONT_FACE, padToPlacement, placementToPad,
@@ -68,24 +69,27 @@ function capEngravingText(raw: string, max = MAX_TEXT_CHARS): string {
  * auto-wraps long rows onto the line below, Instagram-style. Small (a) on the
  * left, large (A) on the right.
  */
-function TextSizeSlider({ scale, onScale }: { scale: number; onScale: (s: number) => void }) {
+function TextSizeSlider({ scale, onScale, maxScale }: { scale: number; onScale: (s: number) => void; maxScale?: number }) {
+  // "Envolvente 360°" caps the slider at the largest size that still completes
+  // the lap without the text meeting itself.
+  const max = Math.max(TEXT_SCALE_MIN, Math.min(TEXT_SCALE_MAX, maxScale ?? TEXT_SCALE_MAX));
   return (
     <div className="mt-3 pt-3 border-t border-border">
       <Label className="text-xs text-muted-foreground mb-2 block">Tamaño del texto</Label>
       <div className="flex items-center gap-3">
         <span className="shrink-0 text-[11px] font-bold text-muted-foreground leading-none">a</span>
         <Slider
-          value={[scale * 100]}
-          onValueChange={([v]) => onScale(v / 100)}
+          value={[Math.min(scale, max) * 100]}
+          onValueChange={([v]) => onScale(Math.min(v / 100, max))}
           min={Math.round(TEXT_SCALE_MIN * 100)}
-          max={Math.round(TEXT_SCALE_MAX * 100)}
+          max={Math.round(max * 100)}
           step={5}
           className="flex-1"
           aria-label="Tamaño del texto"
         />
         <span className="shrink-0 text-lg font-bold text-muted-foreground leading-none">A</span>
         <span className="shrink-0 w-10 text-right text-[11px] font-semibold text-primary tabular-nums">
-          {Math.round(scale * 100)}%
+          {Math.round(Math.min(scale, max) * 100)}%
         </span>
       </div>
     </div>
@@ -149,6 +153,7 @@ const FONTS = [
   { id: "f3",  name: "Billion Dreams",    style: { fontFamily: "'Billion Dreams', cursive" } },
   { id: "f4",  name: "Blendaria",         style: { fontFamily: "'Blendaria', sans-serif" } },
   { id: "f5",  name: "Bree Serif",        style: { fontFamily: "'Bree Serif', serif" } },
+  { id: "f23", name: "Bulgatti",          style: { fontFamily: "'Bulgatti', cursive" } },
   { id: "f6",  name: "Cronos Pro",        style: { fontFamily: "'Cronos Pro', serif", fontWeight: 600 } },
   { id: "f7",  name: "Ellisha",           style: { fontFamily: "'Ellisha', cursive", fontStyle: "italic" } },
   { id: "f8",  name: "Freestyle Script",  style: { fontFamily: "'Freestyle Script', cursive", fontWeight: 400 } },
@@ -561,25 +566,35 @@ function AlignButtons({ value, onChange, className, disabledIds }: { value: Text
 
 /** Text disposition (how the mark splits into lines) — matches the align pills. */
 const TEXT_LAYOUTS: { id: TextLayout; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: "auto",   label: "Automático",           Icon: WrapText },
-  { id: "stack",  label: "Una palabra por línea", Icon: Rows3 },
-  { id: "manual", label: "Saltos manuales",       Icon: CornerDownLeft },
+  { id: "auto",    label: "Automático",           Icon: WrapText },
+  { id: "stack",   label: "Una palabra por línea", Icon: Rows3 },
+  { id: "manual",  label: "Saltos manuales",       Icon: CornerDownLeft },
+  { id: "wrap360", label: "Envolvente 360°",       Icon: Orbit },
 ];
 
-function LayoutButtons({ value, onChange, className }: { value: TextLayout | undefined; onChange: (l: TextLayout) => void; className?: string }) {
+function LayoutButtons({ value, onChange, className, disabledIds, disabledReason }: {
+  value: TextLayout | undefined;
+  onChange: (l: TextLayout) => void;
+  className?: string;
+  disabledIds?: TextLayout[];
+  /** Tooltip shown on the disabled options, explaining why. */
+  disabledReason?: string;
+}) {
   const active = value ?? "auto";
   return (
     <div className={`inline-flex items-center gap-1 ${className ?? ""}`} role="group" aria-label="Disposición del texto">
       {TEXT_LAYOUTS.map(l => {
         const on = active === l.id;
+        const disabled = disabledIds?.includes(l.id) ?? false;
         return (
           <button
             key={l.id}
             type="button"
-            title={l.label}
+            title={disabled ? disabledReason ?? `${l.label} (no disponible)` : l.label}
             aria-pressed={on}
+            disabled={disabled}
             onClick={() => onChange(l.id)}
-            className={`w-9 h-9 grid place-items-center rounded-full border transition-all active:scale-95 ${
+            className={`w-9 h-9 grid place-items-center rounded-full border transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 ${
               on ? "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30" : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
             }`}
           >
@@ -732,12 +747,22 @@ function TextColorPicker({ value, onChange }: { value: string; onChange: (hex: s
 
 /** Multi-line engraving text field: a textarea with a newline-aware char cap
  *  (line breaks don't count) so "Saltos manuales" works without eating budget. */
-function EngravingTextField({ text, onText, layout }: { text: string; onText: (t: string) => void; layout: TextLayout | undefined }) {
+function EngravingTextField({ text, onText, layout, onFocusChange, limitNotice }: {
+  text: string;
+  onText: (t: string) => void;
+  layout: TextLayout | undefined;
+  /** Focus tracking (drives the Envolvente 360° auto-rotation while typing). */
+  onFocusChange?: (focused: boolean) => void;
+  /** Shown when extra characters were blocked (wrap-around at max length). */
+  limitNotice?: string | null;
+}) {
   return (
     <>
       <Textarea
         value={text}
         onChange={(e) => onText(capEngravingText(e.target.value))}
+        onFocus={() => onFocusChange?.(true)}
+        onBlur={() => onFocusChange?.(false)}
         placeholder="Tu nombre o texto"
         rows={2}
         className="text-base text-center border-border focus-visible:ring-primary resize-none leading-snug"
@@ -750,6 +775,12 @@ function EngravingTextField({ text, onText, layout }: { text: string; onText: (t
         ) : <span />}
         <p className="text-xs text-muted-foreground text-right whitespace-nowrap">{visibleTextLen(text)}/{MAX_TEXT_CHARS} caracteres</p>
       </div>
+      {limitNotice && (
+        <p className="text-xs text-primary/90 flex items-center gap-1.5 rounded-lg bg-[#f5eaec] border border-primary/20 px-3 py-2 mt-1.5">
+          <Info className="w-3.5 h-3.5 shrink-0" />
+          {limitNotice}
+        </p>
+      )}
     </>
   );
 }
@@ -760,7 +791,12 @@ function EngravingTextField({ text, onText, layout }: { text: string; onText: (t
  * two surfaces stay identical. `onChange` receives the full next placement, so
  * callers can pass either the clamping setter or the raw state setter.
  */
-function TextDispositionToolbar({ placement, onChange }: { placement: Placement; onChange: (next: Placement) => void }) {
+function TextDispositionToolbar({ placement, onChange, wrapDisabledReason }: {
+  placement: Placement;
+  onChange: (next: Placement) => void;
+  /** When set, "Envolvente 360°" is disabled with this tooltip. */
+  wrapDisabledReason?: string;
+}) {
   const layout = placement.layout ?? "auto";
   return (
     <div className="space-y-3">
@@ -768,14 +804,24 @@ function TextDispositionToolbar({ placement, onChange }: { placement: Placement;
         <Label className="text-sm font-medium text-foreground">Disposición del texto</Label>
         <LayoutButtons
           value={layout}
+          disabledIds={wrapDisabledReason ? ["wrap360"] : undefined}
+          disabledReason={wrapDisabledReason}
           onChange={(l) => onChange({
             ...placement,
             layout: l,
             // "Justificado" no aplica a una palabra por línea: cae a izquierda.
             align: l === "stack" && placement.align === "justify" ? "left" : placement.align,
+            // Envolvente 360°: una sola línea horizontal alrededor del cuerpo.
+            orientation: l === "wrap360" ? "horizontal" : placement.orientation,
           })}
         />
       </div>
+      {layout === "wrap360" && (
+        <p className="text-xs text-muted-foreground flex items-center gap-1.5 rounded-lg bg-secondary/50 border border-border px-3 py-2">
+          <Info className="w-3.5 h-3.5 shrink-0" />
+          Pasamos a edición libre: el texto envuelve todo el contorno del producto.
+        </p>
+      )}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <Label className="text-sm font-medium text-foreground">Alineación</Label>
         <AlignButtons
@@ -796,17 +842,26 @@ function TextDispositionToolbar({ placement, onChange }: { placement: Placement;
 }
 
 /** Orientation toggle (Horizontal / Vertical) — lives inside "Texto Personalizado". */
-function OrientationToggle({ value, onChange }: { value: Placement["orientation"]; onChange: (o: "horizontal" | "vertical") => void }) {
+function OrientationToggle({ value, onChange, verticalDisabledReason }: {
+  value: Placement["orientation"];
+  onChange: (o: "horizontal" | "vertical") => void;
+  /** When set, "Vertical" is disabled with this tooltip (Envolvente 360°). */
+  verticalDisabledReason?: string;
+}) {
   return (
     <div>
       <Label className="text-xs text-muted-foreground mb-2 block">Orientación</Label>
       <div className="grid grid-cols-2 gap-2">
-        {(["horizontal", "vertical"] as const).map(o => (
+        {(["horizontal", "vertical"] as const).map(o => {
+          const disabled = o === "vertical" && !!verticalDisabledReason;
+          return (
           <button
             key={o}
             type="button"
+            disabled={disabled}
+            title={disabled ? verticalDisabledReason : undefined}
             onClick={() => onChange(o)}
-            className={`flex items-center justify-center gap-2 p-2.5 border rounded-lg text-sm font-medium transition-all active:scale-[0.97] ${
+            className={`flex items-center justify-center gap-2 p-2.5 border rounded-lg text-sm font-medium transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 ${
               (value ?? "horizontal") === o
                 ? "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30"
                 : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
@@ -815,7 +870,8 @@ function OrientationToggle({ value, onChange }: { value: Placement["orientation"
             {o === "horizontal" ? <MoveHorizontal className="w-4 h-4" /> : <MoveVertical className="w-4 h-4" />}
             {o === "horizontal" ? "Horizontal" : "Vertical"}
           </button>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -998,10 +1054,12 @@ export default function Customizer() {
   const [customImage, setCustomImage] = useState<ProcessedImage | null>(null);
   const [textPlacement, setTextPlacement] = useState<Placement>(DEFAULT_TEXT_PLACEMENT);
   const [artPlacement, setArtPlacement] = useState<Placement>(DEFAULT_ART_PLACEMENT);
-  // Placement mode: siempre "edición en una cara" (rectángulo en la cara
-  // frontal). La "edición libre" 360° se retiró de la UI para simplificar el
-  // personalizador; el resto del código conserva la rama libre por si vuelve.
-  const singleFace = true;
+  // Placement mode: "edición en una cara" (rectángulo en la cara frontal) por
+  // defecto. La disposición "Envolvente 360°" necesita el contorno completo,
+  // así que al elegirla cambiamos automáticamente a edición libre (con aviso
+  // en el toolbar de disposición) y volvemos a una cara al salir de ella.
+  const isWrap360 = (textPlacement.layout ?? "auto") === "wrap360";
+  const singleFace = !isWrap360;
 
   const [technique, setTechnique] = useState<TechniqueId>("laser");
   // Eufy (colour) is drinkware-with-coating only; everything else is laser-only.
@@ -1087,6 +1145,20 @@ export default function Customizer() {
   const artNaturalW = selectedIcon ? 256 : customImage?.width ?? 0;
   const artNaturalH = selectedIcon ? 256 : customImage?.height ?? 0;
 
+  // La fuente elegida, ¿ya está cargada? Las medidas (fitting, clamps, tope de
+  // envolvente) usan measureText fuera del 3D: si se miden con la fuente
+  // fallback quedan mal calculadas hasta la próxima edición. Cargarla acá y
+  // "tickear" hace que todos los memos que miden se recalculen al estar lista.
+  // Se pide con el mismo peso (900) con el que se graba/mide.
+  const [fontTick, setFontTick] = useState(0);
+  React.useEffect(() => {
+    const fam = textFontFamily?.split(",")[0]?.trim().replace(/['"]/g, "");
+    if (!fam || typeof document === "undefined" || !document.fonts?.load) return;
+    let alive = true;
+    document.fonts.load(`900 32px "${fam}"`).then(() => { if (alive) setFontTick(t => t + 1); }).catch(() => {});
+    return () => { alive = false; };
+  }, [textFontFamily]);
+
   const textSpec = React.useMemo<MarkSpec>(
     () => ({ kind: "text", text, fontFamily: textFontFamily, colorPrint: isColorPrint }),
     [text, textFontFamily, isColorPrint],
@@ -1098,7 +1170,8 @@ export default function Customizer() {
 
   const textExtents = React.useMemo<MarkHalfExtents>(
     () => markHalfExtents(product, textSpec, textPlacement, singleFace),
-    [product, textSpec, textPlacement, singleFace],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [product, textSpec, textPlacement, singleFace, fontTick],
   );
   const artExtents = React.useMemo<MarkHalfExtents>(
     () => markHalfExtents(product, artSpec, artPlacement, singleFace),
@@ -1114,8 +1187,51 @@ export default function Customizer() {
       textPlacement.scale,
       singleFace,
     ),
-    [product, text, textFontFamily, isColorPrint, textPlacement.orientation, textPlacement.align, textPlacement.layout, textPlacement.lineHeight, textPlacement.scale, singleFace],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [product, text, textFontFamily, isColorPrint, textPlacement.orientation, textPlacement.align, textPlacement.layout, textPlacement.lineHeight, textPlacement.scale, singleFace, fontTick],
   );
+
+  // ── "Envolvente 360°" — anti-encime ────────────────────────────────────────
+  // Tope del slider de tamaño: la escala más grande con la que el texto todavía
+  // completa la vuelta sin superponerse (con el margen de costura del 5%).
+  const wrapMaxScale = React.useMemo(() => {
+    if (!isWrap360 || !text) return TEXT_SCALE_MAX;
+    const m = wrap360MaxScale({ text, fontFamily: textFontFamily, colorPrint: isColorPrint, lineHeight: textPlacement.lineHeight });
+    return Math.max(TEXT_SCALE_MIN, Math.min(TEXT_SCALE_MAX, m));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isWrap360, text, textFontFamily, isColorPrint, textPlacement.lineHeight, fontTick]);
+
+  // Si el texto creció (o cambió la fuente) y la escala actual ya no cabe en la
+  // vuelta, bajarla al máximo permitido — el slider queda limitado a ese tope.
+  React.useEffect(() => {
+    if (!isWrap360) return;
+    setTextPlacement(p => (p.scale > wrapMaxScale + 0.001 ? { ...p, scale: wrapMaxScale } : p));
+  }, [isWrap360, wrapMaxScale]);
+
+  // Bloqueo de caracteres extra: si ni en el tamaño mínimo legible el texto
+  // completa la vuelta, no se aceptan más caracteres (sí borrar).
+  const [wrapLimitHit, setWrapLimitHit] = useState(false);
+  const handleEngravingText = React.useCallback((t: string) => {
+    if (
+      isWrap360 &&
+      visibleTextLen(t) > visibleTextLen(text) &&
+      !wrap360Fits({ text: t, fontFamily: textFontFamily, lineHeight: textPlacement.lineHeight })
+    ) {
+      setWrapLimitHit(true);
+      return;
+    }
+    setWrapLimitHit(false);
+    setText(t);
+  }, [isWrap360, text, textFontFamily, textPlacement.lineHeight]);
+  React.useEffect(() => {
+    if (!isWrap360) setWrapLimitHit(false);
+  }, [isWrap360]);
+
+  // Mientras se escribe en esta disposición: rotación automática lenta para ver
+  // el texto envolver la pieza en vivo, con el giro manual bloqueado. Al salir
+  // del input vuelve el "Arrastre para girar" normal.
+  const [textFieldFocused, setTextFieldFocused] = useState(false);
+  const wrapSpin = isWrap360 && textFieldFocused && isDrinkware;
 
   // Shape of the editable rectangle (w/h), so the drag pad mirrors it.
   const faceAreaAspect = React.useMemo(() => {
@@ -1128,7 +1244,8 @@ export default function Customizer() {
   // Nearest valid placement inside the front-face rectangle for a given mark.
   const clampTextP = React.useCallback(
     (p: Placement) => clampPlacementToFrontArea(p, markHalfExtents(product, textSpec, p, true), product),
-    [product, textSpec],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [product, textSpec, fontTick],
   );
   const clampArtP = React.useCallback(
     (p: Placement) => clampPlacementToFrontArea(p, markHalfExtents(product, artSpec, p, true), product),
@@ -1881,6 +1998,8 @@ export default function Customizer() {
                       onDesignDragStart={beginDesignDrag}
                       onDesignDragEnd={endDesignDrag}
                       snapToURef={thermosSnapRef}
+                      autoSpin={wrapSpin}
+                      rotationLocked={wrapSpin}
                     />
                     {/* Floating position control — over the visor, on the side that
                         least covers the piece (left for the termo, whose D-grip is on
@@ -1896,7 +2015,9 @@ export default function Customizer() {
 
                   <div className="flex items-center gap-3 -mt-1 mb-1">
                     <p className="text-xs text-muted-foreground">
-                      {designActive
+                      {wrapSpin
+                        ? "Girando para mostrar el texto envolvente…"
+                        : designActive
                         ? (singleFace ? "Arrastre el diseño sobre el producto" : "Arrastre para girar")
                         : "Arrastre para girar"}
                     </p>
@@ -2070,7 +2191,13 @@ export default function Customizer() {
                     <div className="space-y-4">
                       <div>
                         <Label className="text-sm font-medium text-foreground mb-3 block">Texto Personalizado</Label>
-                        <EngravingTextField text={text} onText={setText} layout={textPlacement.layout} />
+                        <EngravingTextField
+                          text={text}
+                          onText={handleEngravingText}
+                          layout={textPlacement.layout}
+                          onFocusChange={setTextFieldFocused}
+                          limitNotice={wrapLimitHit ? "El texto alcanzó el máximo para envolver el producto." : null}
+                        />
                       </div>
 
                       {/* Técnica de grabado — global (afecta texto, ícono e imagen).
@@ -2085,6 +2212,7 @@ export default function Customizer() {
                       <OrientationToggle
                         value={textPlacement.orientation}
                         onChange={(o) => applyTextPlacement({ ...textPlacement, orientation: o })}
+                        verticalDisabledReason={isWrap360 ? "El texto envolvente 360° va en horizontal alrededor del cuerpo" : undefined}
                       />
                     </div>
 
@@ -2097,8 +2225,9 @@ export default function Customizer() {
                       <TextSizeSlider
                         scale={textPlacement.scale}
                         onScale={(s) => applyTextPlacement({ ...textPlacement, scale: s })}
+                        maxScale={isWrap360 ? wrapMaxScale : undefined}
                       />
-                      {singleFace && textLayout.shrunk && (
+                      {textLayout.shrunk && (
                         <p className="text-xs text-primary/90 flex items-center gap-1.5 rounded-lg bg-[#f5eaec] border border-primary/20 px-3 py-2 mt-2">
                           <Info className="w-3.5 h-3.5 shrink-0" />
                           Tamaño ajustado automáticamente para que entre en el área.
@@ -2348,7 +2477,11 @@ export default function Customizer() {
 
                     {/* AVANZADO */}
                     <AdvancedOptions>
-                      <TextDispositionToolbar placement={textPlacement} onChange={setTextPlacement} />
+                      <TextDispositionToolbar
+                        placement={textPlacement}
+                        onChange={setTextPlacement}
+                        wrapDisabledReason="El texto envolvente 360° solo está disponible en productos cilíndricos (termos, vasos…)"
+                      />
                     </AdvancedOptions>
                   </TabsContent>
 
@@ -2538,60 +2671,6 @@ export default function Customizer() {
           />
         )}
 
-        {/* Personalizar algo más — emphasized invite below the customizer */}
-        <div className="mt-16 md:mt-24">
-          <div className="relative overflow-hidden rounded-3xl bg-[#1A1614] px-8 py-14 md:px-14 md:py-16 text-center flex flex-col items-center">
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 h-px w-24 bg-[#8B1A2F]" />
-            <p className="text-[#d9a3ae] text-[11px] font-semibold uppercase tracking-[0.3em] mb-5">
-              A su medida
-            </p>
-            <h3 className="font-serif font-light text-3xl md:text-5xl text-white leading-[1.12] max-w-2xl mb-5">
-              ¿Busca algo que no aparece aquí?
-            </h3>
-            <p className="text-white/60 font-light text-base md:text-lg max-w-xl leading-relaxed mb-9">
-              Lo que ve en la página es apenas una parte de lo posible. Si imagina una pieza distinta —otro
-              material, otro formato, un pedido especial— la creamos con usted. Cuéntenos su idea y la
-              resolvemos juntos.
-            </p>
-            <a
-              href={whatsappUrl("¡Hola! ¿Qué tal? Quisiera personalizar algo que no vi en la página. ¿Me ayudan a resolverlo?")}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2.5 bg-[#8B1A2F] hover:bg-[#721527] text-white px-10 py-4 text-[11px] font-semibold uppercase tracking-[0.25em] transition-colors"
-            >
-              <MessageCircle className="w-4 h-4" strokeWidth={1.75} />
-              Escríbanos
-            </a>
-          </div>
-        </div>
-
-        {/* Personalizaciones corporativas — pedidos en cantidad para empresas */}
-        <div className="mt-6">
-          <div className="rounded-3xl border border-border bg-secondary/40 px-8 py-10 md:px-14 md:py-12 flex flex-col md:flex-row md:items-center gap-6 md:gap-10">
-            <div className="flex-1">
-              <p className="text-[#8B1A2F] text-[11px] font-semibold uppercase tracking-[0.3em] mb-3">
-                Empresas
-              </p>
-              <h3 className="font-serif font-light text-2xl md:text-3xl text-[#1A1614] mb-3">
-                Personalizaciones corporativas
-              </h3>
-              <p className="text-[#5f574d] font-light text-sm md:text-base leading-relaxed max-w-2xl">
-                Regalos empresariales, merchandising y eventos: para empresas y pedidos en cantidad
-                ofrecemos descuentos por volumen. Cuéntenos qué necesita y le preparamos una
-                propuesta a medida.
-              </p>
-            </div>
-            <a
-              href={whatsappUrl("Hola, quiero consultar por personalización corporativa en cantidad.")}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 self-start md:self-center inline-flex items-center gap-2.5 bg-[#8B1A2F] hover:bg-[#721527] text-white px-8 py-4 text-[11px] font-semibold uppercase tracking-[0.25em] transition-colors"
-            >
-              <MessageCircle className="w-4 h-4" strokeWidth={1.75} />
-              Consultar por volumen
-            </a>
-          </div>
-        </div>
       </div>
     </section>
   );
