@@ -135,6 +135,12 @@ export default defineConfig({
         target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:3101",
         changeOrigin: false,
       },
+      // Panel interno del taller (vive en el api-server), igual que en
+      // producción lo proxya server.mjs.
+      "/admin": {
+        target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:3101",
+        changeOrigin: false,
+      },
     },
     headers: process.env.NODE_ENV !== "production" ? {
       "Cache-Control": "no-store, no-cache, must-revalidate",
