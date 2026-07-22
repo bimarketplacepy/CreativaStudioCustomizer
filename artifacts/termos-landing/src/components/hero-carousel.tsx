@@ -183,14 +183,6 @@ export default function HeroCarousel({ onImageChange }: { onImageChange?: (src: 
         </button>
       </div>
 
-      {/* Contador de posición — reemplaza a los 31 puntos de 6px, ilegibles
-          como indicador. aria-hidden: la imagen activa ya se anuncia por su
-          alt y las flechas dan la navegación accesible. */}
-      <div className="mt-4 flex items-center justify-center" aria-hidden="true">
-        <span className="text-xs tabular-nums tracking-[0.2em] text-white/70">
-          {index + 1} / {count}
-        </span>
-      </div>
     </div>
   );
 }
