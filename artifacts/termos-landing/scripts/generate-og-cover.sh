@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Generates public/og-cover-v4.jpg — the Open Graph / WhatsApp share preview.
+# Generates public/og-cover-v5.jpg — the Open Graph / WhatsApp share preview.
 #
 # Composition (1200x630), editorial/premium:
 #   - Left ~48%: tight crop of the engraved thermos. The photo background is
 #     desaturated, darkened and wine-tinted (a saturation mask protects the
 #     near-achromatic thermos, which keeps its contrast), with a subtle
 #     vignette, dissolving into the panel through a wide fusion gradient.
-#   - Right: 3-level type hierarchy on a dark wine radial — MarketPlace logo
-#     (dominant), a thin champagne rule, "CREATIVA STUDIO" as a small
-#     letterspaced author signature, and the tagline in Cronos Pro Display
-#     Italic, pure white.
+#   - Right: 3-level type hierarchy on a deep charcoal-plum diagonal —
+#     MarketPlace logo (dominant), a thin champagne rule, the Creativa Studio
+#     icon over "CREATIVA STUDIO" as a small letterspaced maker's-mark
+#     signature, and the tagline in Cronos Pro Display Italic, pure white.
 #   - Finish: 1px gold inner frame inset from the edges (liquor-label style)
 #     and a very diffuse champagne glow behind the brand stack.
 #
@@ -17,6 +17,7 @@
 # woff2 via api-server's wawoff2 dependency). All inputs live in the repo:
 #   - public/galeria/termomate.webp            (photo, 900x900)
 #   - public/marketplace-logo.webp             (logo, 200x40, alpha)
+#   - public/la-creativa-logo-new.webp         (Creativa icon, alpha)
 #   - public/fonts/inter-latin.woff2           (signature font)
 #   - attached_assets/Cronos-Pro-Display-Italic_*.ttf (tagline font)
 #
@@ -27,34 +28,37 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # ---------------------------------------------------------------- inputs ----
-OUT=public/og-cover-v4.jpg
+OUT=public/og-cover-v5.jpg
 PHOTO=public/galeria/termomate.webp
 LOGO=public/marketplace-logo.webp
+CREATIVA_ICON=public/la-creativa-logo-new.webp
 FONT_TAGLINE=../../attached_assets/Cronos-Pro-Display-Italic_12438_1779541309200.ttf
 
 # ------------------------------------------------------------ parameters ----
 CANVAS=1200x630
-BG_GRADIENT="radial-gradient:#331a24-#150b10"   # wine -> near black
+BG_TOP="#241419"; BG_BOTTOM="#0b0709"; BG_ANGLE=120  # deep charcoal-plum diagonal
 
 PHOTO_W=576                    # photo strip width (~48% of 1200)
 PHOTO_CROP=622x680+149+120     # editorial crop of the 900x900 source
-PHOTO_MODULATE=68,32,100       # background: brightness 68%, saturation 32%
-PHOTO_TINT='#2a1520'           # wine tint over the muted background...
-PHOTO_TINT_PCT=24              # ...at this strength (%)
+PHOTO_MODULATE=62,26,100       # background: brightness 62%, saturation 26%
+PHOTO_TINT='#241419'           # wine tint over the muted background...
+PHOTO_TINT_PCT=28              # ...at this strength (%)
 VIGNETTE_EDGE='#606060'        # vignette darkness at photo corners
 FUSION_W=140                   # width of the photo->panel dissolve
 
 PANEL_CX=888                   # horizontal axis of the right panel
 LOGO_W=500                     # MarketPlace logo width (dominant block)
-LOGO_Y=170
+LOGO_Y=150
 AIR_LOGO_RULE=40               # air between logo and champagne rule
 RULE_W=80                      # thin horizontal rule width...
 RULE_OPACITY=0.40              # ...and opacity
-AIR_RULE_SIG=25                # air between rule and signature
+AIR_RULE_ICON=25              # air between rule and signature icon
+AIR_ICON_SIG=10               # air between icon and signature text
+SIG_ICON_H=34                 # Creativa Studio icon height (maker's mark)
 SIG_POINTSIZE=20               # "CREATIVA STUDIO" (~40-45% of MP wordmark)
 SIG_TRACKING=4                 # ~0.2em at this size
 SIG_COLOR='#cbb890'            # muted champagne
-AIR_SIG_TAG=60                 # air between signature and tagline
+AIR_SIG_TAG=50                 # air between signature and tagline
 TAG_POINTSIZE=48
 TAG_TEXT='Personalizá tu producto.'
 TAG_COLOR=white
@@ -81,7 +85,8 @@ req('wawoff2').decompress(fs.readFileSync('public/fonts/inter-latin.woff2'))
 " "$(pwd)/../api-server/node_modules" "$TMP/inter.ttf"
 
 # 1. Background + glow
-magick -size "$CANVAS" "$BG_GRADIENT" "$TMP/bg.png"
+magick -size "$CANVAS" -define gradient:angle="$BG_ANGLE" \
+  gradient:"$BG_TOP"-"$BG_BOTTOM" "$TMP/bg.png"
 magick -size 800x560 radial-gradient:"$CHAMPAGNE"-none \
   -channel A -evaluate multiply "$GLOW_OPACITY" +channel "$TMP/glow.png"
 
@@ -117,9 +122,11 @@ magick "$TMP/logo.png" -background '#c02347' -alpha remove -alpha off "$TMP/logo
 magick "$TMP/logo-ivory.png" "$TMP/logo-red.png" "$TMP/crown-mask.png" \
   -compose Over -composite "$TMP/logo-light.png"
 
-# 4. Rule, signature, tagline
+# 4. Rule, signature (icon + text), tagline
 magick -size "${RULE_W}x1" xc:"$CHAMPAGNE" -alpha set \
   -channel A -evaluate multiply "$RULE_OPACITY" +channel "$TMP/rule.png"
+magick "$CREATIVA_ICON" -trim +repage -filter Lanczos -resize "x$SIG_ICON_H" \
+  -fill "$SIG_COLOR" -colorize 100 "$TMP/sig-icon.png"
 magick -background none -font "$TMP/inter.ttf" -pointsize "$SIG_POINTSIZE" \
   -kerning "$SIG_TRACKING" -fill "$SIG_COLOR" label:'CREATIVA STUDIO' "$TMP/sig.png"
 magick -background none -font "$FONT_TAGLINE" -pointsize "$TAG_POINTSIZE" \
@@ -128,14 +135,17 @@ magick -background none -font "$FONT_TAGLINE" -pointsize "$TAG_POINTSIZE" \
 # 5. Vertical rhythm (positions derived from the AIR_* constants) and
 #    horizontal centering of each element on the panel axis.
 logo_h=$(magick identify -format %h "$TMP/logo-light.png")
+icon_w=$(magick identify -format %w "$TMP/sig-icon.png")
 sig_w=$(magick identify -format %w "$TMP/sig.png")
 sig_h=$(magick identify -format %h "$TMP/sig.png")
 tag_w=$(magick identify -format %w "$TMP/tag.png")
 rule_y=$((LOGO_Y + logo_h + AIR_LOGO_RULE))
-sig_y=$((rule_y + 1 + AIR_RULE_SIG))
+icon_y=$((rule_y + 1 + AIR_RULE_ICON))
+sig_y=$((icon_y + SIG_ICON_H + AIR_ICON_SIG))
 tag_y=$((sig_y + sig_h + AIR_SIG_TAG))
 logo_x=$((PANEL_CX - LOGO_W / 2))
 rule_x=$((PANEL_CX - RULE_W / 2))
+icon_x=$((PANEL_CX - icon_w / 2))
 sig_x=$((PANEL_CX - sig_w / 2))
 tag_x=$((PANEL_CX - tag_w / 2))
 frame_br_x=$((1200 - FRAME_INSET - 1))
@@ -148,6 +158,7 @@ magick "$TMP/bg.png" "$TMP/glow.png" -geometry +488+30 -composite \
   -gravity northwest \
   "$TMP/logo-light.png" -geometry "+$logo_x+$LOGO_Y" -composite \
   "$TMP/rule.png" -geometry "+$rule_x+$rule_y" -composite \
+  "$TMP/sig-icon.png" -geometry "+$icon_x+$icon_y" -composite \
   "$TMP/sig.png" -geometry "+$sig_x+$sig_y" -composite \
   "$TMP/tag.png" -geometry "+$tag_x+$tag_y" -composite \
   -stroke "$FRAME_COLOR" -strokewidth 1 -fill none \
