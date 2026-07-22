@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
-# Generates the Open Graph / WhatsApp share previews (v3):
-#   public/og-cover-v3-producto.jpg  — tagline "Personalizá tu producto."
-#   public/og-cover-v3-termo.jpg     — tagline "Personalizá tu termo."
+# Generates public/og-cover-v4.jpg — the Open Graph / WhatsApp share preview.
 #
-# Composition (1200x630): engraved thermos photo on the left (~41% width)
-# fading ~60px into a dark wine-tinted panel; on the right a 3-level brand
-# stack, vertically centered — MarketPlace logo (protagonist), a thin
-# champagne divider, the Creativa Studio sub-brand (icon + Inter wordmark at
-# ~62% of the MarketPlace block), and the tagline in Cronos Pro Display
-# Italic. A very soft champagne glow (10% opacity) sits behind the stack.
+# Composition (1200x630), editorial/premium:
+#   - Left ~48%: tight crop of the engraved thermos. The photo background is
+#     desaturated, darkened and wine-tinted (a saturation mask protects the
+#     near-achromatic thermos, which keeps its contrast), with a subtle
+#     vignette, dissolving into the panel through a wide fusion gradient.
+#   - Right: 3-level type hierarchy on a dark wine radial — MarketPlace logo
+#     (dominant), a thin champagne rule, "CREATIVA STUDIO" as a small
+#     letterspaced author signature, and the tagline in Cronos Pro Display
+#     Italic, pure white.
+#   - Finish: 1px gold inner frame inset from the edges (liquor-label style)
+#     and a very diffuse champagne glow behind the brand stack.
 #
 # Requires ImageMagick 7 (`magick`) and node (only to decompress the Inter
 # woff2 via api-server's wawoff2 dependency). All inputs live in the repo:
 #   - public/galeria/termomate.webp            (photo, 900x900)
 #   - public/marketplace-logo.webp             (logo, 200x40, alpha)
-#   - public/la-creativa-logo-new.webp         (Creativa icon, alpha)
-#   - public/fonts/inter-latin.woff2           (Creativa wordmark font)
+#   - public/fonts/inter-latin.woff2           (signature font)
 #   - attached_assets/Cronos-Pro-Display-Italic_*.ttf (tagline font)
 #
 # Note: filenames are versioned (v2, v3, ...) on purpose — WhatsApp caches
@@ -24,14 +26,47 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# ---------------------------------------------------------------- inputs ----
+OUT=public/og-cover-v4.jpg
 PHOTO=public/galeria/termomate.webp
 LOGO=public/marketplace-logo.webp
-CREATIVA_ICON=public/la-creativa-logo-new.webp
 FONT_TAGLINE=../../attached_assets/Cronos-Pro-Display-Italic_12438_1779541309200.ttf
-IVORY='#f4eee6'
+
+# ------------------------------------------------------------ parameters ----
+CANVAS=1200x630
+BG_GRADIENT="radial-gradient:#331a24-#150b10"   # wine -> near black
+
+PHOTO_W=576                    # photo strip width (~48% of 1200)
+PHOTO_CROP=622x680+149+120     # editorial crop of the 900x900 source
+PHOTO_MODULATE=68,32,100       # background: brightness 68%, saturation 32%
+PHOTO_TINT='#2a1520'           # wine tint over the muted background...
+PHOTO_TINT_PCT=24              # ...at this strength (%)
+VIGNETTE_EDGE='#606060'        # vignette darkness at photo corners
+FUSION_W=140                   # width of the photo->panel dissolve
+
+PANEL_CX=888                   # horizontal axis of the right panel
+LOGO_W=500                     # MarketPlace logo width (dominant block)
+LOGO_Y=170
+AIR_LOGO_RULE=40               # air between logo and champagne rule
+RULE_W=80                      # thin horizontal rule width...
+RULE_OPACITY=0.40              # ...and opacity
+AIR_RULE_SIG=25                # air between rule and signature
+SIG_POINTSIZE=20               # "CREATIVA STUDIO" (~40-45% of MP wordmark)
+SIG_TRACKING=4                 # ~0.2em at this size
+SIG_COLOR='#cbb890'            # muted champagne
+AIR_SIG_TAG=60                 # air between signature and tagline
+TAG_POINTSIZE=48
+TAG_TEXT='Personalizá tu producto.'
+TAG_COLOR=white
+
+GLOW_OPACITY=0.07              # diffuse champagne glow behind the stack
+FRAME_INSET=24                 # 1px gold inner frame...
+FRAME_OPACITY=0.25             # ...at this opacity
+FRAME_COLOR='#d4b872'
 CHAMPAGNE='#e8d5a8'
-TAGLINE_COLOR='#f7ecd8'
-PANEL_CENTER_X=845
+IVORY='#f4eee6'
+JPG_QUALITY=85
+
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
@@ -45,18 +80,26 @@ req('wawoff2').decompress(fs.readFileSync('public/fonts/inter-latin.woff2'))
   .then(ttf => fs.writeFileSync(process.argv[2], Buffer.from(ttf)));
 " "$(pwd)/../api-server/node_modules" "$TMP/inter.ttf"
 
-# 1. Dark premium background (wine radial -> near black) + a soft champagne
-#    glow behind the brand stack for depth.
-magick -size 1200x630 radial-gradient:'#331a24'-'#150b10' "$TMP/bg.png"
+# 1. Background + glow
+magick -size "$CANVAS" "$BG_GRADIENT" "$TMP/bg.png"
 magick -size 800x560 radial-gradient:"$CHAMPAGNE"-none \
-  -channel A -evaluate multiply 0.10 +channel "$TMP/glow.png"
-magick "$TMP/bg.png" "$TMP/glow.png" -geometry +445+10 -composite "$TMP/bg-glow.png"
+  -channel A -evaluate multiply "$GLOW_OPACITY" +channel "$TMP/glow.png"
 
-# 2. Photo panel: crop off the photo's right edge (stray red object), fill
-#    the canvas height, and fade the last ~60px into the background.
-magick "$PHOTO" -crop 700x900+60+0 +repage -filter Lanczos -resize x630 "$TMP/photo.png"
-magick -size 630x60 gradient:white-black -rotate 90 "$TMP/grad.png"
-magick -size 490x630 xc:white "$TMP/grad.png" -gravity east -composite "$TMP/fade.png"
+# 2. Photo strip: crop, mute the background behind a saturation mask (the
+#    thermos is near-achromatic so the mask leaves it untouched), vignette,
+#    and dissolve the right edge over FUSION_W px.
+magick "$PHOTO" -crop "$PHOTO_CROP" +repage -filter Lanczos \
+  -resize "${PHOTO_W}x630!" "$TMP/base.png"
+magick "$TMP/base.png" -modulate "$PHOTO_MODULATE" \
+  -fill "$PHOTO_TINT" -colorize "$PHOTO_TINT_PCT" "$TMP/muted.png"
+magick "$TMP/base.png" -colorspace HSL -channel G -separate +channel \
+  -level 5%,60% -blur 0x8 "$TMP/satmask.png"
+magick "$TMP/base.png" "$TMP/muted.png" "$TMP/satmask.png" \
+  -compose Over -composite "$TMP/treated.png"
+magick -size "${PHOTO_W}x630" radial-gradient:white-"$VIGNETTE_EDGE" "$TMP/vign.png"
+magick "$TMP/treated.png" "$TMP/vign.png" -compose Multiply -composite "$TMP/photo.png"
+magick -size "630x$FUSION_W" gradient:white-black -rotate 90 "$TMP/grad.png"
+magick -size "${PHOTO_W}x630" xc:white "$TMP/grad.png" -gravity east -composite "$TMP/fade.png"
 magick "$TMP/photo.png" "$TMP/fade.png" -alpha off -compose CopyOpacity -composite "$TMP/photo-faded.png"
 
 # 3. Light version of the MarketPlace logo: upscale, then recolor the
@@ -64,7 +107,7 @@ magick "$TMP/photo.png" "$TMP/fade.png" -alpha off -compose CopyOpacity -composi
 #    crown mask is the saturation channel multiplied by alpha — the multiply
 #    keeps the RGB garbage under fully-transparent pixels out of the mask
 #    (without it the crown gets a dark halo).
-magick "$LOGO" -filter Lanczos -resize 540x "$TMP/logo.png"
+magick "$LOGO" -filter Lanczos -resize "${LOGO_W}x" "$TMP/logo.png"
 magick "$TMP/logo.png" -alpha extract "$TMP/alpha.png"
 magick "$TMP/logo.png" -background white -alpha remove -alpha off \
   -colorspace HSL -channel G -separate +channel -threshold 25% "$TMP/sat.png"
@@ -74,39 +117,42 @@ magick "$TMP/logo.png" -background '#c02347' -alpha remove -alpha off "$TMP/logo
 magick "$TMP/logo-ivory.png" "$TMP/logo-red.png" "$TMP/crown-mask.png" \
   -compose Over -composite "$TMP/logo-light.png"
 
-# 4. Creativa Studio sub-brand block: icon + Inter wordmark, ~62% of the
-#    MarketPlace block width. (-background none must precede +smush or the
-#    join is flattened onto white.)
-magick "$CREATIVA_ICON" -trim +repage -filter Lanczos -resize x64 \
-  -fill "$IVORY" -colorize 100 "$TMP/creativa-icon.png"
-magick -background none -font "$TMP/inter.ttf" -pointsize 34 -kerning 1.5 \
-  -fill "$IVORY" label:'Creativa Studio' "$TMP/creativa-text.png"
-magick -background none "$TMP/creativa-icon.png" "$TMP/creativa-text.png" \
-  -gravity center +smush 18 "$TMP/creativa-block.png"
+# 4. Rule, signature, tagline
+magick -size "${RULE_W}x1" xc:"$CHAMPAGNE" -alpha set \
+  -channel A -evaluate multiply "$RULE_OPACITY" +channel "$TMP/rule.png"
+magick -background none -font "$TMP/inter.ttf" -pointsize "$SIG_POINTSIZE" \
+  -kerning "$SIG_TRACKING" -fill "$SIG_COLOR" label:'CREATIVA STUDIO' "$TMP/sig.png"
+magick -background none -font "$FONT_TAGLINE" -pointsize "$TAG_POINTSIZE" \
+  -kerning 1 -fill "$TAG_COLOR" label:"$TAG_TEXT" "$TMP/tag.png"
 
-# 5. Thin champagne divider between the two brands (1px @ 30%, ~40% of panel).
-magick -size 284x1 xc:"$CHAMPAGNE" -alpha set \
-  -channel A -evaluate multiply 0.30 +channel "$TMP/divider.png"
+# 5. Vertical rhythm (positions derived from the AIR_* constants) and
+#    horizontal centering of each element on the panel axis.
+logo_h=$(magick identify -format %h "$TMP/logo-light.png")
+sig_w=$(magick identify -format %w "$TMP/sig.png")
+sig_h=$(magick identify -format %h "$TMP/sig.png")
+tag_w=$(magick identify -format %w "$TMP/tag.png")
+rule_y=$((LOGO_Y + logo_h + AIR_LOGO_RULE))
+sig_y=$((rule_y + 1 + AIR_RULE_SIG))
+tag_y=$((sig_y + sig_h + AIR_SIG_TAG))
+logo_x=$((PANEL_CX - LOGO_W / 2))
+rule_x=$((PANEL_CX - RULE_W / 2))
+sig_x=$((PANEL_CX - sig_w / 2))
+tag_x=$((PANEL_CX - tag_w / 2))
+frame_br_x=$((1200 - FRAME_INSET - 1))
+frame_br_y=$((630 - FRAME_INSET - 1))
 
-# 6. Compose one cover per tagline variant, centering the tagline on the
-#    panel axis. -gravity northwest resets the sticky west gravity.
-generate_variant() { # $1 = suffix, $2 = tagline text
-  local out="public/og-cover-v3-$1.jpg"
-  magick -background none -font "$FONT_TAGLINE" -pointsize 44 -kerning 1 \
-    -fill "$TAGLINE_COLOR" label:"$2" "$TMP/tagline.png"
-  local w x
-  w=$(magick identify -format %w "$TMP/tagline.png")
-  x=$((PANEL_CENTER_X - w / 2))
-  magick "$TMP/bg-glow.png" "$TMP/photo-faded.png" -gravity west -composite \
-    -gravity northwest \
-    "$TMP/logo-light.png" -geometry +575+158 -composite \
-    "$TMP/divider.png" -geometry +703+298 -composite \
-    "$TMP/creativa-block.png" -geometry +679+326 -composite \
-    "$TMP/tagline.png" -geometry "+$x+444" -composite \
-    "$TMP/cover.png"
-  magick "$TMP/cover.png" -strip -quality 85 -sampling-factor 4:2:0 "$out"
-  magick identify "$out"
-}
+# 6. Final composite (-gravity northwest resets the sticky west gravity)
+#    plus the 1px gold inner frame over everything.
+magick "$TMP/bg.png" "$TMP/glow.png" -geometry +488+30 -composite \
+  "$TMP/photo-faded.png" -gravity west -composite \
+  -gravity northwest \
+  "$TMP/logo-light.png" -geometry "+$logo_x+$LOGO_Y" -composite \
+  "$TMP/rule.png" -geometry "+$rule_x+$rule_y" -composite \
+  "$TMP/sig.png" -geometry "+$sig_x+$sig_y" -composite \
+  "$TMP/tag.png" -geometry "+$tag_x+$tag_y" -composite \
+  -stroke "$FRAME_COLOR" -strokewidth 1 -fill none \
+  -draw "stroke-opacity $FRAME_OPACITY rectangle $FRAME_INSET,$FRAME_INSET $frame_br_x,$frame_br_y" \
+  "$TMP/cover.png"
 
-generate_variant producto 'Personalizá tu producto.'
-generate_variant termo    'Personalizá tu termo.'
+magick "$TMP/cover.png" -strip -quality "$JPG_QUALITY" -sampling-factor 4:2:0 "$OUT"
+magick identify "$OUT"
