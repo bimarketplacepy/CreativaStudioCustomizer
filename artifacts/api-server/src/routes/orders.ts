@@ -7,11 +7,58 @@ import { rateLimit } from "../middlewares/rate-limit";
 import {
   parseImageDataUrl,
   storeOrderImage,
+  storeOrderFile,
   loadOrderImage,
 } from "../lib/order-images";
+import { buildProductionSvg } from "../lib/production-svg";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+
+/**
+ * Clave interna para el material de producción (archivo vectorial). Se acepta
+ * por header `x-internal-key` o query `?key=`. Sin INTERNAL_ACCESS_KEY en el
+ * entorno, el acceso interno queda deshabilitado por completo (nunca abierto).
+ */
+function hasInternalKey(req: Request): boolean {
+  const expected = process.env.INTERNAL_ACCESS_KEY;
+  if (!expected) return false;
+  const got = req.headers["x-internal-key"] ?? req.query.key;
+  return typeof got === "string" && got === expected;
+}
+
+/**
+ * Genera y persiste el SVG vectorial de producción (uso interno). Best-effort:
+ * un fallo acá nunca voltea la creación del pedido — se loguea y el archivo
+ * puede regenerarse después a mano.
+ */
+async function generateProductionFile(
+  order: Order,
+  customImageDataUrl: string | null,
+): Promise<string | null> {
+  try {
+    const ds = (order.designState ?? {}) as Record<string, unknown>;
+    const svg = await buildProductionSvg({
+      orderNumber: order.orderNumber,
+      product: order.product,
+      technique: order.technique,
+      createdAt: order.createdAt,
+      text: order.customText,
+      fontId: typeof ds.fontId === "string" ? ds.fontId : null,
+      textColor: order.textColor,
+      iconId: typeof ds.iconId === "string" ? ds.iconId : null,
+      customImageDataUrl,
+      textPlacement: (ds.textPlacement ?? null) as never,
+      artPlacement: (ds.artPlacement ?? null) as never,
+    });
+    const name = `orders/${order.orderNumber}-produccion.svg`;
+    await storeOrderFile(name, Buffer.from(svg, "utf8"), "image/svg+xml");
+    return name;
+  } catch (err) {
+    logger.error({ orderNumber: order.orderNumber, err }, "orders: production file failed");
+    return null;
+  }
+}
 
 /** Public absolute origin, honouring the Replit proxy headers. */
 function originFrom(req: Request): string {
@@ -83,6 +130,16 @@ router.post("/orders", rateLimit({ max: 10, windowMs: 60 * 60 * 1000 }), async (
       order.previewImagePath = path;
     }
 
+    // Archivo vectorial de producción (uso interno del taller). Nunca viaja en
+    // la respuesta al cliente ni en el mensaje de WhatsApp.
+    const productionPath = await generateProductionFile(order, body.customImage ?? null);
+    if (productionPath) {
+      await db
+        .update(ordersTable)
+        .set({ productionFilePath: productionPath })
+        .where(eq(ordersTable.id, order.id));
+    }
+
     res.status(201).json({
       orderNumber: order.orderNumber,
       previewImageUrl: imageUrlFor(req, order),
@@ -108,14 +165,58 @@ router.get("/orders/:orderNumber", async (req, res) => {
       res.status(404).json({ message: "Pedido no encontrado" });
       return;
     }
+    // El archivo de producción es interno: la ruta solo se incluye cuando la
+    // request trae la clave interna.
+    const { productionFilePath, ...publicOrder } = order;
     res.json({
-      ...order,
+      ...publicOrder,
       createdAt: order.createdAt.toISOString(),
       previewImageUrl: imageUrlFor(req, order),
+      ...(hasInternalKey(req) ? { productionFilePath } : {}),
     });
   } catch (err) {
     logger.error({ err }, "orders: get failed");
     res.status(500).json({ message: "No se pudo obtener el pedido" });
+  }
+});
+
+// GET /api/orders/:orderNumber/production-file — SVG vectorial de producción.
+// USO INTERNO: requiere la clave (header x-internal-key o ?key=). El cliente
+// jamás recibe esta URL; sin clave responde 401 sin revelar si el pedido existe.
+router.get("/orders/:orderNumber/production-file", async (req, res) => {
+  if (!hasInternalKey(req)) {
+    res.status(401).json({ message: "No autorizado" });
+    return;
+  }
+  const orderNumber = req.params.orderNumber;
+  if (!ORDER_NUMBER_RE.test(orderNumber)) {
+    res.status(404).json({ message: "Pedido no encontrado" });
+    return;
+  }
+  try {
+    const order = await db.query.ordersTable.findFirst({
+      where: eq(ordersTable.orderNumber, orderNumber),
+      columns: { productionFilePath: true },
+    });
+    if (!order?.productionFilePath) {
+      res.status(404).json({ message: "Archivo de producción no disponible" });
+      return;
+    }
+    const entry = await loadOrderImage(order.productionFilePath);
+    if (!entry) {
+      res.status(404).json({ message: "Archivo de producción no disponible" });
+      return;
+    }
+    res.setHeader("Content-Type", "image/svg+xml");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${orderNumber}-produccion.svg"`,
+    );
+    res.setHeader("Cache-Control", "private, no-store");
+    res.end(entry.buf);
+  } catch (err) {
+    logger.error({ err }, "orders: production file download failed");
+    res.status(500).json({ message: "No se pudo obtener el archivo" });
   }
 });
 

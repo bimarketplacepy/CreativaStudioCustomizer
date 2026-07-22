@@ -153,6 +153,12 @@ components:
         previewImage:
           type: string
           description: Rendered preview as a base64 data URL (image/png or image/jpeg)
+        customImage:
+          type: string
+          description: >-
+            Original uploaded logo/photo as a data URL, at the highest
+            resolution the client has. Used only to embed the artwork in the
+            internal production file; never echoed back to the client.
       required:
         - product
         - material
@@ -214,6 +220,12 @@ components:
         previewImageUrl:
           type: string
           nullable: true
+        productionFilePath:
+          type: string
+          nullable: true
+          description: >-
+            Internal production SVG path. Only present when the request carries
+            the internal access key; never exposed to clients.
         createdAt:
           type: string
           format: date-time

@@ -46,4 +46,6 @@ export interface CreateOrderRequest {
   designState: CreateOrderRequestDesignState;
   /** Rendered preview as a base64 data URL (image/png or image/jpeg) */
   previewImage?: string;
+  /** Original uploaded logo/photo as a data URL, at the highest resolution the client has. Used only to embed the artwork in the internal production file; never echoed back to the client. */
+  customImage?: string;
 }

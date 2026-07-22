@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { rm, mkdir, readdir, copyFile } from "node:fs/promises";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -121,6 +121,16 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+
+  // Copia las fuentes del customizer a dist/fonts: el generador del SVG de
+  // producción (production-fonts.ts) las convierte a curvas server-side y así
+  // el bundle desplegado no depende del árbol del landing.
+  const fontsSrc = path.resolve(artifactDir, "../termos-landing/public/fonts");
+  const fontsDst = path.join(distDir, "fonts");
+  await mkdir(fontsDst, { recursive: true });
+  for (const f of await readdir(fontsSrc)) {
+    if (f.endsWith(".woff2")) await copyFile(path.join(fontsSrc, f), path.join(fontsDst, f));
+  }
 }
 
 buildAll().catch((err) => {

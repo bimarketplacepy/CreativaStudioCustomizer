@@ -24,5 +24,7 @@ export interface Order {
   designState: OrderDesignState;
   previewImagePath: string | null;
   previewImageUrl: string | null;
+  /** Internal production SVG path. Only present when the request carries the internal access key; never exposed to clients. */
+  productionFilePath?: string | null;
   createdAt: Date;
 }

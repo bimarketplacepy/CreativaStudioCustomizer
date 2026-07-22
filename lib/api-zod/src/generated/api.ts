@@ -75,6 +75,12 @@ export const CreateOrderBody = zod.object({
     .describe(
       "Rendered preview as a base64 data URL (image\/png or image\/jpeg)",
     ),
+  customImage: zod
+    .string()
+    .optional()
+    .describe(
+      "Original uploaded logo\/photo as a data URL, at the highest resolution the client has. Used only to embed the artwork in the internal production file; never echoed back to the client.",
+    ),
 });
 
 /**
@@ -101,5 +107,11 @@ export const GetOrderResponse = zod.object({
   designState: zod.record(zod.string(), zod.unknown()),
   previewImagePath: zod.string().nullable(),
   previewImageUrl: zod.string().nullable(),
+  productionFilePath: zod
+    .string()
+    .nullish()
+    .describe(
+      "Internal production SVG path. Only present when the request carries the internal access key; never exposed to clients.",
+    ),
   createdAt: zod.coerce.date(),
 });

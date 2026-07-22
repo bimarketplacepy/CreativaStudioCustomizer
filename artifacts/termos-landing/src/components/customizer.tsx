@@ -1619,6 +1619,9 @@ export default function Customizer() {
         artPlacement,
       },
       previewImage: previewImage ?? undefined,
+      // Logo/foto original en la máxima resolución que tiene el cliente: el
+      // server lo embebe en el archivo vectorial de producción (uso interno).
+      customImage: customImage?.svgDataUrl ?? undefined,
     };
   };
 

@@ -57,6 +57,8 @@ export interface CreateOrderRequest {
   designState: CreateOrderRequestDesignState;
   /** Rendered preview as a base64 data URL (image/png or image/jpeg) */
   previewImage?: string;
+  /** Original uploaded logo/photo as a data URL, at the highest resolution the client has. Used only to embed the artwork in the internal production file; never echoed back to the client. */
+  customImage?: string;
 }
 
 export interface CreateOrderResponse {
@@ -93,5 +95,7 @@ export interface Order {
   designState: OrderDesignState;
   previewImagePath: string | null;
   previewImageUrl: string | null;
+  /** Internal production SVG path. Only present when the request carries the internal access key; never exposed to clients. */
+  productionFilePath?: string | null;
   createdAt: string;
 }

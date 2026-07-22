@@ -52,28 +52,38 @@ function cacheSet(name: string, entry: Entry) {
 }
 
 /**
- * Store the preview under `orders/<orderNumber>.<ext>` and return the object
- * name. The bucket write is raced against a short timeout so a slow sidecar
- * never blocks the order flow — the memory copy serves the immediate reads
- * while the upload finishes in the background.
+ * Store an arbitrary order file under `name` and return it. Bucket write raced
+ * against a short timeout so a slow sidecar never blocks the order flow — the
+ * memory copy serves the immediate reads while the upload finishes behind.
  */
-export async function storeOrderImage(orderNumber: string, img: ParsedImage): Promise<string> {
-  const name = `orders/${orderNumber}.${img.ext}`;
-  cacheSet(name, { buf: img.buf, type: img.type });
+export async function storeOrderFile(name: string, buf: Buffer, type: string): Promise<string> {
+  cacheSet(name, { buf, type });
 
   const persisted = (async () => {
     const client = await getClient();
     if (!client) return;
-    const result = await client.uploadFromBytes(name, img.buf);
+    const result = await client.uploadFromBytes(name, buf);
     if (result && result.ok === false) {
-      logger.error({ name, error: result.error }, "order image: bucket upload failed");
+      logger.error({ name, error: result.error }, "order file: bucket upload failed");
     }
   })().catch((err) => {
-    logger.error({ name, err }, "order image: bucket upload failed");
+    logger.error({ name, err }, "order file: bucket upload failed");
   });
   await Promise.race([persisted, new Promise((r) => setTimeout(r, 2500))]);
 
   return name;
+}
+
+/** Store the preview under `orders/<orderNumber>.<ext>` and return the name. */
+export function storeOrderImage(orderNumber: string, img: ParsedImage): Promise<string> {
+  return storeOrderFile(`orders/${orderNumber}.${img.ext}`, img.buf, img.type);
+}
+
+/** Content type inferred from a stored object name. */
+function typeForName(name: string): string {
+  if (name.endsWith(".svg")) return "image/svg+xml";
+  if (name.endsWith(".png")) return "image/png";
+  return "image/jpeg";
 }
 
 /** Fetch a stored preview (memory cache first, then bucket). Null when missing. */
@@ -89,7 +99,7 @@ export async function loadOrderImage(name: string): Promise<Entry | null> {
     // v1 of the SDK wraps the payload in a single-element array.
     const buf = Array.isArray(result.value) ? result.value[0] : result.value;
     if (!buf || !buf.length) return null;
-    const entry: Entry = { buf, type: name.endsWith(".png") ? "image/png" : "image/jpeg" };
+    const entry: Entry = { buf, type: typeForName(name) };
     cacheSet(name, entry);
     return entry;
   } catch {

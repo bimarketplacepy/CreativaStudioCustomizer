@@ -53,6 +53,9 @@ export const ordersTable = pgTable("orders", {
   designState: jsonb("design_state").notNull(),
   /** Nombre del objeto en el storage (ej. "orders/CS-0001.jpg"). */
   previewImagePath: varchar("preview_image_path", { length: 255 }),
+  /** SVG vectorial de producción (uso interno del taller, invisible para el
+   *  cliente): ej. "orders/CS-0001-produccion.svg". */
+  productionFilePath: varchar("production_file_path", { length: 255 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
