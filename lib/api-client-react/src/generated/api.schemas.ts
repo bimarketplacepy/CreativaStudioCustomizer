@@ -8,3 +8,90 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ApiErrorResponse {
+  message: string;
+}
+
+/**
+ * Full snapshot of the design state, enough to reproduce it
+ */
+export type CreateOrderRequestDesignState = { [key: string]: unknown };
+
+export interface CreateOrderRequest {
+  /**
+   * Product type (Termo, Chopera, Hoppie, …)
+   * @minLength 1
+   * @maxLength 120
+   */
+  product: string;
+  /**
+   * @minLength 1
+   * @maxLength 120
+   */
+  material: string;
+  /**
+   * Color name + hex, e.g. "Borgoña (#6d2434)"
+   * @maxLength 120
+   */
+  color?: string;
+  /**
+   * Grabado láser / Impresión UV / Plotter de corte
+   * @minLength 1
+   * @maxLength 120
+   */
+  technique: string;
+  /** @maxLength 500 */
+  customText?: string;
+  /** @maxLength 120 */
+  font?: string;
+  /**
+   * Only when technique is UV printing
+   * @maxLength 40
+   */
+  textColor?: string;
+  /** @maxLength 120 */
+  iconName?: string;
+  hasUploadedImage?: boolean;
+  /** Full snapshot of the design state, enough to reproduce it */
+  designState: CreateOrderRequestDesignState;
+  /** Rendered preview as a base64 data URL (image/png or image/jpeg) */
+  previewImage?: string;
+}
+
+export interface CreateOrderResponse {
+  /** Human-readable order number, e.g. CS-0042 */
+  orderNumber: string;
+  /** Permanent public URL of the stored preview image */
+  previewImageUrl: string | null;
+}
+
+export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
+
+export const OrderStatus = {
+  nueva: "nueva",
+  en_proceso: "en_proceso",
+  completada: "completada",
+  cancelada: "cancelada",
+} as const;
+
+export type OrderDesignState = { [key: string]: unknown };
+
+export interface Order {
+  id: string;
+  orderNumber: string;
+  status: OrderStatus;
+  product: string;
+  material: string;
+  color: string | null;
+  technique: string;
+  customText: string | null;
+  font: string | null;
+  textColor: string | null;
+  iconName: string | null;
+  hasUploadedImage: boolean;
+  designState: OrderDesignState;
+  previewImagePath: string | null;
+  previewImageUrl: string | null;
+  createdAt: string;
+}

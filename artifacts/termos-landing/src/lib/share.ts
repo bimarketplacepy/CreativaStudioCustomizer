@@ -42,31 +42,3 @@ export function dataUrlToJpeg(dataUrl: string, maxDim = 1080, quality = 0.85): P
   });
 }
 
-/**
- * Upload the captured image to the backend (/api/design-preview) and return a
- * public URL that can be embedded in the WhatsApp message so the image previews
- * in the chat. Retries once (transient dev-proxy hiccups). Returns null if the
- * upload fails (caller falls back gracefully).
- */
-export async function uploadPreview(dataUrl: string): Promise<string | null> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const res = await fetch("/api/design-preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dataUrl }),
-      });
-      if (!res.ok) {
-        console.warn(`design-preview: subida rechazada (HTTP ${res.status}), intento ${attempt + 1}`);
-        continue;
-      }
-      const { url } = await res.json();
-      if (typeof url !== "string") continue;
-      // Absolute URL so WhatsApp can fetch it.
-      return new URL(url, window.location.origin).toString();
-    } catch (err) {
-      console.warn(`design-preview: subida falló (intento ${attempt + 1}):`, err);
-    }
-  }
-  return null;
-}

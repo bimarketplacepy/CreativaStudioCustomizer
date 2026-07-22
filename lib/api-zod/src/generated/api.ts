@@ -14,3 +14,92 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Creates an order from the customizer's final step. Accepts the customization specs plus the rendered preview image as a base64 data URL (~1080px JPEG/PNG, decoded size capped at 3MB). Returns the human-readable order number and the permanent public URL of the stored preview image.
+
+ * @summary Create a customizer order
+ */
+export const createOrderBodyProductMax = 120;
+
+export const createOrderBodyMaterialMax = 120;
+
+export const createOrderBodyColorMax = 120;
+
+export const createOrderBodyTechniqueMax = 120;
+
+export const createOrderBodyCustomTextMax = 500;
+
+export const createOrderBodyFontMax = 120;
+
+export const createOrderBodyTextColorMax = 40;
+
+export const createOrderBodyIconNameMax = 120;
+
+export const createOrderBodyHasUploadedImageDefault = false;
+
+export const CreateOrderBody = zod.object({
+  product: zod
+    .string()
+    .min(1)
+    .max(createOrderBodyProductMax)
+    .describe("Product type (Termo, Chopera, Hoppie, …)"),
+  material: zod.string().min(1).max(createOrderBodyMaterialMax),
+  color: zod
+    .string()
+    .max(createOrderBodyColorMax)
+    .optional()
+    .describe('Color name + hex, e.g. \"Borgoña (#6d2434)\"'),
+  technique: zod
+    .string()
+    .min(1)
+    .max(createOrderBodyTechniqueMax)
+    .describe("Grabado láser \/ Impresión UV \/ Plotter de corte"),
+  customText: zod.string().max(createOrderBodyCustomTextMax).optional(),
+  font: zod.string().max(createOrderBodyFontMax).optional(),
+  textColor: zod
+    .string()
+    .max(createOrderBodyTextColorMax)
+    .optional()
+    .describe("Only when technique is UV printing"),
+  iconName: zod.string().max(createOrderBodyIconNameMax).optional(),
+  hasUploadedImage: zod
+    .boolean()
+    .default(createOrderBodyHasUploadedImageDefault),
+  designState: zod
+    .record(zod.string(), zod.unknown())
+    .describe("Full snapshot of the design state, enough to reproduce it"),
+  previewImage: zod
+    .string()
+    .optional()
+    .describe(
+      "Rendered preview as a base64 data URL (image\/png or image\/jpeg)",
+    ),
+});
+
+/**
+ * Returns the full order record (internal use).
+ * @summary Get an order by its order number
+ */
+export const GetOrderParams = zod.object({
+  orderNumber: zod.coerce.string(),
+});
+
+export const GetOrderResponse = zod.object({
+  id: zod.string().uuid(),
+  orderNumber: zod.string(),
+  status: zod.enum(["nueva", "en_proceso", "completada", "cancelada"]),
+  product: zod.string(),
+  material: zod.string(),
+  color: zod.string().nullable(),
+  technique: zod.string(),
+  customText: zod.string().nullable(),
+  font: zod.string().nullable(),
+  textColor: zod.string().nullable(),
+  iconName: zod.string().nullable(),
+  hasUploadedImage: zod.boolean(),
+  designState: zod.record(zod.string(), zod.unknown()),
+  previewImagePath: zod.string().nullable(),
+  previewImageUrl: zod.string().nullable(),
+  createdAt: zod.coerce.date(),
+});

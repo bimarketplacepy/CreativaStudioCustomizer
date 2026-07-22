@@ -14,9 +14,10 @@
 //
 // Listens on $PORT (Replit autoscale sets this), defaulting to 3000.
 
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { readFile, stat } from "node:fs/promises";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { join, normalize, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync, brotliCompressSync, constants as zlibConstants } from "node:zlib";
@@ -25,6 +26,52 @@ import { handleUploadRequest, handleServeRequest } from "./upload-store.mjs";
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = join(__dirname, "dist", "public");
 const PORT = Number(process.env.PORT) || 3000;
+
+// ── API server (pedidos) ────────────────────────────────────────────────────
+// El @workspace/api-server (Express + Postgres) corre como proceso hijo en un
+// puerto interno y este server le reenvía todo /api/* (salvo design-preview,
+// que se atiende acá mismo). Si el bundle no está o el hijo se cae, el proxy
+// responde 502 y el personalizador cae a su fallback de WhatsApp sin pedido.
+const API_PORT = Number(process.env.API_PORT) || 3101;
+const API_DIST = join(__dirname, "..", "api-server", "dist", "index.mjs");
+
+function startApiServer() {
+  if (!existsSync(API_DIST)) {
+    console.warn(`[termos-landing] api-server bundle not found at ${API_DIST}; /api/orders disabled`);
+    return;
+  }
+  const child = spawn(process.execPath, ["--enable-source-maps", API_DIST], {
+    env: { ...process.env, PORT: String(API_PORT) },
+    stdio: "inherit",
+  });
+  child.on("exit", (code) => {
+    console.error(`[termos-landing] api-server exited (code ${code}); restarting in 2s`);
+    setTimeout(startApiServer, 2000);
+  });
+}
+startApiServer();
+
+/** Reenvía la request tal cual al api-server interno; 502 si no responde. */
+function proxyToApi(req, res) {
+  const upstream = httpRequest(
+    {
+      host: "127.0.0.1",
+      port: API_PORT,
+      path: req.url,
+      method: req.method,
+      headers: req.headers,
+    },
+    (upRes) => {
+      res.writeHead(upRes.statusCode || 502, upRes.headers);
+      upRes.pipe(res);
+    },
+  );
+  upstream.on("error", () => {
+    res.writeHead(502, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "API no disponible" }));
+  });
+  req.pipe(upstream);
+}
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -179,6 +226,12 @@ async function serve(req, res) {
     return;
   }
   if ((method === "GET" || method === "HEAD") && handleServeRequest(pathname, res)) {
+    return;
+  }
+
+  // Resto de /api/* (pedidos, health) → api-server interno.
+  if (pathname.startsWith("/api/")) {
+    proxyToApi(req, res);
     return;
   }
 

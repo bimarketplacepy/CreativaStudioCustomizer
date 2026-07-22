@@ -127,6 +127,15 @@ export default defineConfig({
     port,
     host: "0.0.0.0",
     allowedHosts: true,
+    // Todo /api (salvo design-preview, atendido arriba por el plugin) va al
+    // @workspace/api-server (pedidos, health). Mismo puerto interno que usa
+    // server.mjs en producción.
+    proxy: {
+      "/api": {
+        target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:3101",
+        changeOrigin: false,
+      },
+    },
     headers: process.env.NODE_ENV !== "production" ? {
       "Cache-Control": "no-store, no-cache, must-revalidate",
       "Pragma": "no-cache",

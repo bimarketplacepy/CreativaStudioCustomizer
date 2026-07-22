@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: orders
+    description: Customizer order operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,73 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /orders:
+    post:
+      operationId: createOrder
+      tags: [orders]
+      summary: Create a customizer order
+      description: >
+        Creates an order from the customizer's final step. Accepts the
+        customization specs plus the rendered preview image as a base64 data
+        URL (~1080px JPEG/PNG, decoded size capped at 3MB). Returns the
+        human-readable order number and the permanent public URL of the
+        stored preview image.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderRequest"
+      responses:
+        "201":
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateOrderResponse"
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "413":
+          description: Image too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+  /orders/{orderNumber}:
+    get:
+      operationId: getOrder
+      tags: [orders]
+      summary: Get an order by its order number
+      description: Returns the full order record (internal use).
+      parameters:
+        - name: orderNumber
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +102,136 @@ components:
           type: string
       required:
         - status
+    ApiErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+    CreateOrderRequest:
+      type: object
+      properties:
+        product:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Product type (Termo, Chopera, Hoppie, …)
+        material:
+          type: string
+          minLength: 1
+          maxLength: 120
+        color:
+          type: string
+          maxLength: 120
+          description: Color name + hex, e.g. "Borgoña (#6d2434)"
+        technique:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Grabado láser / Impresión UV / Plotter de corte
+        customText:
+          type: string
+          maxLength: 500
+        font:
+          type: string
+          maxLength: 120
+        textColor:
+          type: string
+          maxLength: 40
+          description: Only when technique is UV printing
+        iconName:
+          type: string
+          maxLength: 120
+        hasUploadedImage:
+          type: boolean
+          default: false
+        designState:
+          type: object
+          additionalProperties: true
+          description: Full snapshot of the design state, enough to reproduce it
+        previewImage:
+          type: string
+          description: Rendered preview as a base64 data URL (image/png or image/jpeg)
+      required:
+        - product
+        - material
+        - technique
+        - designState
+    CreateOrderResponse:
+      type: object
+      properties:
+        orderNumber:
+          type: string
+          description: Human-readable order number, e.g. CS-0042
+        previewImageUrl:
+          type: string
+          nullable: true
+          description: Permanent public URL of the stored preview image
+      required:
+        - orderNumber
+        - previewImageUrl
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        orderNumber:
+          type: string
+        status:
+          type: string
+          enum: [nueva, en_proceso, completada, cancelada]
+        product:
+          type: string
+        material:
+          type: string
+        color:
+          type: string
+          nullable: true
+        technique:
+          type: string
+        customText:
+          type: string
+          nullable: true
+        font:
+          type: string
+          nullable: true
+        textColor:
+          type: string
+          nullable: true
+        iconName:
+          type: string
+          nullable: true
+        hasUploadedImage:
+          type: boolean
+        designState:
+          type: object
+          additionalProperties: true
+        previewImagePath:
+          type: string
+          nullable: true
+        previewImageUrl:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - orderNumber
+        - status
+        - product
+        - material
+        - color
+        - technique
+        - customText
+        - font
+        - textColor
+        - iconName
+        - hasUploadedImage
+        - designState
+        - previewImagePath
+        - previewImageUrl
+        - createdAt
 

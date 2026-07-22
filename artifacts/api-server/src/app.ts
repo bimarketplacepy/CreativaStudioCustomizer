@@ -26,7 +26,9 @@ app.use(
   }),
 );
 app.use(cors());
-app.use(express.json());
+// El preview del pedido viaja como data URL base64 (~3MB de imagen ≈ ~4.1MB
+// de JSON), así que el límite por defecto de 100kb no alcanza.
+app.use(express.json({ limit: "6mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);

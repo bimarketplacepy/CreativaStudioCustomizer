@@ -40,7 +40,8 @@ import {
 } from "@/lib/materials";
 import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
 import { whatsappUrl } from "@/lib/contact";
-import { dataUrlToJpeg, downloadDataUrl, uploadPreview } from "@/lib/share";
+import { dataUrlToJpeg, downloadDataUrl } from "@/lib/share";
+import { useCreateOrder, type CreateOrderRequest } from "@workspace/api-client-react";
 import { Download, Loader2 } from "lucide-react";
 
 /** Text scale bounds. Capped low so a name never blows out past the band. */
@@ -1045,6 +1046,12 @@ export default function Customizer() {
   const [font, setFont] = useState(FONTS[0].id);
   const activeFont = FONTS.find(f => f.id === font) || FONTS[0];
   const [isOrdered, setIsOrdered] = useState(false);
+  // Número del último pedido creado ("CS-0042") para la confirmación breve del
+  // paso; null cuando el POST falló y el mensaje salió por el fallback.
+  const [lastOrderNumber, setLastOrderNumber] = useState<string | null>(null);
+  const [orderFallback, setOrderFallback] = useState(false);
+  // Hook tipado generado por Orval (react-query) para POST /api/orders.
+  const { mutateAsync: createOrderAsync } = useCreateOrder();
   // Subida del preview al tocar "Continuar por WhatsApp": estado de carga del botón.
   const [isPreparing, setIsPreparing] = useState(false);
   // PNG snapshot of the finished 3D piece, shown in the Step 4 summary and sent
@@ -1498,21 +1505,23 @@ export default function Customizer() {
     }
   };
 
+  // Solo el TIPO de producto (Termo, Chopera, Copa…), sin tamaño ni material.
+  // Compartidos por el resumen visual, el mensaje de WhatsApp y el POST del
+  // pedido — una única fuente, cero lógica duplicada.
+  const orderProductName = isDrinkware
+    ? product.singular
+    : material.pens ? "Bolígrafo" : (activeMProduct?.name ?? activeObject?.singular ?? material.name);
+  const orderTechniqueName = isDrinkware
+    ? activeTechnique.name
+    : materialId === "plastico" ? "Plotter de corte" : "Grabado láser";
+
   /** Campos del pedido — ÚNICA fuente de datos del "Resumen de tu
    *  personalización" (Paso 4) y del mensaje de WhatsApp. Campos sin dato se
    *  omiten por completo (nunca "Texto: —"). */
   const orderFields = (): [string, string][] => {
-    // Solo el TIPO de producto (Termo, Chopera, Copa…), sin tamaño ni material.
-    const productName = isDrinkware
-      ? product.singular
-      : material.pens ? "Bolígrafo" : (activeMProduct?.name ?? activeObject?.singular ?? material.name);
-    const techniqueName = isDrinkware
-      ? activeTechnique.name
-      : materialId === "plastico" ? "Plotter de corte" : "Grabado láser";
-
     const rows: [string, string][] = [
-      ["Producto", productName],
-      ["Técnica", techniqueName],
+      ["Producto", orderProductName],
+      ["Técnica", orderTechniqueName],
     ];
     const trimmedText = text.trim();
     if (trimmedText) rows.push(["Texto", `${trimmedText} (${activeFont.name})`]);
@@ -1521,36 +1530,84 @@ export default function Customizer() {
     return rows;
   };
 
-  const buildOrderMessage = (imageUrl: string | null): string => {
-    const lines = orderFields().map(([k, v]) => `- ${k}: ${v}`);
-    // Sin emojis: en algunos dispositivos llegan rotos ("�") al prellenar wa.me.
-    const header = "¡Hola! Estuve creando mi diseño en el personalizador y me encantaría personalizar mi producto. Estos son los detalles:";
-    const footer = imageUrl ? `\n\nAsí quedó mi diseño: ${imageUrl}` : "";
-    return `${header}\n${lines.join("\n")}${footer}`;
+  /** Cuerpo del POST /api/orders: los mismos datos del resumen más el snapshot
+   *  completo del diseño (suficiente para reabrirlo/reproducirlo después). */
+  const orderPayload = (previewImage: string | null): CreateOrderRequest => {
+    const trimmedText = text.trim();
+    const colorLabel = isGlass
+      ? "Cristal transparente"
+      : (isDrinkware || activeObject?.colorable)
+        ? `${activeColorName} (${activeColorHex})`
+        : undefined;
+    return {
+      product: orderProductName,
+      material: material.name,
+      color: colorLabel,
+      technique: orderTechniqueName,
+      customText: trimmedText || undefined,
+      font: trimmedText ? activeFont.name : undefined,
+      // El color de texto solo aplica en impresión UV (láser es monocromático).
+      textColor: trimmedText && effectiveTechnique === "eufy" ? textColor : undefined,
+      iconName: selectedIcon?.name,
+      hasUploadedImage: !!customImage,
+      designState: {
+        materialId,
+        materialProductId,
+        productId,
+        sizeId: size,
+        colorId: color,
+        customHex,
+        colorHex: activeColorHex,
+        finish,
+        technique: effectiveTechnique,
+        plan,
+        text,
+        fontId: font,
+        textColor,
+        iconId,
+        hasCustomImage: !!customImage,
+        simpleKind,
+        textPlacement,
+        artPlacement,
+      },
+      previewImage: previewImage ?? undefined,
+    };
   };
 
-  /** Máximo que esperamos la subida del preview antes de seguir sin la línea
-   *  de imagen. Generoso porque el fallo no se muestra: la pestaña "Preparando
-   *  tu diseño…" ya le explica la espera al cliente. */
-  const UPLOAD_TIMEOUT_MS = 12000;
+  /** Mensaje de WhatsApp — sale de orderFields(), la misma fuente que el
+   *  resumen visual. Con pedido creado suma el número y la URL del diseño. */
+  const buildOrderMessage = (orderNumber: string | null, imageUrl: string | null): string => {
+    const parts = ["¡Hola! Acabo de armar mi pedido personalizado y quiero coordinarlo con ustedes."];
+    if (orderNumber) parts.push(`Pedido: ${orderNumber}`);
+    parts.push(...orderFields().map(([k, v]) => `${k}: ${v}`));
+    if (imageUrl) parts.push(`Así quedó mi diseño:\n${imageUrl}`);
+    // Renglón en blanco entre datos para que WhatsApp lo muestre ordenado.
+    return parts.join("\n\n");
+  };
 
-  /** Captura el diseño de frente, lo sube al backend y abre WhatsApp con las
-   *  especificaciones + la URL pública de la imagen. Si la URL no se pudo
-   *  generar, el mensaje sale igual, solo con las especificaciones: nunca se
-   *  abre la hoja de compartir del sistema ni se adjunta un archivo del
-   *  dispositivo (el cliente tiene "Descargar imagen" si la quiere sumar). */
+  /** Máximo que esperamos al backend de pedidos. Pasado esto, el mensaje sale
+   *  igual por WhatsApp sin número de pedido ni URL de imagen: el cliente
+   *  SIEMPRE llega a WhatsApp aunque el backend esté caído. */
+  const ORDER_TIMEOUT_MS = 8000;
+
+  /** Captura el diseño de frente, crea el pedido (POST /api/orders con specs +
+   *  imagen) y abre WhatsApp con el número de pedido y la URL permanente del
+   *  preview. Si el POST falla o tarda de más, fallback: mensaje solo con las
+   *  especificaciones, más un aviso sutil y el botón "Descargar imagen". */
   const handleOrder = async () => {
     if (isOrdered || isPreparing) return;
     setIsPreparing(true);
+    setOrderFallback(false);
+    setLastOrderNumber(null);
 
     // La pestaña debe abrirse sincrónica al click (si no, el bloqueador de
-    // pop-ups la mata); la URL de WhatsApp se asigna cuando el mensaje está
+    // pop-ups la mata); la URL de WhatsApp se asigna cuando el pedido está
     // listo. Mientras tanto muestra un texto de espera.
     const win = window.open("", "_blank");
     if (win) {
       try {
         win.document.write(
-          '<title>Preparando tu diseño…</title><body style="margin:0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;color:#5f574d">Preparando tu diseño…</body>'
+          '<title>Creando tu pedido…</title><body style="margin:0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;color:#5f574d">Creando tu pedido…</body>'
         );
       } catch { /* pestaña en blanco un instante; nada que hacer */ }
     }
@@ -1561,22 +1618,31 @@ export default function Customizer() {
       thermosSnapRef.current?.(designFaceU);
       await new Promise(resolve => setTimeout(resolve, 150));
 
-      // Captura nítida para el resumen/descarga; para subir se re-encodea a
-      // JPEG ~1080px (mucho más liviano que el PNG: sube rápido y nunca pisa
-      // el límite de tamaño del endpoint).
+      // Captura nítida para el resumen/descarga; al server viaja re-encodeada
+      // a JPEG ~1080px (mucho más liviana que el PNG: sube rápido y queda
+      // holgada bajo el límite de 3MB del endpoint).
       const full = capturePreview() ?? previewImgRef.current;
       if (full) { setPreviewImg(full); previewImgRef.current = full; }
+      const jpeg = full ? await dataUrlToJpeg(full, 1080) : null;
 
+      let orderNumber: string | null = null;
       let imageUrl: string | null = null;
-      if (full) {
-        const jpeg = await dataUrlToJpeg(full, 1080);
-        imageUrl = await Promise.race([
-          uploadPreview(jpeg),
-          new Promise<null>(resolve => setTimeout(() => resolve(null), UPLOAD_TIMEOUT_MS)),
+      try {
+        const created = await Promise.race([
+          createOrderAsync({ data: orderPayload(jpeg) }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("order timeout")), ORDER_TIMEOUT_MS),
+          ),
         ]);
+        orderNumber = created.orderNumber;
+        imageUrl = created.previewImageUrl ?? null;
+      } catch {
+        // Backend caído o lento: aviso sutil y el mensaje sale solo con specs.
+        setOrderFallback(true);
       }
 
-      const url = whatsappUrl(buildOrderMessage(imageUrl));
+      setLastOrderNumber(orderNumber);
+      const url = whatsappUrl(buildOrderMessage(orderNumber, imageUrl));
       if (win && !win.closed) win.location.replace(url);
       else window.open(url, "_blank", "noopener");
 
@@ -1770,9 +1836,20 @@ export default function Customizer() {
         className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
       >
         {isPreparing ? (
-          <><Loader2 className="w-4 h-4 animate-spin" /> Preparando tu diseño...</>
-        ) : isOrdered ? "Abriendo WhatsApp..." : ctaLabel}
+          <><Loader2 className="w-4 h-4 animate-spin" /> Creando tu pedido...</>
+        ) : isOrdered ? (
+          lastOrderNumber ? `Pedido ${lastOrderNumber} creado ✓` : "Abriendo WhatsApp..."
+        ) : ctaLabel}
       </Button>
+
+      {/* Aviso sutil cuando el backend no respondió: el pedido salió igual por
+          WhatsApp, solo que sin número ni imagen. */}
+      {orderFallback && (
+        <p className="text-xs text-amber-700 text-center leading-relaxed">
+          No pudimos registrar tu pedido online, pero tus especificaciones salen
+          igual por WhatsApp. Si querés, descargá la imagen y sumala al chat.
+        </p>
+      )}
 
       {previewImg && (
         <button
