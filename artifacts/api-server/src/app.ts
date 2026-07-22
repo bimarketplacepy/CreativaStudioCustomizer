@@ -32,8 +32,10 @@ app.use(cors());
 app.use(express.json({ limit: "6mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-app.use("/api", router);
-// Panel interno del taller: define /admin (página) y /api/admin/* (datos).
+// Panel interno del taller: /admin y /api/admin (página) + /api/admin/orders
+// (datos). /api/admin es la ruta canónica: en el deployment de Replit el edge
+// solo entrega /api/* a la app (el resto lo sirve estático con fallback SPA).
 app.use(adminRouter);
+app.use("/api", router);
 
 export default app;

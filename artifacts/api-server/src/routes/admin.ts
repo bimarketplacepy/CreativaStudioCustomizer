@@ -3,7 +3,7 @@
 // /api/admin/orders, que exige la clave interna (401 sin ella). La clave que
 // tipea el operario queda en sessionStorage y viaja por header en cada fetch.
 
-import { Router, type IRouter, type Request } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { desc } from "drizzle-orm";
 import { db, ordersTable } from "@workspace/db";
 import { checkInternalKey } from "../lib/internal-key";
@@ -57,13 +57,19 @@ router.get("/api/admin/orders", async (req, res) => {
   }
 });
 
-// GET /admin — shell HTML autocontenido (sin datos hasta autenticar).
-router.get("/admin", (_req, res) => {
+// GET /api/admin (y /admin) — shell HTML autocontenido (sin datos hasta
+// autenticar). La ruta canónica es /api/admin: en el deployment de Replit el
+// edge sirve estáticamente todo lo que no empieza con /api/* (con fallback
+// SPA), así que /admin a secas nunca llega a este server en producción;
+// se conserva igual para desarrollo y para un hosting propio.
+const servePage = (_req: Request, res: Response) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Robots-Tag", "noindex, nofollow");
   res.end(ADMIN_HTML);
-});
+};
+router.get("/api/admin", servePage);
+router.get("/admin", servePage);
 
 const ADMIN_HTML = `<!DOCTYPE html>
 <html lang="es">
