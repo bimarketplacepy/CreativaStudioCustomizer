@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
+import adminRouter from "./routes/admin";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
@@ -32,5 +33,7 @@ app.use(express.json({ limit: "6mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
+// Panel interno del taller: define /admin (página) y /api/admin/* (datos).
+app.use(adminRouter);
 
 export default app;

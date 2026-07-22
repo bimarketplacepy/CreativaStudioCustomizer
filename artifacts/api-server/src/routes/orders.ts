@@ -11,20 +11,18 @@ import {
   loadOrderImage,
 } from "../lib/order-images";
 import { buildProductionSvg } from "../lib/production-svg";
+import { checkInternalKey } from "../lib/internal-key";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
 /**
- * Clave interna para el material de producción (archivo vectorial). Se acepta
- * por header `x-internal-key` o query `?key=`. Sin INTERNAL_ACCESS_KEY en el
- * entorno, el acceso interno queda deshabilitado por completo (nunca abierto).
+ * Clave interna para el material de producción (archivo vectorial y panel
+ * /admin). Se acepta por header `x-internal-key` o query `?key=`.
  */
 function hasInternalKey(req: Request): boolean {
-  const expected = process.env.INTERNAL_ACCESS_KEY;
-  if (!expected) return false;
   const got = req.headers["x-internal-key"] ?? req.query.key;
-  return typeof got === "string" && got === expected;
+  return checkInternalKey(got);
 }
 
 /**

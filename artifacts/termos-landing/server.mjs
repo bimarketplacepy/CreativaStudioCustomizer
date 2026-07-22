@@ -229,8 +229,10 @@ async function serve(req, res) {
     return;
   }
 
-  // Resto de /api/* (pedidos, health) → api-server interno.
-  if (pathname.startsWith("/api/")) {
+  // Resto de /api/* (pedidos, health) → api-server interno. /admin es el
+  // panel interno del taller (vive en el api-server); si no se proxya acá,
+  // caería en el fallback del SPA.
+  if (pathname.startsWith("/api/") || pathname === "/admin" || pathname.startsWith("/admin/")) {
     proxyToApi(req, res);
     return;
   }
