@@ -127,7 +127,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
 <div class="wrap">
   <div id="login">
     <h1>Panel de pedidos</h1>
-    <p>Acceso interno del taller.</p>
+    <p>Acceso interno</p>
     <form id="loginForm">
       <input id="pw" type="password" placeholder="Contraseña" autocomplete="current-password" autofocus>
       <button class="btn primary" type="submit">Entrar</button>
