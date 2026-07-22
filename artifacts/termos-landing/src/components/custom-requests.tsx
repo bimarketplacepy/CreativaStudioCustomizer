@@ -29,7 +29,7 @@ export default function CustomRequests() {
             href={whatsappUrl("¡Hola! ¿Qué tal? Quisiera personalizar algo que no vi en la página. ¿Me ayudan a resolverlo?")}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2.5 bg-[#8B1A2F] hover:bg-[#721527] text-white px-10 py-4 text-[11px] font-semibold uppercase tracking-[0.25em] transition-colors"
+            className="inline-flex items-center gap-2.5 bg-[#8B1A2F] hover:bg-[#721527] text-white px-10 py-4 min-h-12 text-xs font-semibold uppercase tracking-[0.25em] transition-colors"
           >
             <MessageCircle className="w-4 h-4" strokeWidth={1.75} />
             Escríbanos
@@ -56,7 +56,7 @@ export default function CustomRequests() {
               href={whatsappUrl("Hola, quiero consultar por personalización corporativa en cantidad.")}
               target="_blank"
               rel="noopener noreferrer"
-              className="shrink-0 self-start md:self-center inline-flex items-center gap-2.5 bg-[#8B1A2F] hover:bg-[#721527] text-white px-8 py-4 text-[11px] font-semibold uppercase tracking-[0.25em] transition-colors"
+              className="shrink-0 self-start md:self-center inline-flex items-center gap-2.5 bg-[#8B1A2F] hover:bg-[#721527] text-white px-8 py-4 min-h-12 text-xs font-semibold uppercase tracking-[0.25em] transition-colors"
             >
               <MessageCircle className="w-4 h-4" strokeWidth={1.75} />
               Consultar por volumen

@@ -13,7 +13,9 @@ const SUPPORT_LINKS = [
 
 export default function Footer() {
   return (
-    <footer id="contacto" className="bg-white border-t border-border pt-12 pb-6 px-6">
+    // pb con reserva para el FAB de WhatsApp (no tapa los íconos sociales al
+    // llegar al final) + safe-area inferior.
+    <footer id="contacto" className="scroll-mt-20 bg-white border-t border-border pt-12 px-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6">
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-10 mb-10">
         <div className="md:col-span-2">
           <img
@@ -54,16 +56,17 @@ export default function Footer() {
 
         <div>
           <h4 className="font-semibold text-foreground mb-4 text-sm">Explorar</h4>
-          <ul className="space-y-2.5 text-sm text-muted-foreground">
-            <li><a href="#personalizaciones" className="hover:text-primary transition-colors">Qué personalizamos</a></li>
-            <li><a href="#customizer" className="hover:text-primary transition-colors">Personalizador</a></li>
-            <li><a href="#precios" className="hover:text-primary transition-colors">Precios de grabado</a></li>
+          {/* inline-block py-1.5: área tocable ≥32px por link (antes ~20px). */}
+          <ul className="space-y-1 text-sm text-muted-foreground">
+            <li><a href="#personalizaciones" className="inline-block py-1.5 hover:text-primary active:text-primary transition-colors">Qué personalizamos</a></li>
+            <li><a href="#customizer" className="inline-block py-1.5 hover:text-primary active:text-primary transition-colors">Personalizador</a></li>
+            <li><a href="#precios" className="inline-block py-1.5 hover:text-primary active:text-primary transition-colors">Precios de grabado</a></li>
             <li>
               <a
                 href={whatsappUrl("¡Hola! ¿Qué tal? Me interesan los regalos corporativos personalizados y me encantaría que me cuenten un poco más.")}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:text-primary transition-colors"
+                className="inline-block py-1.5 hover:text-primary active:text-primary transition-colors"
               >
                 Regalos corporativos
               </a>
@@ -73,14 +76,14 @@ export default function Footer() {
 
         <div>
           <h4 className="font-semibold text-foreground mb-4 text-sm">Soporte</h4>
-          <ul className="space-y-2.5 text-sm text-muted-foreground">
+          <ul className="space-y-1 text-sm text-muted-foreground">
             {SUPPORT_LINKS.map(item => (
               <li key={item.label}>
                 <a
                   href={whatsappUrl(item.message)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="hover:text-primary transition-colors"
+                  className="inline-block py-1.5 hover:text-primary active:text-primary transition-colors"
                 >
                   {item.label}
                 </a>
@@ -106,7 +109,7 @@ export default function Footer() {
               target="_blank"
               rel="noopener noreferrer"
               aria-label={label}
-              className="grid h-9 w-9 place-items-center rounded-full border border-border text-muted-foreground transition-colors hover:border-[#8B1A2F] hover:text-[#8B1A2F]"
+              className="grid h-11 w-11 place-items-center rounded-full border border-border text-muted-foreground transition-colors hover:border-[#8B1A2F] hover:text-[#8B1A2F] active:border-[#8B1A2F] active:text-[#8B1A2F]"
             >
               <Icon className="w-4 h-4" />
             </a>

@@ -1,10 +1,12 @@
 import React from "react";
-import { motion } from "framer-motion";
+import { motion, MotionConfig } from "framer-motion";
 import { ENGRAVING_BASE, ENGRAVING_PLANS } from "@/lib/engraving-plans";
 
 export default function PricingEngraving() {
   return (
-    <section id="precios" className="bg-[#1A1614] py-24 md:py-32 px-6">
+    // py alineado al ritmo del resto de las secciones (antes py-24/32, outlier).
+    <section id="precios" className="scroll-mt-20 bg-[#1A1614] py-16 md:py-24 px-6">
+      <MotionConfig reducedMotion="user">
       <motion.div
         className="max-w-2xl mx-auto"
         initial={{ opacity: 0, y: 20 }}
@@ -13,7 +15,7 @@ export default function PricingEngraving() {
         transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
       >
         <div className="text-center mb-16">
-          <p className="text-white/40 text-[11px] font-semibold uppercase tracking-[0.35em] mb-5">
+          <p className="text-white/60 text-[11px] font-semibold uppercase tracking-[0.35em] mb-5">
             Tarifas
           </p>
           <p className="text-white/50 text-sm font-light leading-relaxed">
@@ -41,6 +43,7 @@ export default function PricingEngraving() {
           ))}
         </div>
       </motion.div>
+      </MotionConfig>
     </section>
   );
 }

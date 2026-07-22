@@ -62,7 +62,9 @@ export default function Hero() {
       </header>
 
       {/* Hero — full bleed dark, editorial */}
-      <section className="relative min-h-[92vh] flex items-center overflow-hidden" style={{ backgroundColor: HERO_BASE }}>
+      {/* 92svh (con fallback vh): el viewport chico de móvil evita que la barra
+          del navegador corra el contenido al scrollear. */}
+      <section className="relative min-h-[92vh] supports-[height:100svh]:min-h-[92svh] flex items-center overflow-hidden" style={{ backgroundColor: HERO_BASE }}>
         {/* Background — a blurred echo of the active carousel image over a solid
             base, fading in as the carousel advances. The overlay keeps the copy
             legible no matter which image is showing. keyed por bgSrc: al cambiar,
@@ -88,12 +90,14 @@ export default function Hero() {
         <div className="absolute bottom-0 left-0 h-px w-full bg-white/10" />
         <div className="absolute bottom-0 left-0 h-px w-24 bg-[#8B1A2F]" />
 
-        <div className="relative z-10 w-full max-w-7xl mx-auto px-6 py-24 flex flex-col lg:flex-row items-center gap-14 lg:gap-0">
+        {/* Padding y gaps compactos en móvil: ganan ~110px para que el carrusel
+            asome en el fold de 360×800; desktop conserva el aire original. */}
+        <div className="relative z-10 w-full max-w-7xl mx-auto px-6 py-10 md:py-24 flex flex-col lg:flex-row items-center gap-8 md:gap-14 lg:gap-0">
           {/* Left — editorial copy. Renders static (no entrance animation): the
               <h1> is the LCP element on mobile, so it must paint the instant
               React commits, not fade in. */}
           <div className="flex-1">
-            <p className="text-white/55 text-[11px] uppercase tracking-[0.4em] mb-10 font-medium">
+            <p className="text-white/70 text-[11px] uppercase tracking-[0.4em] mb-6 md:mb-10 font-medium">
               Creativa Studio · Personalización
             </p>
 
@@ -106,7 +110,7 @@ export default function Hero() {
               Elija el formato, el color y el grabado. Una pieza de excelencia, tan única como quien la lleva.
             </p>
 
-            <p className="text-white/55 text-sm max-w-md mb-12 leading-relaxed font-light border-l-2 border-[#8B1A2F] pl-4">
+            <p className="text-white/55 text-sm max-w-md mb-8 md:mb-12 leading-relaxed font-light border-l-2 border-[#8B1A2F] pl-4">
               ¿Ya tiene su termo o su vaso? Tráigalo y lo personalizamos igual: también trabajamos
               sobre productos que no fueron comprados en nuestra tienda.
             </p>
@@ -114,13 +118,13 @@ export default function Hero() {
             <div className="flex flex-col sm:flex-row gap-4">
               <button
                 onClick={scrollToCustomizer}
-                className="bg-[#8B1A2F] hover:bg-[#721527] text-white px-9 py-4 text-[11px] font-semibold uppercase tracking-[0.25em] transition-colors"
+                className="bg-[#8B1A2F] hover:bg-[#721527] active:bg-[#721527] text-white px-9 py-4 min-h-12 text-xs font-semibold uppercase tracking-[0.25em] transition-colors"
               >
-                Comenzar
+                Personalizar mi producto
               </button>
               <button
                 onClick={() => scrollTo("precios")}
-                className="border border-white/20 hover:border-white/50 text-white/70 hover:text-white px-9 py-4 text-[11px] font-semibold uppercase tracking-[0.25em] transition-colors"
+                className="border border-white/20 hover:border-white/50 text-white/70 hover:text-white px-9 py-4 min-h-12 text-xs font-semibold uppercase tracking-[0.25em] transition-colors"
               >
                 Ver precios
               </button>

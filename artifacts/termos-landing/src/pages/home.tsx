@@ -19,9 +19,18 @@ const WhatsAppButton = lazy(() => import("@/components/whatsapp-button"));
 const CustomizerTutorial = lazy(() => import("@/components/customizer-tutorial"));
 
 /** Minimal placeholder while a lazy section streams in — reserves vertical
- *  space so nothing jumps (keeps CLS at 0). */
-function SectionFallback({ minH = "60vh" }: { minH?: string }) {
-  return <div aria-hidden style={{ minHeight: minH }} className="w-full" />;
+ *  space so nothing jumps (keeps CLS at 0). With `label`, shows a subtle
+ *  shimmer + text instead of a blank block (used by the heavy customizer). */
+function SectionFallback({ minH = "60vh", label }: { minH?: string; label?: string }) {
+  return (
+    <div
+      aria-hidden
+      style={{ minHeight: minH }}
+      className={label ? "w-full section-shimmer flex items-center justify-center" : "w-full"}
+    >
+      {label && <span className="text-sm text-muted-foreground">{label}</span>}
+    </div>
+  );
 }
 
 export default function Home() {
@@ -32,7 +41,7 @@ export default function Home() {
         <FunnelDemo />
       </Suspense>
       <DeferUntilVisible id="customizer" minHeight="90vh">
-        <Suspense fallback={<SectionFallback minH="90vh" />}>
+        <Suspense fallback={<SectionFallback minH="90vh" label="Cargando personalizador…" />}>
           <Customizer />
         </Suspense>
       </DeferUntilVisible>

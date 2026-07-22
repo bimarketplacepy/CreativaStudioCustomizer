@@ -1,17 +1,21 @@
-import React from "react";
-import { motion } from "framer-motion";
+import React, { Suspense, lazy, useState } from "react";
+import { motion, MotionConfig } from "framer-motion";
 import { GALLERY_IMAGES } from "@/lib/gallery-images";
 
 /** A curated selection of real work — a lookbook, not a dump of every file. */
 const CURATED = GALLERY_IMAGES.slice(0, 12);
 
+// El lightbox se monta recién al primer tap: su chunk no toca el bundle inicial.
+const GalleryLightbox = lazy(() => import("@/components/gallery-lightbox"));
+
 export default function Gallery() {
   const scrollToCustomizer = () => {
     document.getElementById("customizer")?.scrollIntoView({ behavior: "smooth" });
   };
+  const [lightbox, setLightbox] = useState<number | null>(null);
 
   return (
-    <section id="galeria" className="bg-white py-20 md:py-28 px-6 border-t border-border">
+    <section id="galeria" className="scroll-mt-20 bg-white py-20 md:py-28 px-6 border-t border-border">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="max-w-2xl mb-14">
@@ -27,6 +31,7 @@ export default function Gallery() {
         </div>
 
         {/* Lookbook grid */}
+        <MotionConfig reducedMotion="user">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
           {CURATED.map((img, idx) => (
             <motion.figure
@@ -56,9 +61,29 @@ export default function Gallery() {
               <figcaption className="pointer-events-none absolute inset-x-4 bottom-4 translate-y-2 opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100">
                 <span className="text-sm font-light text-white drop-shadow">{img.caption}</span>
               </figcaption>
+              {/* Tap → lightbox con la variante 900w y el caption visible (en
+                  táctil no existe el hover que revela el figcaption). */}
+              <button
+                type="button"
+                aria-label={`Ver en grande: ${img.caption}`}
+                onClick={() => setLightbox(idx)}
+                className="absolute inset-0 z-10 cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#8B1A2F]"
+              />
             </motion.figure>
           ))}
         </div>
+        </MotionConfig>
+
+        {lightbox !== null && (
+          <Suspense fallback={null}>
+            <GalleryLightbox
+              images={CURATED}
+              index={lightbox}
+              onClose={() => setLightbox(null)}
+              onNavigate={setLightbox}
+            />
+          </Suspense>
+        )}
 
         {/* Single, quiet closing CTA */}
         <div className="mt-16 flex flex-col items-center text-center gap-6">
@@ -67,9 +92,9 @@ export default function Gallery() {
           </h3>
           <button
             onClick={scrollToCustomizer}
-            className="bg-[#8B1A2F] hover:bg-[#721527] text-white px-10 py-4 text-[11px] font-semibold uppercase tracking-[0.25em] transition-colors"
+            className="bg-[#8B1A2F] hover:bg-[#721527] active:bg-[#721527] text-white px-10 py-4 min-h-12 text-xs font-semibold uppercase tracking-[0.25em] transition-colors"
           >
-            Comenzar
+            Personalizar mi producto
           </button>
         </div>
       </div>

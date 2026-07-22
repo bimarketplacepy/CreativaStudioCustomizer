@@ -144,7 +144,8 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
               }}
               placeholder="https://ejemplo.com/logo.png"
               disabled={isProcessing}
-              className="w-full rounded-lg border border-border bg-background pl-9 pr-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/60 disabled:opacity-60"
+              // text-base en móvil: bajo 16px iOS fuerza zoom al enfocar el input.
+              className="w-full rounded-lg border border-border bg-background pl-9 pr-3 py-2 text-base md:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/60 disabled:opacity-60"
             />
           </div>
           <button
@@ -186,7 +187,7 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
                   const { other, ...current } = value;
                   onChange({ ...other!, other: current });
                 }}
-                className="mt-1.5 text-xs font-medium text-primary underline underline-offset-2 hover:opacity-80 transition-opacity"
+                className="mt-1.5 inline-block py-1.5 text-xs font-medium text-primary underline underline-offset-2 hover:opacity-80 active:opacity-80 transition-opacity"
               >
                 {value.backgroundRemoved
                   ? "¿El recorte quedó raro? Usar la imagen original"

@@ -487,3 +487,18 @@ body.wa-fab-hidden .wa-fab {
     animation-iteration-count: 1;
   }
 }
+
+/* Shimmer sutil del placeholder del customizer mientras baja su chunk lazy.
+   Mismo minHeight que el fallback vacío anterior: CLS intacto. */
+.section-shimmer {
+  background: linear-gradient(100deg, transparent 25%, rgb(26 22 20 / 0.05) 50%, transparent 75%);
+  background-size: 200% 100%;
+  animation: sectionShimmer 1.6s ease-in-out infinite;
+}
+@keyframes sectionShimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .section-shimmer { animation: none; }
+}

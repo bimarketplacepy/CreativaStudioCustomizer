@@ -22,7 +22,7 @@ const TECHNIQUES = [
 
 export default function PersonalizationInfo() {
   return (
-    <section id="personalizaciones" className="py-12 md:py-28 px-4 sm:px-6 bg-[#faf7f2] border-b border-border">
+    <section id="personalizaciones" className="scroll-mt-20 py-12 md:py-28 px-4 sm:px-6 bg-[#faf7f2] border-b border-border">
       <div className="max-w-7xl mx-auto">
         <div className="mb-7 md:mb-14 max-w-2xl">
           <p className="text-[#8B1A2F] text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.25em] sm:tracking-[0.3em] mb-2 md:mb-4">
@@ -45,7 +45,7 @@ export default function PersonalizationInfo() {
                 <Icon className="w-4 h-4 sm:w-[18px] sm:h-[18px]" strokeWidth={1.5} />
               </div>
               <h3 className="font-medium text-[13px] sm:text-base text-[#1A1614] mb-1 sm:mb-1.5 leading-snug">{title}</h3>
-              <p className="text-[11px] sm:text-sm text-[#7a7266] leading-relaxed font-light">{desc}</p>
+              <p className="text-xs sm:text-sm text-[#6f685d] leading-relaxed font-light">{desc}</p>
             </div>
           ))}
         </div>
@@ -59,7 +59,7 @@ export default function PersonalizationInfo() {
               </div>
               <div>
                 <h3 className="font-medium text-[13px] sm:text-base text-[#1A1614] mb-1 sm:mb-1.5 leading-snug">{title}</h3>
-                <p className="text-[11px] sm:text-sm text-[#7a7266] leading-relaxed font-light">{desc}</p>
+                <p className="text-xs sm:text-sm text-[#6f685d] leading-relaxed font-light">{desc}</p>
               </div>
             </div>
           ))}
@@ -74,14 +74,15 @@ export default function PersonalizationInfo() {
               </div>
               <div>
                 <h3 className="font-medium text-[13px] sm:text-base text-[#1A1614] mb-1 sm:mb-1.5 leading-snug">{title}</h3>
-                <p className="text-[11px] sm:text-sm text-[#7a7266] leading-relaxed font-light">{desc}</p>
+                <p className="text-xs sm:text-sm text-[#6f685d] leading-relaxed font-light">{desc}</p>
               </div>
             </div>
           ))}
         </div>
 
-        {/* Discreet closing note — replaces the loud alert box. */}
-        <p className="mt-6 md:mt-10 text-[10px] sm:text-xs text-[#9c9488] leading-relaxed max-w-3xl font-light">
+        {/* Discreet closing note — replaces the loud alert box.
+            12px y #6f685d (≥4.5:1 sobre #faf7f2): antes 10px a #9c9488 fallaba AA. */}
+        <p className="mt-6 md:mt-10 text-xs text-[#6f685d] leading-relaxed max-w-3xl font-light">
           Esta página permite simular cómo se vería su pieza personalizada; no procesa compras ni pagos, y las
           opciones son ejemplos de lo posible.
         </p>

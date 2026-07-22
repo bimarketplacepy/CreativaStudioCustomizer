@@ -244,7 +244,7 @@ function WizardNav({ step, total, onBack, onNext, nextLabel }: {
         type="button"
         onClick={onBack}
         disabled={step === 1}
-        className="inline-flex items-center gap-1 px-4 py-2.5 rounded-full border border-border text-sm font-medium text-muted-foreground disabled:opacity-40 disabled:cursor-not-allowed"
+        className="inline-flex items-center gap-1 px-4 py-3 min-h-11 rounded-full border border-border text-sm font-medium text-muted-foreground disabled:opacity-40 disabled:cursor-not-allowed"
       >
         <ChevronLeft className="w-4 h-4" /> Atrás
       </button>
@@ -252,7 +252,7 @@ function WizardNav({ step, total, onBack, onNext, nextLabel }: {
         <button
           type="button"
           onClick={onNext}
-          className="flex-1 inline-flex items-center justify-center gap-1 px-4 py-2.5 rounded-full bg-primary text-primary-foreground text-sm font-semibold shadow-sm active:scale-[0.98] transition-transform"
+          className="flex-1 inline-flex items-center justify-center gap-1 px-4 py-3 min-h-11 rounded-full bg-primary text-primary-foreground text-sm font-semibold shadow-sm active:scale-[0.98] transition-transform"
         >
           {nextLabel ?? "Siguiente"} <ChevronRight className="w-4 h-4" />
         </button>
@@ -364,7 +364,7 @@ function TechniqueSelector({ value, onChange }: { value: TechniqueId; onChange: 
               <Icon className="w-4 h-4" />
               <span className="font-semibold text-sm">{t.name}</span>
               {t.color && (
-                <span className="ml-auto text-[10px] font-medium uppercase tracking-wide rounded-full px-2.5 py-0.5 bg-[#1A1614] text-white/90">
+                <span className="ml-auto text-[11px] font-medium uppercase tracking-wide rounded-full px-2.5 py-0.5 bg-[#1A1614] text-white/90">
                   Todo color
                 </span>
               )}
@@ -401,7 +401,9 @@ function DesignNudgeControl({ side, onNudge, onCenter }: {
 }) {
   const [open, setOpen] = useState(true);
   const pos = side === "left" ? "left-2.5" : "right-2.5";
-  const btn = "w-7 h-7 grid place-items-center rounded-md text-foreground/75 hover:text-primary hover:bg-white active:scale-90 transition";
+  // 36px + gap 6px: targets tocables sin que el pad (≈132×154px) desborde el
+  // visor móvil (mínimo 210px de alto, ancho ≈328px en un viewport de 360).
+  const btn = "w-9 h-9 grid place-items-center rounded-md text-foreground/75 hover:text-primary hover:bg-white active:scale-90 transition";
 
   if (!open) {
     return (
@@ -419,12 +421,13 @@ function DesignNudgeControl({ side, onNudge, onCenter }: {
   return (
     <div className={`absolute bottom-2.5 ${pos} z-20 rounded-xl bg-white/70 backdrop-blur-sm border border-border shadow-md p-1.5 select-none touch-none`}>
       <div className="flex items-center justify-between gap-3 px-1 pb-1">
-        <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Posición</span>
-        <button type="button" onClick={() => setOpen(false)} aria-label="Ocultar controles" className="text-muted-foreground hover:text-foreground">
-          <ChevronDown className="w-3.5 h-3.5" />
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Posición</span>
+        {/* p-2 -m-1: agranda el target táctil (~30px) sin mover el layout. */}
+        <button type="button" onClick={() => setOpen(false)} aria-label="Ocultar controles" className="p-2 -m-1 text-muted-foreground hover:text-foreground active:text-foreground">
+          <ChevronDown className="w-4 h-4" />
         </button>
       </div>
-      <div className="grid grid-cols-3 gap-0.5">
+      <div className="grid grid-cols-3 gap-1.5">
         <span />
         <button type="button" aria-label="Subir" className={btn} onClick={() => onNudge(0, -1)}><ChevronUp className="w-4 h-4" /></button>
         <span />
@@ -435,6 +438,37 @@ function DesignNudgeControl({ side, onNudge, onCenter }: {
         <button type="button" aria-label="Bajar" className={btn} onClick={() => onNudge(0, 1)}><ChevronDown className="w-4 h-4" /></button>
         <span />
       </div>
+    </div>
+  );
+}
+
+/** Chip sobre el visor que enseña el gesto de rotación. Bien visible (13px,
+ *  fondo black/55 sobre el canvas), desaparece con el primer toque sobre el
+ *  visor y no vuelve en la sesión. pointer-events-none: nunca intercepta el
+ *  gesto que enseña. */
+function RotateHintChip() {
+  const [visible, setVisible] = useState(() => {
+    try { return sessionStorage.getItem("cs-rotate-hint") !== "1"; } catch { return true; }
+  });
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!visible) return;
+    const parent = ref.current?.parentElement;
+    if (!parent) return;
+    const dismiss = () => {
+      try { sessionStorage.setItem("cs-rotate-hint", "1"); } catch { /* sin storage: solo esta vista */ }
+      setVisible(false);
+    };
+    parent.addEventListener("pointerdown", dismiss, { once: true });
+    return () => parent.removeEventListener("pointerdown", dismiss);
+  }, [visible]);
+  if (!visible) return null;
+  return (
+    <div ref={ref} className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center">
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-black/55 px-3.5 py-2 text-[13px] font-medium text-white backdrop-blur-sm">
+        <MoveHorizontal className="w-4 h-4" aria-hidden />
+        Arrastre para girar
+      </span>
     </div>
   );
 }
@@ -478,7 +512,7 @@ function PlacementControls({
               type="button"
               aria-label="Achicar"
               onClick={() => set({ scale: clampScale(Math.round((value.scale - 0.1) * 10) / 10) })}
-              className="w-7 h-7 shrink-0 grid place-items-center rounded-md border border-border text-muted-foreground hover:border-primary/50 hover:text-primary active:scale-95 transition-all"
+              className="w-9 h-9 shrink-0 grid place-items-center rounded-md border border-border text-muted-foreground hover:border-primary/50 hover:text-primary active:scale-95 transition-all"
             >
               <Minus className="w-3.5 h-3.5" />
             </button>
@@ -494,7 +528,7 @@ function PlacementControls({
               type="button"
               aria-label="Agrandar"
               onClick={() => set({ scale: clampScale(Math.round((value.scale + 0.1) * 10) / 10) })}
-              className="w-7 h-7 shrink-0 grid place-items-center rounded-md border border-border text-muted-foreground hover:border-primary/50 hover:text-primary active:scale-95 transition-all"
+              className="w-9 h-9 shrink-0 grid place-items-center rounded-md border border-border text-muted-foreground hover:border-primary/50 hover:text-primary active:scale-95 transition-all"
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
@@ -541,7 +575,7 @@ const TEXT_ALIGNS: { id: TextAlign; label: string; Icon: React.ComponentType<{ c
 function AlignButtons({ value, onChange, className, disabledIds }: { value: TextAlign | undefined; onChange: (a: TextAlign) => void; className?: string; disabledIds?: TextAlign[] }) {
   const active = value ?? "center";
   return (
-    <div className={`inline-flex items-center gap-1 ${className ?? ""}`} role="group" aria-label="Alineación del texto">
+    <div className={`inline-flex items-center gap-2 ${className ?? ""}`} role="group" aria-label="Alineación del texto">
       {TEXT_ALIGNS.map(a => {
         const on = active === a.id;
         const disabled = disabledIds?.includes(a.id) ?? false;
@@ -583,7 +617,7 @@ function LayoutButtons({ value, onChange, className, disabledIds, disabledReason
 }) {
   const active = value ?? "auto";
   return (
-    <div className={`inline-flex items-center gap-1 ${className ?? ""}`} role="group" aria-label="Disposición del texto">
+    <div className={`inline-flex items-center gap-2 ${className ?? ""}`} role="group" aria-label="Disposición del texto">
       {TEXT_LAYOUTS.map(l => {
         const on = active === l.id;
         const disabled = disabledIds?.includes(l.id) ?? false;
@@ -628,7 +662,7 @@ function lineHeightPresetOf(lh: number | undefined): LineHeightPreset {
 function LineHeightButtons({ value, onChange, className }: { value: number | undefined; onChange: (mul: number) => void; className?: string }) {
   const active = lineHeightPresetOf(value);
   return (
-    <div className={`inline-flex items-center gap-1 ${className ?? ""}`} role="group" aria-label="Interlineado">
+    <div className={`inline-flex items-center gap-2 ${className ?? ""}`} role="group" aria-label="Interlineado">
       {LINE_HEIGHT_OPTIONS.map(o => {
         const on = active === o.id;
         return (
@@ -675,7 +709,7 @@ function FontCarousel({ fonts, value, onChange, sampleText }: {
             <span className={`block text-lg leading-tight truncate ${on ? "text-primary" : "text-foreground"}`} style={f.style}>
               {sampleText || f.name}
             </span>
-            <span className="block text-[10px] text-muted-foreground mt-0.5 truncate">{i + 1}. {f.name}</span>
+            <span className="block text-[11px] text-muted-foreground mt-0.5 truncate">{i + 1}. {f.name}</span>
           </button>
         );
       })}
@@ -817,6 +851,11 @@ function TextDispositionToolbar({ placement, onChange, wrapDisabledReason }: {
           })}
         />
       </div>
+      {/* Los `title` no existen en touch: el motivo de una opción deshabilitada
+          se muestra como texto visible, no solo como tooltip. */}
+      {wrapDisabledReason && (
+        <p className="text-xs text-muted-foreground">{wrapDisabledReason}</p>
+      )}
       {layout === "wrap360" && (
         <p className="text-xs text-muted-foreground flex items-center gap-1.5 rounded-lg bg-secondary/50 border border-border px-3 py-2">
           <Info className="w-3.5 h-3.5 shrink-0" />
@@ -831,6 +870,11 @@ function TextDispositionToolbar({ placement, onChange, wrapDisabledReason }: {
           disabledIds={layout === "stack" ? ["justify"] : undefined}
         />
       </div>
+      {layout === "stack" && (
+        <p className="text-xs text-muted-foreground">
+          "Justificado" no está disponible con una palabra por línea.
+        </p>
+      )}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <Label className="text-sm font-medium text-foreground">Interlineado</Label>
         <LineHeightButtons
@@ -874,6 +918,10 @@ function OrientationToggle({ value, onChange, verticalDisabledReason }: {
           );
         })}
       </div>
+      {/* Visible en touch (el `title` solo aparece con mouse). */}
+      {verticalDisabledReason && (
+        <p className="text-xs text-muted-foreground mt-1.5">{verticalDisabledReason}</p>
+      )}
     </div>
   );
 }
@@ -1743,7 +1791,7 @@ export default function Customizer() {
           {customHex && (
             <button
               onClick={() => setCustomHex(null)}
-              className="text-xs text-primary hover:underline"
+              className="py-1.5 text-xs text-primary hover:underline active:underline"
             >
               Volver al tono original
             </button>
@@ -1913,7 +1961,9 @@ export default function Customizer() {
               textPlacement={textPlacement}
               artPlacement={artPlacement}
             />
-          ) : (
+          ) : null}
+          {(isDrinkware || (is3DObject && activeObject)) && <RotateHintChip />}
+          {!isDrinkware && !(is3DObject && activeObject) && (
             // Sin modelo 3D: tarjeta referencial con el glifo del material.
             <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-6 text-center">
               <div className="w-20 h-20 rounded-2xl bg-white border border-border flex items-center justify-center text-primary shadow-sm">
@@ -1981,9 +2031,9 @@ export default function Customizer() {
             <button
               type="button"
               onClick={() => window.dispatchEvent(new Event("tuto:abrir"))}
-              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors shrink-0"
+              className="inline-flex items-center gap-1.5 min-h-11 py-2 text-xs text-muted-foreground hover:text-primary active:text-primary transition-colors shrink-0"
             >
-              <CirclePlay className="w-3.5 h-3.5" />
+              <CirclePlay className="w-4 h-4" />
               <span className="underline underline-offset-4 decoration-border hover:decoration-current">
                 Ver cómo funciona
               </span>
@@ -2169,6 +2219,7 @@ export default function Customizer() {
                         onCenter={centerActivePlacement}
                       />
                     )}
+                    {!designActive && !wrapSpin && <RotateHintChip />}
                   </div>
 
                   <div className="flex items-center gap-3 -mt-1 mb-1">
@@ -2228,6 +2279,7 @@ export default function Customizer() {
                         onCenter={centerActivePlacement}
                       />
                     )}
+                    {!designActive && <RotateHintChip />}
                   </div>
 
                   <p className="text-xs text-muted-foreground -mt-1 mb-1">
@@ -2557,7 +2609,7 @@ export default function Customizer() {
                         <div className="flex items-baseline justify-between mb-1">
                           <Label className="text-sm font-medium text-foreground">Tono exacto</Label>
                           {customHex && (
-                            <button onClick={() => setCustomHex(null)} className="text-xs text-primary hover:underline">
+                            <button onClick={() => setCustomHex(null)} className="py-1.5 text-xs text-primary hover:underline active:underline">
                               Volver al tono original
                             </button>
                           )}

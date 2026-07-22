@@ -395,17 +395,43 @@ function ObjectMesh({
   // Drag to rotate (both axes), with inertia and a rest tilt to settle back to.
   useEffect(() => {
     const canvas = gl.domElement;
-    const onDown = (e: PointerEvent) => {
+
+    // Lock de intención táctil (mismo patrón que thermos-3d): con touch-action
+    // pan-y, un gesto vertical scrollea la página; a los ~10px el eje dominante
+    // decide y recién ahí se captura el puntero para rotar.
+    const INTENT_SLOP = 10;
+    let pendingTouch: { x: number; y: number; id: number } | null = null;
+
+    const startDrag = (e: PointerEvent, mode: "design" | "rotate") => {
       isDragging.current = true;
       velYaw.current = 0; velPitch.current = 0;
       lastX.current = e.clientX; lastY.current = e.clientY;
-      // Objects have a single flat engraving face, so an active design always
-      // drags rather than rotates.
-      dragMode.current = designRef.current.designActive ? "design" : "rotate";
-      if (dragMode.current === "design") designRef.current.onDesignDragStart?.();
+      dragMode.current = mode;
+      if (mode === "design") designRef.current.onDesignDragStart?.();
       canvas.setPointerCapture(e.pointerId);
     };
+
+    const onDown = (e: PointerEvent) => {
+      // Objects have a single flat engraving face, so an active design always
+      // drags rather than rotates.
+      const mode = designRef.current.designActive ? "design" : "rotate";
+      if (mode === "rotate" && e.pointerType !== "mouse") {
+        pendingTouch = { x: e.clientX, y: e.clientY, id: e.pointerId };
+        return;
+      }
+      startDrag(e, mode);
+    };
     const onMove = (e: PointerEvent) => {
+      if (pendingTouch && e.pointerId === pendingTouch.id && !isDragging.current) {
+        const px = e.clientX - pendingTouch.x;
+        const py = e.clientY - pendingTouch.y;
+        if (Math.hypot(px, py) < INTENT_SLOP) return;
+        const horizontal = Math.abs(px) > Math.abs(py);
+        pendingTouch = null;
+        if (!horizontal) return; // vertical: el scroll es del navegador
+        startDrag(e, "rotate");
+        return;
+      }
       if (!isDragging.current) return;
       const dx = e.clientX - lastX.current;
       const dy = e.clientY - lastY.current;
@@ -424,6 +450,7 @@ function ObjectMesh({
       }
     };
     const onUp = () => {
+      pendingTouch = null;
       if (isDragging.current && dragMode.current === "design") designRef.current.onDesignDragEnd?.();
       isDragging.current = false;
       dragMode.current = "rotate";
@@ -432,11 +459,14 @@ function ObjectMesh({
     canvas.addEventListener("pointermove", onMove);
     canvas.addEventListener("pointerup", onUp);
     canvas.addEventListener("pointerleave", onUp);
+    // pan-y: cuando el navegador toma el scroll emite pointercancel.
+    canvas.addEventListener("pointercancel", onUp);
     return () => {
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);
       canvas.removeEventListener("pointerleave", onUp);
+      canvas.removeEventListener("pointercancel", onUp);
     };
   }, [gl]);
 
@@ -553,7 +583,7 @@ function ThreeCanvas({ obj, onContextLost, onContextRestored, ...props }: Object
   const { camY } = frame(obj);
   return (
     <Canvas
-      dpr={[1.5, 2]}
+      dpr={[1, 2]}
       // preserveDrawingBuffer: keep the last frame readable for PNG capture.
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
       onCreated={({ gl, invalidate }) => {
@@ -561,9 +591,14 @@ function ThreeCanvas({ obj, onContextLost, onContextRestored, ...props }: Object
         canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); onContextLost?.(); }, false);
         canvas.addEventListener("webglcontextrestored", () => { onContextRestored?.(); invalidate(); }, false);
       }}
-      // touch-action none: a drag that starts on the product rotates it instead
-      // of scrolling the page. To scroll, the finger must start outside the canvas.
-      style={{ background: "transparent", cursor: "grab", touchAction: "none" }}
+      // pan-y + pinch-zoom: swipe vertical scrollea, pinch de accesibilidad
+      // funciona, drag horizontal rota (lock de intención en ObjectMesh). En
+      // modo diseño el arrastre es bidireccional → none.
+      style={{
+        background: "transparent",
+        cursor: "grab",
+        touchAction: (props.designActive ?? false) ? "none" : "pan-y pinch-zoom",
+      }}
     >
       <Rig obj={obj} />
       <Suspense fallback={null}>

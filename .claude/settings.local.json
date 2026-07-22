@@ -33,7 +33,9 @@
       "Bash(bun /tmp/claude-1000/check.ts)",
       "Bash(bun _check.ts)",
       "Bash(git -C /home/runner/workspace diff --stat -- artifacts/termos-landing)",
-      "Bash(echo \"EXIT: $?\")"
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

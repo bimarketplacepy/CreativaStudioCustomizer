@@ -66,8 +66,9 @@ export default function DeferUntilVisible({
   }, [show, rootMargin]);
 
   // The wrapper reserves the section's height so nothing jumps (CLS stays 0).
+  // scroll-mt-20: el header sticky (64px) no tapa el inicio al navegar al anchor.
   return (
-    <div ref={ref} id={id} style={show ? undefined : { minHeight }}>
+    <div ref={ref} id={id} className="scroll-mt-20" style={show ? undefined : { minHeight }}>
       {show ? children : null}
     </div>
   );

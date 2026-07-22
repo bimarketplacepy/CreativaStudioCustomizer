@@ -60,14 +60,15 @@ const CSS = `
 .tuto-overlay.tuto-visible .tuto-card { transform: none; }
 
 .tuto-x {
-  position: absolute; top: 10px; right: 10px; z-index: 6;
-  width: 30px; height: 30px; border: 0; border-radius: 50%;
+  /* 44px: target táctil mínimo recomendado (antes 30px). */
+  position: absolute; top: 6px; right: 6px; z-index: 6;
+  width: 44px; height: 44px; border: 0; border-radius: 50%;
   background: #f2f2f4; color: #8a8a8e; cursor: pointer;
-  display: grid; place-items: center; font-size: 14px; line-height: 1;
+  display: grid; place-items: center; font-size: 16px; line-height: 1;
 }
-.tuto-x:hover { color: #1c1c1e; }
+.tuto-x:hover, .tuto-x:active { color: #1c1c1e; }
 
-.tuto-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; padding-right: 30px; }
+.tuto-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; padding-right: 44px; }
 .tuto-head .tuto-paso { color: var(--tuto-brand); font-weight: 800; font-size: .8rem; letter-spacing: .04em; }
 .tuto-head .tuto-titulo { font-size: .85rem; color: #8a8a8e; }
 

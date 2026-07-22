@@ -74,7 +74,8 @@ const CSS = `
   animation: fd-palabra-in .5s cubic-bezier(.34,1.45,.64,1) both;
 }
 .fd-caption {
-  font-size: 11px; color: #9c9488; text-align: center;
+  /* 12px / #6f685d: 11px a #9c9488 sobre #faf7f2 fallaba AA (≈2.75:1). */
+  font-size: 12px; color: #6f685d; text-align: center;
   animation: fd-palabra-in .5s .08s cubic-bezier(.34,1.45,.64,1) both;
 }
 /* Entrance keeps a readable floor (not 0): under CPU pressure the compositor
