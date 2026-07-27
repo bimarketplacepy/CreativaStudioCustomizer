@@ -21,8 +21,8 @@ export default function CustomRequests() {
             ¿Buscás algo que no aparece acá?
           </h3>
           <p className="text-white/60 font-light text-base md:text-lg max-w-xl leading-relaxed mb-9">
-            Lo que ves en la página es apenas una parte de lo posible. Si imaginás una pieza distinta —otro
-            material, otro formato, un pedido especial— la creamos con vos. Contanos tu idea y la
+            Lo que ves en la página es apenas una parte de lo posible. Si imaginás una pieza distinta, otro
+            material, otro formato, un pedido especial, la creamos con vos. Contanos tu idea y la
             resolvemos juntos.
           </p>
           <a
