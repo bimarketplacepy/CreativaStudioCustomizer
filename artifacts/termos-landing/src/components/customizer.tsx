@@ -467,7 +467,7 @@ function RotateHintChip() {
     <div ref={ref} className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center">
       <span className="inline-flex items-center gap-1.5 rounded-full bg-black/55 px-3.5 py-2 text-[13px] font-medium text-white backdrop-blur-sm">
         <MoveHorizontal className="w-4 h-4" aria-hidden />
-        Arrastre para girar
+        Arrastrá para girar
       </span>
     </div>
   );
@@ -1287,7 +1287,7 @@ export default function Customizer() {
 
   // Mientras se escribe en esta disposición: rotación automática lenta para ver
   // el texto envolver la pieza en vivo, con el giro manual bloqueado. Al salir
-  // del input vuelve el "Arrastre para girar" normal.
+  // del input vuelve el "Arrastrá para girar" normal.
   const [textFieldFocused, setTextFieldFocused] = useState(false);
   const wrapSpin = isWrap360 && textFieldFocused && isDrinkware;
 
@@ -1801,7 +1801,7 @@ export default function Customizer() {
           )}
         </div>
         <p className="text-xs text-muted-foreground mb-3">
-          Cada color tiene variantes. Elija la que más le guste de la paleta, o marque el tono exacto con el selector.
+          Cada color tiene variantes. Elegí la que más te guste de la paleta, o marcá el tono exacto con el selector.
         </p>
         <div className="flex items-center gap-3">
           <label
@@ -2043,11 +2043,11 @@ export default function Customizer() {
             </button>
           </div>
           <h2 className="font-serif font-light text-3xl md:text-5xl text-[#1A1614] mb-4 leading-[1.1]">
-            Cree su pieza
+            Creá tu pieza
           </h2>
           <p className="hidden md:block text-[#5f574d] font-light text-lg max-w-xl leading-relaxed">
-            Elija el material, luego el producto, y refínelo a su gusto. El diseño final lo coordinamos
-            con usted por WhatsApp.
+            Elegí el material, luego el producto, y refinalo a tu gusto. El diseño final lo coordinamos
+            con vos por WhatsApp.
           </p>
         </div>
 
@@ -2230,8 +2230,8 @@ export default function Customizer() {
                       {wrapSpin
                         ? "Girando para mostrar el texto envolvente…"
                         : designActive
-                        ? (editSingleFace ? "Arrastre el diseño sobre el producto" : "Arrastre para girar")
-                        : "Arrastre para girar"}
+                        ? (editSingleFace ? "Arrastrá el diseño sobre el producto" : "Arrastrá para girar")
+                        : "Arrastrá para girar"}
                     </p>
                   </div>
 
@@ -2286,7 +2286,7 @@ export default function Customizer() {
                   </div>
 
                   <p className="text-xs text-muted-foreground -mt-1 mb-1">
-                    {designActive ? "Arrastre el diseño sobre el producto" : "Arrastre para girar"}
+                    {designActive ? "Arrastrá el diseño sobre el producto" : "Arrastrá para girar"}
                   </p>
 
                   <div className="flex flex-wrap gap-2 justify-center px-4 pb-4">
@@ -2319,7 +2319,7 @@ export default function Customizer() {
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground max-w-xs">
-                    Vista previa referencial. El diseño final lo coordinamos con usted por WhatsApp antes de producir.
+                    Vista previa referencial. El diseño final lo coordinamos con vos por WhatsApp antes de producir.
                   </p>
                 </div>
               )}
@@ -2347,7 +2347,7 @@ export default function Customizer() {
                       transition={{ delay: 0.25, duration: 0.5 }}
                       className="font-serif font-light text-2xl md:text-3xl text-white mb-2"
                     >
-                      Su pieza está lista.
+                      Tu pieza está lista.
                     </motion.h3>
                     <motion.p
                       initial={{ opacity: 0 }}
@@ -2355,7 +2355,7 @@ export default function Customizer() {
                       transition={{ delay: 0.4, duration: 0.5 }}
                       className="text-sm text-white/60 font-light max-w-xs leading-relaxed"
                     >
-                      Le abrimos WhatsApp para continuar con su pedido. Envíe el mensaje y coordinamos los detalles.
+                      Te abrimos WhatsApp para continuar con tu pedido. Enviá el mensaje y coordinamos los detalles.
                     </motion.p>
                   </motion.div>
                 )}
@@ -2430,7 +2430,7 @@ export default function Customizer() {
                     </div>
 
                     <div>
-                      <Label className="text-sm font-medium text-foreground mb-3 block">Elija su tipografía</Label>
+                      <Label className="text-sm font-medium text-foreground mb-3 block">Elegí tu tipografía</Label>
                       <FontCarousel fonts={FONTS} value={font} onChange={setFont} sampleText={text} />
                     </div>
 
@@ -2461,9 +2461,9 @@ export default function Customizer() {
                   {/* ICONS TAB */}
                   <TabsContent value="icons" className="mt-0 space-y-5">
                     <div>
-                      <Label className="text-sm font-medium text-foreground mb-1 block">Elija un ícono</Label>
+                      <Label className="text-sm font-medium text-foreground mb-1 block">Elegí un ícono</Label>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Sume un ícono a su {product.singular.toLowerCase()}. Toque de nuevo para quitarlo.
+                        Sumá un ícono a tu {product.singular.toLowerCase()}. Tocá de nuevo para quitarlo.
                       </p>
                       <IconPicker value={iconId} onChange={handlePickIcon} />
                     </div>
@@ -2495,7 +2495,7 @@ export default function Customizer() {
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Suba su logo o su foto: se imprime a todo color (impresión UV) sobre el {product.singular.toLowerCase()}. Si tiene un fondo liso se lo quitamos automáticamente.
+                        Subí tu logo o tu foto: se imprime a todo color (impresión UV) sobre el {product.singular.toLowerCase()}. Si tiene un fondo liso se lo quitamos automáticamente.
                       </p>
 
                       {activePlan.allowsImage ? (
@@ -2530,7 +2530,7 @@ export default function Customizer() {
                         <div className="border border-dashed border-border rounded-xl p-6 text-center space-y-3">
                           <ImageIcon className="w-6 h-6 text-muted-foreground mx-auto" />
                           <p className="text-sm text-muted-foreground">
-                            El plan de solo nombres no incluye imagen. Elija un plan con dibujo o logo para subir su foto.
+                            El plan de solo nombres no incluye imagen. Elegí un plan con dibujo o logo para subir tu foto.
                           </p>
                           <div className="flex justify-center gap-2">
                             {ENGRAVING_PLANS.filter(p => p.allowsImage).map(p => (
@@ -2573,7 +2573,7 @@ export default function Customizer() {
 
                 <div className="p-4 sm:p-5 min-h-[280px]">
                   <p className="text-xs text-muted-foreground mb-5">
-                    {activeObject.desc} Vea cómo se vería con su texto, un ícono o su logo.
+                    {activeObject.desc} Mirá cómo se vería con tu texto, un ícono o tu logo.
                   </p>
 
                   {/* COLOR TAB — colourable blanks only */}
@@ -2677,7 +2677,7 @@ export default function Customizer() {
                     </div>
 
                     <div>
-                      <Label className="text-sm font-medium text-foreground mb-3 block">Elija su tipografía</Label>
+                      <Label className="text-sm font-medium text-foreground mb-3 block">Elegí tu tipografía</Label>
                       <FontCarousel fonts={FONTS} value={font} onChange={setFont} sampleText={text} />
                     </div>
 
@@ -2701,9 +2701,9 @@ export default function Customizer() {
                   {/* ICONS TAB */}
                   <TabsContent value="icons" className="mt-0 space-y-5">
                     <div>
-                      <Label className="text-sm font-medium text-foreground mb-1 block">Elija un ícono</Label>
+                      <Label className="text-sm font-medium text-foreground mb-1 block">Elegí un ícono</Label>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Sume un ícono a su {activeObject.singular.toLowerCase()}. Toque de nuevo para quitarlo.
+                        Sumá un ícono a tu {activeObject.singular.toLowerCase()}. Tocá de nuevo para quitarlo.
                       </p>
                       <IconPicker value={iconId} onChange={handlePickIcon} />
                     </div>
@@ -2725,7 +2725,7 @@ export default function Customizer() {
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Suba su logo o su foto. Le quitamos el fondo automáticamente y la grabamos sobre la {activeObject.singular.toLowerCase()}.
+                        Subí tu logo o tu foto. Le quitamos el fondo automáticamente y la grabamos sobre la {activeObject.singular.toLowerCase()}.
                       </p>
                       <ImageUpload imageSize="large" value={customImage} onChange={handleUploadImage} />
 
@@ -2783,7 +2783,7 @@ export default function Customizer() {
                   <p className="text-xs text-muted-foreground">
                     {material.pens
                       ? "Contanos qué querés grabar."
-                      : `${material.name}. Personalícelo y coordinamos el diseño final con usted por WhatsApp.`}
+                      : `${material.name}. Personalizalo y coordinamos el diseño final con vos por WhatsApp.`}
                   </p>
                 </div>
 
@@ -2823,8 +2823,8 @@ export default function Customizer() {
 
                 {simpleKind === "icons" && (
                   <div>
-                    <Label className="text-sm font-medium text-foreground mb-1 block">Elija un ícono</Label>
-                    <p className="text-xs text-muted-foreground mb-3">Toque de nuevo para quitarlo.</p>
+                    <Label className="text-sm font-medium text-foreground mb-1 block">Elegí un ícono</Label>
+                    <p className="text-xs text-muted-foreground mb-3">Tocá de nuevo para quitarlo.</p>
                     <IconPicker value={iconId} onChange={handlePickIcon} />
                   </div>
                 )}
@@ -2833,7 +2833,7 @@ export default function Customizer() {
                   <div>
                     <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
                     <p className="text-xs text-muted-foreground mb-3">
-                      Suba su logo o foto y lo adaptamos al producto.
+                      Subí tu logo o foto y lo adaptamos al producto.
                     </p>
                     <ImageUpload imageSize="large" value={customImage} onChange={handleUploadImage} />
                   </div>

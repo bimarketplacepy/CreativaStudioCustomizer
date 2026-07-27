@@ -88,7 +88,7 @@ export default function Gallery() {
         {/* Single, quiet closing CTA */}
         <div className="mt-16 flex flex-col items-center text-center gap-6">
           <h3 className="font-serif font-light text-2xl md:text-3xl text-[#1A1614]">
-            ¿La suya, cuál sería?
+            ¿La tuya, cuál sería?
           </h3>
           <button
             onClick={scrollToCustomizer}

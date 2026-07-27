@@ -25,7 +25,7 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
     setError(null);
 
     if (!file.type.startsWith("image/")) {
-      setError("Suba un archivo de imagen válido (PNG o JPG).");
+      setError("Subí un archivo de imagen válido (PNG o JPG).");
       return;
     }
     if (file.size > MAX_FILE_BYTES) {
@@ -38,7 +38,7 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
       const processed = await fileToProcessedSvg(file);
       onChange(processed);
     } catch {
-      setError("No se pudo procesar la imagen. Pruebe con otra.");
+      setError("No se pudo procesar la imagen. Probá con otra.");
     } finally {
       setIsProcessing(false);
     }
@@ -82,8 +82,8 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
     <div>
       <p className="text-xs text-muted-foreground mb-3">
         {imageSize === "large"
-          ? "Suba su logo o foto: va a todo color (impresión UV) en tamaño grande. Si tiene un fondo liso se lo quitamos automáticamente."
-          : "Suba su dibujo o foto: va a todo color (impresión UV) en tamaño chico. Si tiene un fondo liso se lo quitamos automáticamente."}
+          ? "Subí tu logo o foto: va a todo color (impresión UV) en tamaño grande. Si tiene un fondo liso se lo quitamos automáticamente."
+          : "Subí tu dibujo o foto: va a todo color (impresión UV) en tamaño chico. Si tiene un fondo liso se lo quitamos automáticamente."}
       </p>
 
       {!value ? (

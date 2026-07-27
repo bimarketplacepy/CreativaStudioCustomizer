@@ -3,21 +3,21 @@ import { Type, Shapes, ImageIcon, Layers, Zap, Sparkles, Shield } from "lucide-r
 
 /** What can be personalized — shown above the customizer to set expectations. */
 const WHAT = [
-  { icon: Type, title: "Texto y nombres", desc: "Nombres, apellidos, frases o fechas en la tipografía que elija." },
-  { icon: Shapes, title: "Íconos y símbolos", desc: "Sume un ícono de nuestra galería a su diseño." },
-  { icon: ImageIcon, title: "Logos y fotos", desc: "Suba su logo o una foto y la adaptamos a la pieza." },
+  { icon: Type, title: "Texto y nombres", desc: "Nombres, apellidos, frases o fechas en la tipografía que elijas." },
+  { icon: Shapes, title: "Íconos y símbolos", desc: "Sumá un ícono de nuestra galería a tu diseño." },
+  { icon: ImageIcon, title: "Logos y fotos", desc: "Subí tu logo o una foto y la adaptamos a la pieza." },
   { icon: Layers, title: "Muchos materiales", desc: "Acero con pintura recubierta, acero inoxidable, cristal, madera, cuero, acrílico, plástico y bolígrafos." },
 ];
 
 /** Los dos acabados de acero disponibles, cada uno con su línea descriptiva. */
 const STEELS = [
-  { icon: Layers, title: "Acero con pintura recubierta", desc: "Acero con recubrimiento de pintura electroestática de alta durabilidad, en el color y acabado que elija." },
+  { icon: Layers, title: "Acero con pintura recubierta", desc: "Acero con recubrimiento de pintura electroestática de alta durabilidad, en el color y acabado que elijas." },
   { icon: Shield, title: "Acero inoxidable", desc: "El mismo acero en su acabado natural cepillado: clásico, atemporal y sin pintura." },
 ];
 
 const TECHNIQUES = [
-  { icon: Zap, title: "Grabado láser", desc: "El acabado clásico y atemporal: su diseño marcado a láser, para siempre. Disponible en casi todos los materiales." },
-  { icon: Sparkles, title: "Impresión a todo color", desc: "¿Prefiere su logo o foto con todos sus colores? Los reproducimos vivos y con detalle sobre vasos y termos de acero." },
+  { icon: Zap, title: "Grabado láser", desc: "El acabado clásico y atemporal: tu diseño marcado a láser, para siempre. Disponible en casi todos los materiales." },
+  { icon: Sparkles, title: "Impresión a todo color", desc: "¿Preferís tu logo o foto con todos sus colores? Los reproducimos vivos y con detalle sobre vasos y termos de acero." },
 ];
 
 export default function PersonalizationInfo() {
@@ -29,11 +29,11 @@ export default function PersonalizationInfo() {
             Posibilidades
           </p>
           <h2 className="font-serif font-light text-[1.6rem] leading-[1.15] md:text-5xl text-[#1A1614] mb-2.5 md:mb-5 md:leading-[1.1]">
-            ¿Qué puede personalizar?
+            ¿Qué podés personalizar?
           </h2>
           <p className="text-[#5f574d] leading-relaxed font-light text-sm sm:text-base md:text-lg">
-            Algunos ejemplos de lo que se puede grabar o imprimir. En el personalizador podrá
-            ver cómo queda su pieza con su texto, un ícono o su logo.
+            Algunos ejemplos de lo que se puede grabar o imprimir. En el personalizador vas a poder
+            ver cómo queda tu pieza con tu texto, un ícono o tu logo.
           </p>
         </div>
 
@@ -83,7 +83,7 @@ export default function PersonalizationInfo() {
         {/* Discreet closing note — replaces the loud alert box.
             12px y #6f685d (≥4.5:1 sobre #faf7f2): antes 10px a #9c9488 fallaba AA. */}
         <p className="mt-6 md:mt-10 text-xs text-[#6f685d] leading-relaxed max-w-3xl font-light">
-          Esta página permite simular cómo se vería su pieza personalizada; no procesa compras ni pagos, y las
+          Esta página permite simular cómo se vería tu pieza personalizada; no procesa compras ni pagos, y las
           opciones son ejemplos de lo posible.
         </p>
       </div>

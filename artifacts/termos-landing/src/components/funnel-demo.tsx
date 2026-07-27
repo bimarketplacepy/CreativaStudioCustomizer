@@ -20,10 +20,10 @@ import React, { useEffect, useRef, useState } from "react";
 
 const PALABRAS = ["Diseñás", "Enviás", "Pagás", "Llevás"] as const;
 const CAPTIONS = [
-  "Elegí el producto, el color y su personalización",
-  "Descargá su diseño y envialo al chat de Creativa",
-  "Confirmá y aboná su pedido",
-  "Retirá su pieza en Creativa Studio",
+  "Elegí el producto, el color y tu personalización",
+  "Descargá tu diseño y envialo al chat de Creativa",
+  "Confirmá y aboná tu pedido",
+  "Retirá tu pieza en Creativa Studio",
 ] as const;
 const NOMBRE = "Creativa Studio";
 const LOOP_MS = 16500;

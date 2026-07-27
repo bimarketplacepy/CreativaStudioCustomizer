@@ -15,14 +15,14 @@ export default function CustomRequests() {
         <div className="relative overflow-hidden rounded-3xl bg-[#1A1614] px-8 py-14 md:px-14 md:py-16 text-center flex flex-col items-center">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 h-px w-24 bg-[#8B1A2F]" />
           <p className="text-[#d9a3ae] text-[11px] font-semibold uppercase tracking-[0.3em] mb-5">
-            A su medida
+            A tu medida
           </p>
           <h3 className="font-serif font-light text-3xl md:text-5xl text-white leading-[1.12] max-w-2xl mb-5">
-            ¿Busca algo que no aparece aquí?
+            ¿Buscás algo que no aparece acá?
           </h3>
           <p className="text-white/60 font-light text-base md:text-lg max-w-xl leading-relaxed mb-9">
-            Lo que ve en la página es apenas una parte de lo posible. Si imagina una pieza distinta —otro
-            material, otro formato, un pedido especial— la creamos con usted. Cuéntenos su idea y la
+            Lo que ves en la página es apenas una parte de lo posible. Si imaginás una pieza distinta —otro
+            material, otro formato, un pedido especial— la creamos con vos. Contanos tu idea y la
             resolvemos juntos.
           </p>
           <a
@@ -32,7 +32,7 @@ export default function CustomRequests() {
             className="inline-flex items-center gap-2.5 bg-[#8B1A2F] hover:bg-[#721527] text-white px-10 py-4 min-h-12 text-xs font-semibold uppercase tracking-[0.25em] transition-colors"
           >
             <MessageCircle className="w-4 h-4" strokeWidth={1.75} />
-            Escríbanos
+            Escribinos
           </a>
         </div>
 
@@ -48,7 +48,7 @@ export default function CustomRequests() {
               </h3>
               <p className="text-[#5f574d] font-light text-sm md:text-base leading-relaxed max-w-2xl">
                 Regalos empresariales, merchandising y eventos: para empresas y pedidos en cantidad
-                ofrecemos descuentos por volumen. Cuéntenos qué necesita y le preparamos una
+                ofrecemos descuentos por volumen. Contanos qué necesitás y te preparamos una
                 propuesta a medida.
               </p>
             </div>
