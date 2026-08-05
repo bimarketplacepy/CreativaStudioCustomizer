@@ -1,6 +1,6 @@
 /** Business contact details, kept in one place so every CTA stays in sync. */
-export const WHATSAPP_PHONE = "595971300945";
-export const WHATSAPP_PHONE_DISPLAY = "+595 971 300 945";
+export const WHATSAPP_PHONE = "595981124607";
+export const WHATSAPP_PHONE_DISPLAY = "+595 981 124607";
 export const EMAIL = "lacreativaparaguay@gmail.com";
 export const ADDRESS = "Local dentro de Marketplace, Avda. España";
 export const INSTAGRAM_HANDLE = "creativastudio.py";
