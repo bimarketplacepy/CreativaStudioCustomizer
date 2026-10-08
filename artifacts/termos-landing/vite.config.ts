@@ -124,15 +124,18 @@ export default defineConfig({
     // Todo /api va al
     // @workspace/api-server (pedidos, health). Mismo puerto interno que usa
     // server.mjs en producción.
+    // Destino: el api-server del workflow de desarrollo (artifact "API Server",
+    // puerto 8080). Antes apuntaba a 3101, que es el puerto interno que usa
+    // server.mjs solo en producción: en dev no había nada ahí y /admin daba 500.
     proxy: {
       "/api": {
-        target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:3101",
+        target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8080",
         changeOrigin: false,
       },
       // Panel interno del taller (vive en el api-server), igual que en
       // producción lo proxya server.mjs.
       "/admin": {
-        target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:3101",
+        target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8080",
         changeOrigin: false,
       },
     },
