@@ -3,12 +3,14 @@
 // search_count y search_read. Nunca imprime la API key (solo su largo).
 // Uso: pnpm --filter @workspace/api-server run odoo:check            (conexión)
 //      pnpm --filter @workspace/api-server run odoo:check -- hydrate (además explora esos productos)
+//      pnpm --filter @workspace/api-server run odoo:check -- catalogo (corre la sincronización real de la landing)
 import { readFileSync } from "node:fs";
 
 const args = process.argv.slice(2).filter(a => a !== "--");
 const pid = args.find(a => /^\d+$/.test(a));
 // Término de búsqueda opcional (ej. "hydrate"): explora cómo están cargados esos productos.
-const TERM = args.find(a => !/^\d+$/.test(a) && a !== "self");
+const CATALOG_MODE = args.includes("catalogo");
+const TERM = args.find(a => !/^\d+$/.test(a) && a !== "self" && a !== "catalogo");
 const env = (!pid || pid === "self") ? process.env : Object.fromEntries(
   readFileSync(`/proc/${pid}/environ`, "utf8").split("\0").filter(l => l.startsWith("ODOO_")).map(l => {
     const i = l.indexOf("="); return [l.slice(0, i), l.slice(i + 1)];
@@ -126,5 +128,38 @@ if (TERM) {
       const byId = Object.fromEntries(pt.map(p => [p.id, `${p.attribute_id[1]}=${p.name}${p.html_color ? " " + p.html_color : ""} [${p.display_type}]`]));
       return "\n     " + vs.map(v => `${v.default_code || "-"} | ${v.lst_price} | stock ${v.free_qty} | ${v.product_template_attribute_value_ids.map(i => byId[i]).join(", ")}`).join("\n     ");
     });
+  }
+}
+
+// ── Vista previa del catálogo: la MISMA sincronización que usa /api/catalog ──
+if (CATALOG_MODE) {
+  console.log("\n== Catálogo que vería la landing (sincronización real, solo lectura) ==");
+  const { build } = await import("esbuild");
+  const { fileURLToPath } = await import("node:url");
+  const { dirname, join } = await import("node:path");
+  const { rmSync } = await import("node:fs");
+  const apiDir = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const out = join(apiDir, "scripts", `.catalog-preview-${process.pid}.mjs`);
+  // Las reglas (marca, filtros) se leen al cargar el módulo: pasarle los Secrets.
+  Object.assign(process.env, env, { ODOO_URL: URL_ });
+  try {
+    await build({
+      stdin: { contents: 'export { fetchFromOdoo } from "./src/lib/catalog"; export { OdooClient, odooConfig } from "./src/lib/odoo";', resolveDir: apiDir, loader: "ts" },
+      bundle: true, platform: "node", format: "esm", outfile: out, packages: "external", logLevel: "error",
+    });
+    const m = await import(out);
+    const t0 = Date.now();
+    const r = await m.fetchFromOdoo(new m.OdooClient(m.odooConfig()));
+    console.log(`✓ ${r.stats.templates} productos de la marca · ${r.stats.withoutStock} variantes sin stock (excluidas) · ${r.stats.variants} con stock · ${r.stats.models} modelos (${Date.now() - t0} ms)`);
+    for (const p of r.products) {
+      console.log(`\n  ▸ ${p.name}  [perfil ${p.productType} · material ${p.material}]${p.url ? "  " + p.url : "  (no publicado)"}`);
+      for (const v of p.variants) {
+        console.log(`      - ${(v.colorName ?? "sin color").padEnd(22)} ${(v.colorHex ?? "(hex por nombre)").padEnd(16)} ${(v.size ?? "-").padEnd(8)} Gs. ${Math.round(v.price).toLocaleString("es-PY").padStart(9)}  stock ${v.available}  ${v.sku ?? ""}`);
+      }
+    }
+    if (r.unmatched.length) console.log(`\n  ⚠ Sin perfil 3D (no se muestran): ${r.unmatched.join(" · ")}`);
+    console.log("\n  Grabado:", JSON.stringify(r.engraving));
+  } finally {
+    rmSync(out, { force: true });
   }
 }

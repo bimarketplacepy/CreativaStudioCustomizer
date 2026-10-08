@@ -245,7 +245,7 @@ Probado con `pnpm --filter @workspace/api-server run odoo:check -- hydrate` (dia
 - Campos de esta versión: `is_published`, `free_qty` (stock), `is_storable`. El código ya los soporta.
 - **Bug encontrado y corregido:** el Secret `ODOO_URL` tenía `/odoo` al final (la URL del panel en v17+). La API vive en la raíz, así que Odoo respondía 400 "invalid CSRF token". Ahora el api-server usa solo el origen del dominio, aunque el Secret traiga una ruta. Igual conviene dejar el Secret como `https://marketplace.odoo.com`.
 
-**Hallazgos que cambian la sincronización (próximo paso, todavía no implementado):**
+**Hallazgos que cambiaron la sincronización (✅ ya implementado, ver "Sincronización adaptada" abajo):**
 1. **El catálogo es el de todo Marketplace:** 257.614 plantillas, **2.346 publicadas y vendibles**, de todas las marcas. Clasificar por nombre ("vaso", "termo") mezclaría marcas → hay que **filtrar por marca**.
 2. **La marca está en un campo de Studio:** `x_studio_marca` (texto, ej. `"HYDRATE"`), además de `x_studio_codigo_marca` (`"943"`). El filtro debe ser `x_studio_marca = HYDRATE` (no el nombre).
 3. **Solo 8 productos tienen "hydrate" en el nombre y 1 está publicado** ("Hydrate 530ml Amarillo Sol"). Falta ver cuántos hay por el campo de marca y si se muestran también los no publicados.
@@ -253,6 +253,15 @@ Probado con `pnpm --filter @workspace/api-server run odoo:check -- hydrate` (dia
 5. **La categoría interna describe tipo y material:** `HIDRATACION / HOPPIE / DOBLE PARED INOX / HYDRATE`. Es mejor fuente para el perfil 3D (HOPPIE) y el material que el nombre.
 6. Existen atributos `color`, `size`, `brand`, etc. (estilo Google Shopping); falta ver si estos productos los tienen cargados (sirven para el hex del color).
 7. Odoo 19 marca la API JSON-RPC como **obsoleta** (sigue funcionando; su reemplazo es la API "JSON-2"). Migrar cuando Odoo anuncie la fecha de retiro.
+
+**Sincronización adaptada (decisión del dueño: solo Hydrate, solo con stock):**
+- Filtro por marca: `x_studio_marca` = `HYDRATE` (sin distinguir mayúsculas), **publicados o no**.
+- **Solo con stock:** stock controlado y unidades libres (`free_qty`) > 0. Lo demás se excluye.
+- **Agrupación por modelo:** cada producto-color entra como un color del mismo modelo. Color: atributo `color` de Odoo (con su hex) o, si falta, el final del nombre ("Amarillo Sol"); capacidad: atributo `size` o el nombre ("530ml", "1L"). Ej.: "Hydrate 530ml Amarillo Sol" + "Hydrate 1L Negro" → modelo **"Hoppie Hydrate"** con colores y capacidades.
+- **Perfil 3D desde la categoría interna** (`… / HOPPIE / …`), con el nombre como respaldo. Material: cuero / cristal por nombre o categoría; **inox solo si el color es acero natural** ("Inox", "Plateado"…). "DOBLE PARED INOX" en la categoría describe la construcción, no el acabado.
+- Configurable sin tocar código (Secrets opcionales): `ODOO_BRAND` (por defecto `HYDRATE`; varias separadas por coma), `ODOO_BRAND_FIELD` (por defecto `x_studio_marca`), `ODOO_ONLY_PUBLISHED=true` para exigir publicados.
+- **Vista previa con los datos reales:** `pnpm --filter @workspace/api-server run odoo:check -- catalogo` corre la misma sincronización que `/api/catalog` (solo lectura) y lista modelos, colores, capacidades, precios, stock y lo que quedó sin perfil 3D.
+- Verificado contra un Odoo 19 simulado con la forma real del catálogo (otra marca mezclada, un color sin stock, un accesorio sin perfil, un modelo inox, URL con `/odoo`).
 
  → **Odoo**. Falta la URL de la instancia y las credenciales (guía de arriba).
 2. ~~Cierre preferido~~ → por ahora WhatsApp; el pago en Odoo queda para el final (§6).
@@ -264,7 +273,7 @@ Probado con `pnpm --filter @workspace/api-server run odoo:check -- hydrate` (dia
 | # | Etapa | Estado |
 |---|---|---|
 | 0 | Diagnóstico: arreglos de impacto directo, riesgos y fricción (§2–§3) | ✅ Hecho |
-| 1 | **Conectar Odoo:** precios, stock y **colores reales** (fin de la paleta inventada) | 🟡 Conexión real OK (§5c). Falta adaptar la sincronización: filtro por marca, agrupar colores, tipo por categoría |
+| 1 | **Conectar Odoo:** precios, stock y **colores reales** (fin de la paleta inventada) | 🟡 Conexión real OK y sincronización adaptada a Hydrate (§5c). Falta validarla con los datos reales (`odoo:check -- catalogo`) y republicar |
 | 2 | **Creación de termos rápida, fácil e intuitiva** (§4: Etapa A + B), reorganizando `customizer.tsx` | ⏭️ Próxima |
 | 3 | **Modelos 3D reales** (Higgsfield → `.glb`, requisitos en §5) | Depende de los modelos del dueño |
 | 4 | **Visor AR** del termo diseñado (`<model-viewer>`: Android Scene Viewer / iPhone Quick Look, con el diseño aplicado) | Después de 3 (funciona con el 3D actual, luce con los reales) |
