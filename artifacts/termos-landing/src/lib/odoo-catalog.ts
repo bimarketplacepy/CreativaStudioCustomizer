@@ -12,12 +12,25 @@ import type { ProductDef } from "@/lib/products";
 
 export type { Catalog, CatalogProduct, CatalogVariant };
 
+/**
+ * Interruptor del catálogo de Odoo en la landing. APAGADO por decisión del
+ * dueño (2026-10-08) hasta que estén los modelos 3D reales de cada forma: con
+ * `false` no se pide /api/catalog y el personalizador usa su catálogo propio
+ * (paleta, tamaños y precios de Tarifas), igual que antes de la integración.
+ * Para reactivarlo: `true` y republicar. El backend (/api/catalog) sigue listo.
+ */
+export const ODOO_CATALOG_ENABLED = false;
+
 /** Catálogo compartido por el personalizador y Tarifas (una sola request, 5 min de vida). */
 export function useCatalog(): Catalog | undefined {
   const { data } = useGetCatalog({
-    query: { queryKey: getGetCatalogQueryKey(), staleTime: 5 * 60_000, retry: 1, refetchOnWindowFocus: false },
+    query: {
+      queryKey: getGetCatalogQueryKey(),
+      enabled: ODOO_CATALOG_ENABLED,
+      staleTime: 5 * 60_000, retry: 1, refetchOnWindowFocus: false,
+    },
   });
-  return data;
+  return ODOO_CATALOG_ENABLED ? data : undefined;
 }
 
 /** Productos de Odoo que corresponden al perfil 3D + material elegidos. */
