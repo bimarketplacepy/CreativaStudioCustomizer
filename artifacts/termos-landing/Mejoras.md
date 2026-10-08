@@ -263,6 +263,14 @@ Probado con `pnpm --filter @workspace/api-server run odoo:check -- hydrate` (dia
 - **Vista previa con los datos reales:** `pnpm --filter @workspace/api-server run odoo:check -- catalogo` corre la misma sincronización que `/api/catalog` (solo lectura) y lista modelos, colores, capacidades, precios, stock y lo que quedó sin perfil 3D.
 - Verificado contra un Odoo 19 simulado con la forma real del catálogo (otra marca mezclada, un color sin stock, un accesorio sin perfil, un modelo inox, URL con `/odoo`).
 
+**Ajustes con los datos reales (956 productos Hydrate, 516 con stock):**
+- Nombres sin marca y con el color primero ("530ml Negro"), paleta propia de Hydrate (Aqua, Avena, Cherry, Lima, Jade, Peach Fuzz, Choco Mousse), "Café" como línea y no color, puntuación y mayúsculas inconsistentes ("Rojo." / "ROJO" / "Azul Pacifico*"), capacidades sin unidad ("V2 PRO series 770", "Litro").
+- **Ediciones de clubes incluidas como modelos propios** (decisión del dueño): "Termo Mate · Cerro Porteño", "Termo · Olimpia", "Termo 2 en 1 · Albirroja"… con sus colores; "Edición 1/2" va en el color ("Azul · Ed. 2") y las ediciones con nombre de la Albirroja son el color ("Fan Stripes", "Legends", "Lion").
+- **Excluidos:** packs (+), kits, bolsos/mochilas y accesorios (tapas, straps, botas/gomas, fundas). Guampas y copas se mantienen aunque Odoo las tenga bajo "ACCESORIOS DE TERMOS".
+- **Agrupación por modelo + club + material, tipo por mayoría:** Odoo tiene algunos modelos en dos categorías (ej. "Termo 473ml" en Hoppie y en Vasos); antes quedaban partidos en dos.
+- Cristal solo por nombre (el Whisky Lowball de acero también está en una categoría de cristalería).
+- Quedan sin modelo 3D (no se muestran): Food Flask, Growler, jarras, bowls, ice bucket, conservadoras — candidatos para la etapa de modelos 3D reales.
+
  → **Odoo**. Falta la URL de la instancia y las credenciales (guía de arriba).
 2. ~~Cierre preferido~~ → por ahora WhatsApp; el pago en Odoo queda para el final (§6).
 

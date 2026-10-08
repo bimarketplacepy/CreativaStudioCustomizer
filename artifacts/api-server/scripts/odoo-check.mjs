@@ -160,7 +160,7 @@ if (CATALOG_MODE) {
         console.log(`      - ${(v.colorName ?? "sin color").padEnd(22)} ${(v.colorHex ?? "(hex por nombre)").padEnd(16)} ${(v.size ?? "-").padEnd(8)} Gs. ${Math.round(v.price).toLocaleString("es-PY").padStart(9)}  stock ${v.available}  ${v.sku ?? ""}`);
       }
     }
-    if (r.excluded.length) console.log(`\n  ⊘ Excluidos por regla (packs, kits, ediciones de clubes): ${r.excluded.length}\n     ${r.excluded.slice(0, 40).join(" · ")}${r.excluded.length > 40 ? " · …" : ""}`);
+    if (r.excluded.length) console.log(`\n  ⊘ Excluidos por regla (packs, kits, bolsos y accesorios: tapas, straps, botas): ${r.excluded.length}\n     ${r.excluded.slice(0, 40).join(" · ")}${r.excluded.length > 40 ? " · …" : ""}`);
     if (r.unmatched.length) console.log(`\n  ⚠ Sin perfil 3D (no se muestran): ${r.unmatched.length}\n     ${r.unmatched.join(" · ")}`);
     console.log("\n  Grabado:", JSON.stringify(r.engraving));
   } finally {

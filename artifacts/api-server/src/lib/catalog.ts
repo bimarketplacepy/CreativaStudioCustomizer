@@ -70,11 +70,25 @@ const NATURAL_STEEL = /\binox|\bacero\b|\bplat[ae]|\bsilver\b|\bnatural\b|\bstai
 const COLOR_WORD = /^(negr[oa]|blanc[oa]|roj[oa]|azul|celeste|verde|rosa(do)?|gris|grafito|amarill[oa]|naranja|violeta|lila|lilac|lavanda|morad[oa]|marron|chocolate|choco|beige|avena|arena|crema|dorad[oa]|platead[oa]|plata|turquesa|aqua|menta|coral|fucsia|bordo|borgona|oliva|salmon|nude|champagne|cobre|cherry|lima|jade|peach|inox|acero|natural|black|white|red|blue|green|pink|soft|gr[ae]y|yellow|orange|purple|silver|gold|copper|teal|navy|lime|mint)$/;
 const SIZE_IN_NAME = /(\d+(?:[.,]\d+)?)\s*(ml|cc|lts?|litros?|l|oz)\b/i;
 
+/** Productos de la marca que NO se ofrecen para personalizar: packs, kits y bolsos. */
+const EXCLUDE = /\bkit\b|\bcombo\b|backpack|mochila|\bbolso\b|\bbag\b|pouch|\btote\b|\+/i;
 /**
- * Productos de la marca que NO se ofrecen para personalizar: packs/kits/bolsos
- * y ediciones con diseño impreso (clubes, Albirroja). Ajustable acá.
+ * Accesorios (tapas, straps, gomas/botas, fundas): Odoo los tiene bajo
+ * "ACCESORIOS DE TERMOS", donde también están guampas y copas — por eso se
+ * filtran por subcategoría y por nombre, no por toda la rama.
  */
-const EXCLUDE = /\bkit\b|\bcombo\b|backpack|mochila|\bbolso\b|\bbag\b|pouch|\btote\b|\+|\bedici[oó]n\b|\bedition\b|albirroja|olimpia|\bcerro\b|guarani|luque|\briver\b|palmeiras/i;
+const ACCESSORY_NAME = /^(tapa|strap|bota|funda|repuesto)\b/i;
+const ACCESSORY_CATEGORY = /accesorios de termos \/ (tapas|strap|gomas|fundas)/i;
+
+/**
+ * Ediciones de clubes: entran como MODELO propio ("Termo Mate · Cerro
+ * Porteño"), no como colores del modelo liso. Clave: palabra en el nombre.
+ */
+const CLUBS: [RegExp, string][] = [
+  [/\bcerro\b/i, "Cerro Porteño"], [/\bolimpia\b/i, "Olimpia"], [/\bluque\b/i, "Sportivo Luqueño"],
+  [/\bguarani\b/i, "Guaraní"], [/\briver\b/i, "River Plate"], [/\bpalmeiras?\b/i, "Palmeiras"],
+  [/\balbirroja\b/i, "Albirroja"],
+];
 
 const COLOR_ATTR = /\bcolou?r\b/;
 const SIZE_ATTR = /tama|capacidad|medida|size|volumen|litro|\boz\b|\bml\b/;
@@ -82,12 +96,13 @@ const SIZE_ATTR = /tama|capacidad|medida|size|volumen|litro|\boz\b|\bml\b/;
 const norm = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
-const SMALL = new Set(["y", "con", "de", "del", "la", "el", "c/"]);
+const SMALL = new Set(["y", "con", "de", "del", "la", "el", "en", "c/"]);
 /** "AZUL PACIFICO" / "Rojo." → "Azul Pacifico" / "Rojo". */
 const titleCase = (s: string) =>
-  s.toLowerCase().split(" ").map((w, i) => (i > 0 && SMALL.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1))).join(" ");
-/** Solo pasa a "Título" lo que viene TODO EN MAYÚSCULAS (respeta "V2 PRO series"). */
-const tidyModel = (s: string) => (s && s === s.toUpperCase() && /[A-Z]{3}/.test(s) ? titleCase(s) : s);
+  s.toLowerCase().split(" ").map((w, i) =>
+    /\d/.test(w) ? w.toUpperCase() // "v2" → "V2"
+    : i > 0 && SMALL.has(w) ? w
+    : w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 
 /** "1200ML" / "1 L" / "1,5 lts" / "20 oz" → "1200ml" / "1L" / "1.5L" / "20oz". */
 export function normalizeSize(raw: string): string {
@@ -127,14 +142,33 @@ export function productTypeOf(name: string, category: string): string | null {
   return inCat[0] ?? byName ?? null;
 }
 
+export interface ParsedName { model: string; size: string | null; color: string | null; club: string | null }
+
 /**
  * Separa "Hydrate 530ml Amarillo Sol" / "530ml Negro" / "V2 PRO series 770 Blanco"
- * en modelo, capacidad y color. La marca se quita del modelo (ya se sabe).
+ * / "TERMO MATE 915 ML AZUL CERRO" / "TERMO 2 EN 1 ALBIRROJA FAN STRIPES EDITION"
+ * en modelo, capacidad, color y club. La marca se quita del modelo (ya se sabe).
+ * "Edición N" va al color ("Azul · Ed. 2"); una edición con nombre ("Fan
+ * Stripes") es el color cuando no hay otro.
  */
-export function parseProductName(name: string): { model: string; size: string | null; color: string | null } {
+export function parseProductName(name: string): ParsedName {
   let rest = name
     .replace(/(\S)[.*]+(?=\s|$)/g, "$1") // "Rojo." / "Pacifico*" → sin puntuación final
     .replace(/\bc\/\s*/gi, "con "); // "Vaso c/ pico" = "Vaso con pico"
+
+  // Club + número de edición pegado ("Blanco Olimpia 2").
+  let club: string | null = null;
+  let edition: string | null = null;
+  for (const [re, label] of CLUBS) {
+    const m = rest.match(new RegExp(`${re.source}(?:\\s+(\\d))?(?=\\s|$)`, "i"));
+    if (m) { club = label; if (m[1]) edition = m[1]; rest = rest.replace(m[0], " "); break; }
+  }
+  const ed = rest.match(/\bedici[oó]n\s+(\d+|uv)\b/i);
+  if (ed) { edition = ed[1].toUpperCase(); rest = rest.replace(ed[0], " "); }
+  let editionName: string | null = null;
+  const named = rest.match(/\b((?:fan\s+)?[a-z]+)\s+edition\b/i);
+  if (named) { editionName = titleCase(named[1]); rest = rest.replace(named[0], " "); }
+
   let size: string | null = null;
   const sm = rest.match(SIZE_IN_NAME);
   if (sm) { size = normalizeSize(sm[0]); rest = rest.replace(sm[0], " "); }
@@ -147,9 +181,12 @@ export function parseProductName(name: string): { model: string; size: string | 
   const brands = new Set(BRANDS.map(norm));
   const words = rest.split(/\s+/).filter(w => w && !/^[-–·,/]+$/.test(w) && !brands.has(norm(w)));
   const idx = words.findIndex(w => COLOR_WORD.test(norm(w).replace(/[^a-z]/g, "")));
-  const color = idx >= 0 ? titleCase(words.slice(idx).join(" ").replace(/^[-–·,\s]+/, "")) : null;
+  let color = idx >= 0 ? titleCase(words.slice(idx).join(" ").replace(/^[-–·,\s]+/, "")) : null;
   const model = (idx >= 0 ? words.slice(0, idx) : words).join(" ").replace(/[-–·,\s]+$/, "").trim();
-  return { model: tidyModel(model), size, color: color || null };
+  if (!color && editionName) color = editionName;
+  else if (color && editionName) color = `${color} · ${editionName}`;
+  if (edition) color = color ? `${color} · Ed. ${edition}` : `Edición ${edition}`;
+  return { model: titleCase(model), size, color: color || null, club };
 }
 
 type M2O = [number, string] | false;
@@ -182,7 +219,7 @@ export interface SyncReport {
   products: CatalogProduct[];
   engraving: Catalog["engraving"];
   unmatched: string[];
-  /** Productos de la marca omitidos por la regla EXCLUDE (packs, ediciones…). */
+  /** Productos de la marca omitidos: packs, kits, bolsos y accesorios. */
   excluded: string[];
   /** Categorías internas de cada modelo (para el diagnóstico). */
   categories: Record<string, string[]>;
@@ -230,15 +267,25 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
 
   const unmatched = new Set<string>();
   const excluded = new Set<string>();
-  const categories = new Map<string, Set<string>>();
-  const groups = new Map<string, CatalogProduct & { _published: string | null }>();
+  // 1) Analizar cada variante con stock. 2) Agrupar por modelo + club + material
+  // (no por tipo: Odoo a veces tiene el mismo modelo en dos categorías, ej. un
+  // "Termo 473ml" en Hoppie y otro en Vasos). 3) El tipo del grupo se decide por
+  // mayoría.
+  interface Entry {
+    t: OTemplate; v: OVariant; category: string; type: string;
+    model: string; club: string | null; material: string; variant: CatalogVariant;
+  }
+  const entries: Entry[] = [];
   for (const v of stocked) {
     const t = tById.get(v.product_tmpl_id ? v.product_tmpl_id[0] : 0);
     if (!t) continue;
     const category = t.categ_id ? t.categ_id[1] : "";
-    if (EXCLUDE.test(t.name)) { excluded.add(t.name); continue; }
-    const productType = productTypeOf(t.name, category);
-    if (!productType) { unmatched.add(t.name); continue; }
+    if (EXCLUDE.test(t.name) || ACCESSORY_NAME.test(t.name) || ACCESSORY_CATEGORY.test(category)) {
+      excluded.add(t.name);
+      continue;
+    }
+    const type = productTypeOf(t.name, category);
+    if (!type) { unmatched.add(t.name); continue; }
 
     let attrColor: string | null = null;
     let colorHex: string | null = null;
@@ -257,40 +304,50 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
     const parsed = parseProductName(t.name);
     const colorName = attrColor ? titleCase(attrColor) : parsed.color;
     const size = attrSize ? normalizeSize(attrSize) : parsed.size;
-    // Modelo: el nombre sin marca, color ni capacidad. Si no nombra ningún tipo
-    // ("" o "Kids"), se antepone el del perfil: "Hoppie", "Hoppie Kids".
-    let model = parsed.model;
-    if (!ruleType(model)) model = `${TYPE_LABEL[productType]} ${model}`.trim();
 
+    // Cristal solo por el NOMBRE: Odoo tiene el Whisky Lowball de acero también
+    // en una categoría de cristalería.
     const n = norm(`${t.name} ${category}`);
-    const material = LEATHER.test(n) ? "cuero" : GLASS.test(n) ? "cristal"
+    const material = LEATHER.test(n) ? "cuero" : GLASS.test(norm(t.name)) ? "cristal"
       : colorName && NATURAL_STEEL.test(norm(colorName)) ? "inox"
       : !colorName && /\binox/.test(norm(t.name)) ? "inox" : "acero";
 
-    const key = `${productType}|${material}|${norm(model)}`;
-    if (!categories.has(model)) categories.set(model, new Set());
-    categories.get(model)!.add(category);
-    let g = groups.get(key);
-    if (!g) {
-      g = {
-        id: t.id, name: model, productType, material, url: null,
-        imageUrl: `${client.baseUrl}/web/image/product.template/${t.id}/image_512`,
-        variants: [], _published: null,
-      };
-      groups.set(key, g);
-    }
-    if (!g._published && t.is_published && t.website_url) g._published = `${client.baseUrl}${t.website_url}`;
-    const available = v.free_qty ?? v.qty_available ?? 0;
-    const variant: CatalogVariant = {
-      id: v.id, sku: v.default_code || null, colorName, colorHex, size,
-      price: v.lst_price, available, inStock: true,
-    };
-    g.variants.push(variant);
+    entries.push({
+      t, v, category, type, model: parsed.model, club: parsed.club, material,
+      variant: {
+        id: v.id, sku: v.default_code || null, colorName, colorHex, size,
+        price: v.lst_price, available: v.free_qty ?? v.qty_available ?? 0, inStock: true,
+      },
+    });
   }
 
-  // Más variantes primero: la línea principal encabeza el selector de modelo.
-  const products: CatalogProduct[] = [...groups.values()]
-    .map(({ _published, ...p }) => ({ ...p, url: _published }))
+  const byKey = new Map<string, Entry[]>();
+  for (const e of entries) {
+    const key = `${e.material}|${norm(e.model)}|${e.club ?? ""}`;
+    byKey.set(key, [...(byKey.get(key) ?? []), e]);
+  }
+
+  const categories: Record<string, string[]> = {};
+  const products: CatalogProduct[] = [...byKey.values()].map(list => {
+    const votes = new Map<string, number>();
+    for (const e of list) votes.set(e.type, (votes.get(e.type) ?? 0) + 1);
+    const productType = [...votes].sort((a, b) => b[1] - a[1])[0][0];
+    const first = list[0];
+    // Nombre visible: si el modelo no nombra ningún tipo ("" o "Kids"), se
+    // antepone el del perfil ("Hoppie", "Hoppie Kids"); el club va al final.
+    let name = first.model;
+    if (!ruleType(name)) name = `${TYPE_LABEL[productType]} ${name}`.trim();
+    if (first.club) name = `${name} · ${first.club}`;
+    categories[name] = [...new Set(list.map(e => e.category))];
+    const published = list.find(e => e.t.is_published && e.t.website_url);
+    return {
+      id: first.t.id, name, productType, material: first.material,
+      url: published ? `${client.baseUrl}${published.t.website_url}` : null,
+      imageUrl: `${client.baseUrl}/web/image/product.template/${first.t.id}/image_512`,
+      variants: list.map(e => e.variant),
+    };
+  })
+    // Más variantes primero: la línea principal encabeza el selector de modelo.
     .sort((a, b) => b.variants.length - a.variants.length);
 
   // Precios de grabado (productos de servicio por referencia interna).
@@ -307,7 +364,7 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
 
   return {
     products, engraving, unmatched: [...unmatched], excluded: [...excluded],
-    categories: Object.fromEntries([...categories].map(([k, v]) => [k, [...v]])),
+    categories,
     stats: { templates: tById.size, withoutStock: variants.length - stocked.length, variants: stocked.length, models: products.length },
   };
 }
