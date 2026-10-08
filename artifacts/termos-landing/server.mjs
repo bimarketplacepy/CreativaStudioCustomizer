@@ -34,7 +34,13 @@ const PORT = Number(process.env.PORT) || 3000;
 const API_PORT = Number(process.env.API_PORT) || 3101;
 const API_DIST = join(__dirname, "..", "api-server", "dist", "index.mjs");
 
+// EMBEDDED_API=false: el api-server corre como otro servicio (deployment de
+// Replit por artefactos, donde el router manda /api/* directo a él). Entonces
+// no se levanta una copia acá, y /admin se redirige a /api/admin.
+const EMBEDDED_API = process.env.EMBEDDED_API !== "false";
+
 function startApiServer() {
+  if (!EMBEDDED_API) return;
   if (!existsSync(API_DIST)) {
     console.warn(`[termos-landing] api-server bundle not found at ${API_DIST}; /api/orders disabled`);
     return;
@@ -227,6 +233,11 @@ async function serve(req, res) {
   // Resto de /api/* (pedidos, health) → api-server interno. /admin es el
   // panel interno del taller (vive en el api-server); si no se proxya acá,
   // caería en el fallback del SPA.
+  if (!EMBEDDED_API && (pathname === "/admin" || pathname === "/admin/")) {
+    res.writeHead(302, { Location: "/api/admin" });
+    res.end();
+    return;
+  }
   if (pathname.startsWith("/api/") || pathname === "/admin" || pathname.startsWith("/admin/")) {
     proxyToApi(req, res);
     return;
