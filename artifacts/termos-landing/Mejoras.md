@@ -19,27 +19,28 @@
 |---|---|---|
 | 1 | El mensaje de WhatsApp no incluía tamaño, color ni material | ✅ Hecho |
 | 2 | No había selector de tamaño (siempre quedaba el del medio) | ✅ Hecho |
-| 3 | No se muestra ningún precio durante el armado (solo grabado en "Tarifas"; "la pieza se cotiza aparte") | ⏳ Pendiente — se resuelve con la integración al ecommerce (§5) |
+| 3 | No se muestra ningún precio durante el armado (solo grabado en "Tarifas"; "la pieza se cotiza aparte") | 🟡 Parcial — precio estimado del grabado hecho (§3b); el precio de la pieza llega con Odoo (§5) |
 | 4 | Cero medición del embudo (GTM cargado pero sin eventos) | ✅ Hecho |
 
 ### 🟠 Media
 | # | Problema | Estado |
 |---|---|---|
-| 5 | `GET /api/orders/CS-0001` es público y los números son correlativos → se pueden recorrer y ver nombres, textos y fotos de otros clientes | ⏳ Pendiente (usar id aleatorio para la imagen + clave interna para el detalle) |
+| 5 | `GET /api/orders/CS-0001` es público y los números son correlativos → se pueden recorrer y ver nombres, textos y fotos de otros clientes | ✅ Hecho |
 | 6 | `POST /api/design-preview` (endpoint viejo) aceptaba 8 MB sin límite de envíos ni vencimiento en el bucket | ✅ Hecho (cerrado) |
-| 7 | Se puede enviar un pedido vacío (sin texto, ícono ni logo) | ⏳ Pendiente (aviso de confirmación) |
-| 8 | `/admin` es solo lectura: no se puede cambiar el estado del pedido y no muestra el tamaño | ⏳ Pendiente |
-| 9 | El hero promete "Traé tu termo" pero el personalizador solo ofrece "traigo el mío" en bolígrafos | ⏳ Pendiente |
-| 10 | Bolígrafos: "Traigo mis bolígrafos" (Gs. 35.000) cuesta más que "Bolígrafo de la tienda" (Gs. 20.000) en `materials.ts:124` | ❓ Confirmar con el negocio |
+| 7 | Se puede enviar un pedido vacío (sin texto, ícono ni logo) | ✅ Hecho |
+| 8 | `/admin` es solo lectura: no se puede cambiar el estado del pedido y no muestra el tamaño | ✅ Hecho |
+| 9 | El hero promete "Traé tu termo" pero el personalizador no lo ofrecía | ✅ Hecho |
+| 10 | Bolígrafos: "Traigo mis bolígrafos" (Gs. 35.000) cuesta más que "Bolígrafo de la tienda" (Gs. 20.000) | ✔️ Confirmado por el negocio: es correcto, no se toca |
 
 ### 🟡 Baja
-| # | Problema |
-|---|---|
-| 11 | No se puede compartir ni retomar un diseño (el `designState` ya se guarda; falta el link de reapertura) |
-| 12 | Faltan señales de confianza junto al CTA (tiempos de entrega, garantía, reseñas) |
-| 13 | `customizer.tsx` tiene ~2.900 líneas en un solo componente |
-| 14 | El tutorial se abre solo la primera vez: medir con los eventos nuevos si ayuda o interrumpe |
-| — | `check:local` mide el chunk equivocado como "JS inicial" (reporta 0,3 KB); el presupuesto no está protegiendo nada |
+| # | Problema | Estado |
+|---|---|---|
+| 11 | No se puede compartir ni retomar un diseño | ✅ Hecho |
+| 12 | Faltan señales de confianza junto al CTA | ✅ Hecho (sin plazos de entrega, por decisión del negocio) |
+| 13 | `customizer.tsx` tiene ~3.000 líneas en un solo componente | ⏭️ Se hace junto con el rediseño de la creación (§4), que toca esas mismas piezas |
+| 14 | Tutorial: medir si ayuda | ✅ Hecho (eventos). Ya no se abría solo: es manual desde "Ver cómo funciona" |
+| — | `check:local` medía el chunk equivocado como "JS inicial" (0,3 KB) | ✅ Hecho (ahora lee el entry real de `index.html`: 88 KB) |
+| — | El panel `/admin` usa la clave por defecto `creativa123` si no se define `INTERNAL_ACCESS_KEY` | ⚠️ Acción del dueño: definir el Secret (ver §3b) |
 
 ---
 
@@ -83,6 +84,37 @@ En bolígrafos se omite el material (repite el producto); en productos de un sol
 
 > **Pendiente:** republicar en Replit y correr `pnpm run check:prod`.
 
+### Ronda 2 — resto del diagnóstico (§3b)
+
+**Punto 3 — Precio estimado** (`customizer.tsx`, bloque de acciones del pedido)
+- Caja "Precio estimado" encima del botón de WhatsApp, y renglón `Precio estimado:` en el mensaje.
+- Termos/vasos con láser: precio del plan de Tarifas deducido del diseño (solo texto Gs. 35.000 · + ícono Gs. 40.000 · + logo Gs. 50.000) + "la pieza se cotiza aparte" (o "sobre tu producto" si lo trae).
+- Impresión UV: "se cotiza según el diseño". Bolígrafos: precio según de dónde sale el bolígrafo. Resto: "te pasamos el precio por WhatsApp".
+- Solo se muestran montos que la landing ya publica.
+
+**Punto 5 — Privacidad de los pedidos** (`api-server`)
+- La URL de la imagen lleva un token HMAC no adivinable (`/api/orders/CS-0011/image?t=…`): sin token o con token incorrecto → 404.
+- Los pedidos anteriores al cambio siguen abriendo sin token (no se rompen los links ya mandados por WhatsApp).
+- `GET /api/orders/:n` (detalle completo) ahora exige la clave interna (401 sin ella). La landing no lo usaba.
+- La clave interna se compara en tiempo constante, y el server avisa en el log si sigue la clave por defecto.
+- **Acción del dueño:** definir en Secrets `INTERNAL_ACCESS_KEY` (clave larga) y, opcional, `ORDER_LINK_SECRET`. Ojo: cambiar cualquiera de los dos invalida los links de imagen firmados hasta ese momento.
+
+**Punto 7 — Pedido vacío:** primer click sin texto/ícono/imagen muestra un aviso con "Seguir diseñando" / "Enviar igual".
+
+**Punto 8 — Panel `/admin`:** selector de estado por pedido (Nueva / En proceso / Completada / Cancelada, vía `PATCH /api/admin/orders/:n`), tamaño, etiqueta "Trae su producto" y precio estimado; miniaturas con token.
+
+**Punto 9 — "Traigo el mío":** selector "Lo compro acá / Traigo el mío" en el paso Producto (termos, vasos, etc. y bolígrafos). Cambia el precio estimado y viaja en el mensaje (`Origen: Lo trae el cliente`) y al panel.
+
+**Punto 11 — Compartir diseño:** botón "Compartir diseño" (hoja nativa en celular; copiar link en desktop). El diseño viaja en el hash `#diseno=…`; al abrir el link, la página baja al personalizador, aplica el diseño (validando cada valor) y en celular salta al paso Diseño. El logo/foto subido no viaja (no entra en una URL): se avisa.
+
+**Punto 12 — Confianza:** bajo el botón, "Revisamos el diseño final con vos por WhatsApp antes de producir", "Pagás recién cuando confirmás el diseño" y "Retirás en nuestro local: …".
+
+**Bug de la subida de imagen (era §4 punto 4):** se quitó la exigencia circular de "elegir un plan con imagen"; ahora se sube directo y el plan se deduce solo.
+
+**Eventos nuevos:** `customizer_own_product`, `order_empty_warning`, `design_link_copy`, `design_link_open`, `tutorial_open`, `tutorial_close`, `tutorial_complete`; `order_submit` suma `own_product`.
+
+**Verificación:** typecheck de landing y api-server, build OK, `check:local` OK. Backend probado de punta a punta contra la base de desarrollo (token de imagen, 401/404, PATCH de estado, datos en el panel). Link de diseño probado ida y vuelta con acentos y emojis. Falta probar el flujo en un navegador real.
+
 ---
 
 ## 4. Creación de diseños: por qué se siente tosca y cómo mejorarla
@@ -91,7 +123,7 @@ En bolígrafos se omite el material (repite el producto); en productos de un sol
 1. **Con un diseño cargado ya no se puede girar el termo.** Con texto/ícono/imagen, arrastrar sobre el 3D *siempre* mueve el diseño, en cualquier pestaña (incluso "Color") y en cualquier parte del visor (`customizer.tsx` `activeDesignKind`, `thermos-3d.tsx` `onDown`). En celular, además, el visor deja de permitir scrollear. Es el principal generador de confusión.
 2. **El diseño no sigue al dedo:** el arrastre está multiplicado ×1,7 / ×1,5 (`onDesignMove`). No hay recuadro ni manijas de selección; las guías solo aparecen mientras se arrastra.
 3. **No queda claro qué se está moviendo:** con texto + ícono, lo que se mueve depende de la pestaña abierta, sin indicación visible. El d-pad mueve "lo activo" a saltos fijos.
-4. **Bug: subir imagen está trabado por los planes (que ya no se muestran).** La pestaña "Imagen" dice *"El plan de solo nombres no incluye imagen. Elegí un plan…"*: sin imagen el plan inferido es "solo nombres", y ese plan no permite subir imagen. Es circular.
+4. ~~**Bug: subir imagen está trabado por los planes.**~~ ✅ Resuelto en la ronda 2. La pestaña "Imagen" dice *"El plan de solo nombres no incluye imagen. Elegí un plan…"*: sin imagen el plan inferido es "solo nombres", y ese plan no permite subir imagen. Es circular.
 5. **Jerarquía invertida:** la técnica (láser/UV), que cambia todo, está dentro de "Texto"; el tamaño del ícono está en "Ajustes avanzados"; la imagen no tiene control de tamaño; 28 tipografías en un carrusel numerado sin agrupar.
 6. **Se arranca de cero:** termo vacío, sin ejemplos de partida.
 7. **No hay deshacer ni reiniciar.**
@@ -102,7 +134,7 @@ En bolígrafos se omite el material (repite el producto); en productos de un sol
 - Girar y mover conviven: arrastrar *sobre el diseño* lo mueve; *fuera* gira. Alternativa simple: interruptor visible `[↻ Girar] [✥ Mover]`.
 - Movimiento 1:1 con el dedo y recuadro de selección visible.
 - Indicador "Moviendo: Texto ▾" para cambiar de elemento sin depender de la pestaña.
-- Destrabar la subida de imagen (quitar la lógica de planes de esa pestaña).
+- ~~Destrabar la subida de imagen~~ ✅ hecho en la ronda 2.
 - Deshacer / Reiniciar diseño.
 
 **Etapa B — Simplificar el editor (2–3 días)**
@@ -166,6 +198,6 @@ Del lado del código: el visor debe aceptar `.glb` además del perfil actual, pa
 4. Agregar al carrito del ecommerce (opción B), si la plataforma lo permite.
 
 ### Datos pendientes del negocio
-1. Plataforma del ecommerce (Shopify, Tiendanube, WooCommerce, VTEX, propio…) y URL.
-2. Acceso de administrador para generar una clave de API de solo lectura.
+1. ~~Plataforma del ecommerce~~ → **Odoo**. Falta la URL de la instancia.
+2. Acceso de administrador para crear un usuario de API de solo lectura en Odoo (la API es XML-RPC/JSON-RPC: url, base de datos, usuario y API key).
 3. Cierre preferido: WhatsApp o carrito de la tienda.

@@ -11,7 +11,7 @@ import {
   loadOrderImage,
 } from "../lib/order-images";
 import { buildProductionSvg } from "../lib/production-svg";
-import { checkInternalKey } from "../lib/internal-key";
+import { checkInternalKey, checkOrderImageToken, orderImageToken } from "../lib/internal-key";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -67,10 +67,17 @@ function originFrom(req: Request): string {
   return `${proto}://${host}`;
 }
 
+/** URL pública del preview, firmada con un token no adivinable (ver
+ *  orderImageToken): el número de pedido solo no alcanza para verla. */
 const imageUrlFor = (req: Request, order: Pick<Order, "orderNumber" | "previewImagePath">) =>
   order.previewImagePath
-    ? `${originFrom(req)}/api/orders/${order.orderNumber}/image`
+    ? `${originFrom(req)}/api/orders/${order.orderNumber}/image?t=${orderImageToken(order.orderNumber)}`
     : null;
+
+/** Marca en designState de los pedidos cuya imagen exige token. Los pedidos
+ *  anteriores no la tienen y siguen abriendo sin token, para no romper los
+ *  links que ya se mandaron por WhatsApp. */
+const TOKEN_FLAG = "_imageTokenRequired";
 
 const ORDER_NUMBER_RE = /^CS-\d{4,}$/;
 
@@ -113,7 +120,7 @@ router.post("/orders", rateLimit({ max: 10, windowMs: 60 * 60 * 1000 }), async (
         textColor: body.textColor ?? null,
         iconName: body.iconName ?? null,
         hasUploadedImage: body.hasUploadedImage ?? false,
-        designState: body.designState,
+        designState: { ...body.designState, [TOKEN_FLAG]: true },
       })
       .returning();
     if (!order) throw new Error("insert returned no row");
@@ -148,8 +155,14 @@ router.post("/orders", rateLimit({ max: 10, windowMs: 60 * 60 * 1000 }), async (
   }
 });
 
-// GET /api/orders/:orderNumber — pedido completo (uso interno futuro).
+// GET /api/orders/:orderNumber — pedido completo. USO INTERNO: contiene datos
+// del cliente (texto grabado, diseño), así que exige la clave. Sin clave
+// responde 401 sin revelar si el pedido existe.
 router.get("/orders/:orderNumber", async (req, res) => {
+  if (!hasInternalKey(req)) {
+    res.status(401).json({ message: "No autorizado" });
+    return;
+  }
   const orderNumber = req.params.orderNumber;
   if (!ORDER_NUMBER_RE.test(orderNumber)) {
     res.status(404).json({ message: "Pedido no encontrado" });
@@ -163,14 +176,10 @@ router.get("/orders/:orderNumber", async (req, res) => {
       res.status(404).json({ message: "Pedido no encontrado" });
       return;
     }
-    // El archivo de producción es interno: la ruta solo se incluye cuando la
-    // request trae la clave interna.
-    const { productionFilePath, ...publicOrder } = order;
     res.json({
-      ...publicOrder,
+      ...order,
       createdAt: order.createdAt.toISOString(),
       previewImageUrl: imageUrlFor(req, order),
-      ...(hasInternalKey(req) ? { productionFilePath } : {}),
     });
   } catch (err) {
     logger.error({ err }, "orders: get failed");
@@ -218,8 +227,9 @@ router.get("/orders/:orderNumber/production-file", async (req, res) => {
   }
 });
 
-// GET /api/orders/:orderNumber/image — imagen pública permanente del preview
-// (la URL que viaja en el mensaje de WhatsApp).
+// GET /api/orders/:orderNumber/image?t=<token> — imagen permanente del preview
+// (la URL que viaja en el mensaje de WhatsApp). Exige el token del pedido (o la
+// clave interna, para el panel); los pedidos previos al token abren sin él.
 router.get("/orders/:orderNumber/image", async (req, res) => {
   const orderNumber = req.params.orderNumber;
   if (!ORDER_NUMBER_RE.test(orderNumber)) {
@@ -229,9 +239,15 @@ router.get("/orders/:orderNumber/image", async (req, res) => {
   try {
     const order = await db.query.ordersTable.findFirst({
       where: eq(ordersTable.orderNumber, orderNumber),
-      columns: { previewImagePath: true },
+      columns: { previewImagePath: true, designState: true },
     });
     if (!order?.previewImagePath) {
+      res.status(404).end();
+      return;
+    }
+    const needsToken = (order.designState as Record<string, unknown> | null)?.[TOKEN_FLAG] === true;
+    if (needsToken && !checkOrderImageToken(orderNumber, req.query.t) && !hasInternalKey(req)) {
+      // 404 (no 401): no confirma que el pedido exista.
       res.status(404).end();
       return;
     }

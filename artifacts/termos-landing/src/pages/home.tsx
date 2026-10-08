@@ -1,6 +1,7 @@
-import React, { Suspense, lazy } from "react";
+import React, { Suspense, lazy, useEffect } from "react";
 import Hero from "@/components/hero";
 import DeferUntilVisible from "@/components/defer-until-visible";
+import { hasSharedDesign } from "@/lib/design-link";
 
 // Everything below the hero is loaded on demand. The hero is the only
 // above-the-fold section, so it stays in the initial bundle; the rest —
@@ -34,6 +35,14 @@ function SectionFallback({ minH = "60vh", label }: { minH?: string; label?: stri
 }
 
 export default function Home() {
+  // Link de diseño compartido (#diseno=…): bajar directo al personalizador. El
+  // scroll dispara la carga diferida y el Customizer aplica el diseño al montar.
+  useEffect(() => {
+    if (!hasSharedDesign()) return;
+    const t = setTimeout(() => document.getElementById("customizer")?.scrollIntoView({ behavior: "smooth" }), 300);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
     <div className="min-h-[100dvh] w-full flex flex-col overflow-x-hidden">
       <Hero />

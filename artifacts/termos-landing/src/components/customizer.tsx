@@ -14,7 +14,7 @@ import {
   Minus, Plus, Move,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
   WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
-  ChevronUp, Crosshair, CirclePlay, Orbit,
+  ChevronUp, Crosshair, CirclePlay, Orbit, Link2, MessageCircle, MapPin, HandCoins,
 } from "lucide-react";
 import Thermos3D from "./thermos-3d";
 import Object3D from "./object-3d";
@@ -36,10 +36,11 @@ import {
   clampPlacementToFrontArea, type MarkHalfExtents,
 } from "@/lib/face-area";
 import {
-  MATERIALS, DEFAULT_MATERIAL_ID, getMaterial, allowsColorPrint, type MaterialId,
+  MATERIALS, DEFAULT_MATERIAL_ID, PEN_OPTIONS, getMaterial, allowsColorPrint, type MaterialId,
 } from "@/lib/materials";
 import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
-import { whatsappUrl } from "@/lib/contact";
+import { ADDRESS, whatsappUrl } from "@/lib/contact";
+import { clearSharedDesign, designLink, readSharedDesign, type SharedDesign } from "@/lib/design-link";
 import { track } from "@/lib/analytics";
 import { dataUrlToJpeg, downloadDataUrl } from "@/lib/share";
 import { useCreateOrder, type CreateOrderRequest } from "@workspace/api-client-react";
@@ -1057,7 +1058,6 @@ export default function Customizer() {
   // (flat objects, pens) collapse to two (Producto · Diseño). State is
   // centralised here, so stepping back and forth never loses anything.
   const [mobileStep, setMobileStep] = useState(1);
-  const [planTouched, setPlanTouched] = useState(false);
 
   // STEP 1 — material, STEP 2 — product within the material
   const [materialId, setMaterialId] = useState<MaterialId>(DEFAULT_MATERIAL_ID);
@@ -1095,6 +1095,14 @@ export default function Customizer() {
   const [font, setFont] = useState(FONTS[0].id);
   const activeFont = FONTS.find(f => f.id === font) || FONTS[0];
   const [isOrdered, setIsOrdered] = useState(false);
+  // "Traigo el mío": el cliente trae su termo/vaso/bolígrafo y solo paga el
+  // grabado (el hero lo promete; antes solo existía para bolígrafos).
+  const [ownProduct, setOwnProduct] = useState(false);
+  // Pedido sin texto, ícono ni imagen: primer click muestra el aviso.
+  const [emptyWarning, setEmptyWarning] = useState(false);
+  // Link del diseño: "copiado" o, si el portapapeles falla, la URL a la vista.
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [linkFallback, setLinkFallback] = useState<string | null>(null);
   // Número del último pedido creado ("CS-0042") para la confirmación breve del
   // paso; null cuando el POST falló y el mensaje salió por el fallback.
   const [lastOrderNumber, setLastOrderNumber] = useState<string | null>(null);
@@ -1156,6 +1164,41 @@ export default function Customizer() {
     setMobileStep(s => Math.min(s, wizardLabels.length));
   }, [wizardLabels.length]);
 
+  // ── Link de diseño compartido (#diseno=…) ──────────────────────────────────
+  // Al montar, si la URL trae un diseño, se aplica tal cual (validando cada id
+  // contra el catálogo: un link viejo o editado a mano nunca rompe nada) y se
+  // limpia el hash. En móvil se salta directo al paso de Diseño.
+  React.useEffect(() => {
+    const d = readSharedDesign();
+    if (!d) return;
+    const isHex = (v: unknown): v is string => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
+    const m = MATERIALS.find(x => x.id === d.materialId);
+    if (m) {
+      setMaterialId(m.id);
+      const mp = m.products.find(p => p.id === d.materialProductId) ?? m.products[0];
+      setMaterialProductId(mp?.id ?? "");
+      if (mp?.drinkwareProductId) {
+        const dp = getProduct(mp.drinkwareProductId);
+        setSize(dp.sizes.some(x => x.id === d.sizeId) ? d.sizeId : (dp.sizes[1]?.id ?? dp.sizes[0].id));
+      }
+      setMobileStep(mp?.drinkwareProductId ? 3 : 2);
+    }
+    if (COLORS.some(c => c.id === d.colorId)) setColor(d.colorId);
+    setCustomHex(isHex(d.customHex) ? d.customHex : null);
+    if (FINISHES.some(f => f.id === d.finish)) setFinish(d.finish);
+    setTechnique(d.technique === "eufy" ? "eufy" : "laser");
+    setText(capEngravingText(typeof d.text === "string" ? d.text : ""));
+    if (FONTS.some(f => f.id === d.fontId)) setFont(d.fontId);
+    if (isHex(d.textColor)) setTextColor(d.textColor);
+    setIconId(ENGRAVING_ICONS.some(i => i.id === d.iconId) ? d.iconId : null);
+    setOwnProduct(d.ownProduct === true);
+    if (d.textPlacement && typeof d.textPlacement === "object") setTextPlacement({ ...DEFAULT_TEXT_PLACEMENT, ...d.textPlacement });
+    if (d.artPlacement && typeof d.artPlacement === "object") setArtPlacement({ ...DEFAULT_ART_PLACEMENT, ...d.artPlacement });
+    setDrinkTab("text");
+    clearSharedDesign();
+    track("design_link_open");
+  }, []);
+
   // Hide the floating WhatsApp CTA while the customizer section is on screen on
   // mobile, so it never covers the editor controls or the "Personalizar" CTA.
   const sectionRef = useRef<HTMLElement>(null);
@@ -1187,11 +1230,11 @@ export default function Customizer() {
 
   // ── Progressive plan inference ─────────────────────────────────────────────
   // Infer the plan from what was designed (logo/photo ⇒ logo, icon ⇒ drawing,
-  // text only ⇒ names) and keep it in sync until the customer picks one by hand.
+  // text only ⇒ names). Siempre en sync: el plan ya no se elige a mano.
   const inferredPlanId: EngravingPlanId = customImage ? "logo" : iconId ? "drawing" : "names";
   React.useEffect(() => {
-    if (!planTouched && isDrinkware && plan !== inferredPlanId) setPlan(inferredPlanId);
-  }, [inferredPlanId, planTouched, isDrinkware, plan]);
+    if (isDrinkware && plan !== inferredPlanId) setPlan(inferredPlanId);
+  }, [inferredPlanId, isDrinkware, plan]);
 
   // Image upload is stainless-steel drinkware only. (Ya no lo condiciona el plan:
   // los planes/precios se quitaron del personalizador.)
@@ -1542,13 +1585,6 @@ export default function Customizer() {
     }
   };
 
-  const handleSelectPlan = (id: EngravingPlanId) => {
-    setPlanTouched(true);
-    setPlan(id);
-    const nextPlan = ENGRAVING_PLANS.find(p => p.id === id);
-    if (!nextPlan?.allowsImage) setCustomImage(null);
-  };
-
   // Icon and uploaded image are mutually exclusive engraved art.
   const handlePickIcon = (id: string | null) => {
     setIconId(id);
@@ -1591,11 +1627,36 @@ export default function Customizer() {
       ? `${activeColorName} (${activeColorHex})`
       : undefined;
 
+  // "Traigo el mío" aplica a drinkware y bolígrafos (lo que el hero promete).
+  const canBringOwn = isDrinkware || !!material.pens;
+  const isOwnProduct = canBringOwn && ownProduct;
+
+  /** Precio estimado según lo diseñado. Solo montos que la landing ya publica
+   *  (Tarifas y bolígrafos); lo que no tiene precio fijo se dice explícito. */
+  const estimate: { price: string | null; note: string } = (() => {
+    if (material.pens) {
+      const opt = PEN_OPTIONS.find(o => o.id === (isOwnProduct ? "own" : "shop")) ?? PEN_OPTIONS[0];
+      return { price: opt.priceLabel, note: opt.label };
+    }
+    if (isDrinkware && effectiveTechnique === "laser") {
+      return {
+        price: activePlan.priceLabel,
+        note: isOwnProduct
+          ? `Grabado (${activePlan.shortLabel.toLowerCase()}) sobre tu producto`
+          : `Grabado (${activePlan.shortLabel.toLowerCase()}). La pieza se cotiza aparte`,
+      };
+    }
+    if (isDrinkware) return { price: null, note: "La impresión UV a color se cotiza según el diseño" };
+    return { price: null, note: "Te pasamos el precio por WhatsApp" };
+  })();
+  const estimateText = estimate.price ? `${estimate.price} — ${estimate.note}` : estimate.note;
+
   /** Campos del pedido — ÚNICA fuente de datos del "Resumen de tu
    *  personalización" (Paso 4) y del mensaje de WhatsApp. Campos sin dato se
    *  omiten por completo (nunca "Texto: —"). */
   const orderFields = (): [string, string][] => {
     const rows: [string, string][] = [["Producto", orderProductName]];
+    if (isOwnProduct) rows.push(["Origen", "Lo trae el cliente"]);
     if (orderSizeName) rows.push(["Tamaño", orderSizeName]);
     // En bolígrafos el material repite el producto; en el resto distingue
     // (ej. termo de acero pintado vs. inoxidable vs. forrado en cuero).
@@ -1643,6 +1704,10 @@ export default function Customizer() {
         simpleKind,
         textPlacement,
         artPlacement,
+        // Legibles para el panel /admin (designState admite campos extra).
+        sizeLabel: orderSizeName,
+        ownProduct: isOwnProduct,
+        engravingEstimate: estimateText,
       },
       previewImage: previewImage ?? undefined,
       // Logo/foto original en la máxima resolución que tiene el cliente: el
@@ -1657,6 +1722,7 @@ export default function Customizer() {
     const parts = ["¡Hola! Acabo de armar mi pedido personalizado y quiero coordinarlo con ustedes."];
     if (orderNumber) parts.push(`Pedido: ${orderNumber}`);
     parts.push(...orderFields().map(([k, v]) => `${k}: ${v}`));
+    parts.push(`Precio estimado: ${estimateText}`);
     if (imageUrl) parts.push(`Así quedó mi diseño:\n${imageUrl}`);
     // Renglón en blanco entre datos para que WhatsApp lo muestre ordenado.
     return parts.join("\n\n");
@@ -1671,8 +1737,18 @@ export default function Customizer() {
    *  imagen) y abre WhatsApp con el número de pedido y la URL permanente del
    *  preview. Si el POST falla o tarda de más, fallback: mensaje solo con las
    *  especificaciones, más un aviso sutil y el botón "Descargar imagen". */
-  const handleOrder = async () => {
+  const isEmptyDesign = !text.trim() && !selectedIcon && !customImage;
+
+  const handleOrder = async (force = false) => {
     if (isOrdered || isPreparing) return;
+    // Sin nada para grabar: avisar antes (puede ser a propósito, ej. "quiero
+    // asesoramiento"), así que "Enviar igual" sigue disponible.
+    if (isEmptyDesign && !force) {
+      setEmptyWarning(true);
+      track("order_empty_warning");
+      return;
+    }
+    setEmptyWarning(false);
     setIsPreparing(true);
     setOrderFallback(false);
     setLastOrderNumber(null);
@@ -1683,6 +1759,7 @@ export default function Customizer() {
       has_text: !!text.trim(),
       has_icon: !!selectedIcon,
       has_image: !!customImage,
+      own_product: isOwnProduct,
     });
 
     // La pestaña debe abrirse sincrónica al click (si no, el bloqueador de
@@ -1943,12 +2020,106 @@ export default function Customizer() {
     </div>
   );
 
-  // Bloque de acciones compartido por TODOS los productos: CTA de WhatsApp +
-  // "Descargar imagen" debajo (cuando hay una captura del diseño disponible).
+  /** Estado mínimo para el link del diseño (sin el logo subido: no entra en una URL). */
+  const sharedDesignState = (): SharedDesign => ({
+    v: 1, materialId, materialProductId, sizeId: size, colorId: color, customHex, finish,
+    technique: effectiveTechnique, text, fontId: font, textColor, iconId, ownProduct,
+    textPlacement, artPlacement,
+  });
+
+  const handleCopyLink = async () => {
+    const url = designLink(sharedDesignState());
+    track("design_link_copy", { has_image: !!customImage });
+    // En el celular, la hoja de compartir nativa (WhatsApp, etc.) es lo natural.
+    if (isMobile && typeof navigator.share === "function") {
+      try { await navigator.share({ title: "Mi diseño · Creativa Studio", url }); } catch { /* canceló */ }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkFallback(null);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2500);
+    } catch {
+      // Sin permiso de portapapeles: mostrar la URL para copiarla a mano.
+      setLinkFallback(url);
+    }
+  };
+
+  /** "¿De dónde sale el producto?" — drinkware y bolígrafos. */
+  const renderOwnProduct = () => canBringOwn && (
+    <div>
+      <Label className="text-sm font-medium text-foreground mb-3 block">
+        {material.pens ? "¿Los bolígrafos?" : `¿Ya tenés tu ${orderProductName.toLowerCase()}?`}
+      </Label>
+      <div className="grid grid-cols-2 gap-3">
+        {[
+          { own: false, title: material.pens ? "De la tienda" : "Lo compro acá", sub: material.pens ? "Incluye el bolígrafo" : "Te cotizamos la pieza" },
+          { own: true, title: material.pens ? "Traigo los míos" : "Traigo el mío", sub: "Solo el grabado" },
+        ].map(o => {
+          const active = ownProduct === o.own;
+          return (
+            <button
+              key={String(o.own)}
+              type="button"
+              aria-pressed={active}
+              onClick={() => { setOwnProduct(o.own); track("customizer_own_product", { own: o.own }); }}
+              className={`min-h-12 px-3 py-2.5 border rounded-xl flex flex-col items-center justify-center text-center transition-all ${active ? activeCard : idleCard}`}
+            >
+              <span className="font-semibold text-sm leading-tight">{o.title}</span>
+              <span className="text-xs text-muted-foreground leading-tight mt-0.5">{o.sub}</span>
+            </button>
+          );
+        })}
+      </div>
+      {ownProduct && !material.pens && (
+        <p className="text-xs text-muted-foreground mt-2">
+          Trabajamos también sobre productos que no compraste en nuestra tienda. Elegí abajo el
+          modelo y el color más parecidos al tuyo para ver cómo queda.
+        </p>
+      )}
+    </div>
+  );
+
+  // Bloque de acciones compartido por TODOS los productos: precio estimado,
+  // CTA de WhatsApp, señales de confianza y acciones secundarias.
   const renderOrderActions = () => (
     <>
+      {/* Precio estimado — antes el cliente llegaba al final sin ningún monto. */}
+      <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-sm text-muted-foreground">Precio estimado</span>
+          {estimate.price && (
+            <span className="font-serif text-lg text-foreground tabular-nums">{estimate.price}</span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-0.5">{estimate.note}.</p>
+      </div>
+
+      {emptyWarning && isEmptyDesign && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 space-y-2" role="alert">
+          <p>Todavía no agregaste texto, ícono ni imagen para grabar. ¿Querés enviarlo igual y lo definimos por WhatsApp?</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setEmptyWarning(false)}
+              className="min-h-10 px-3 rounded-lg border border-amber-300 bg-white text-xs font-semibold"
+            >
+              Seguir diseñando
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOrder(true)}
+              className="min-h-10 px-3 rounded-lg bg-amber-900 text-white text-xs font-semibold"
+            >
+              Enviar igual
+            </button>
+          </div>
+        </div>
+      )}
+
       <Button
-        onClick={handleOrder}
+        onClick={() => handleOrder()}
         disabled={isOrdered || isPreparing}
         size="lg"
         className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
@@ -1969,20 +2140,54 @@ export default function Customizer() {
         </p>
       )}
 
-      {previewImg && (
+      {/* Señales de confianza: solo lo que el proceso real garantiza (sin plazos). */}
+      <ul className="space-y-1.5 text-xs text-muted-foreground">
+        <li className="flex items-start gap-2">
+          <MessageCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" />
+          Revisamos el diseño final con vos por WhatsApp antes de producir.
+        </li>
+        <li className="flex items-start gap-2">
+          <HandCoins className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" />
+          Pagás recién cuando confirmás el diseño.
+        </li>
+        <li className="flex items-start gap-2">
+          <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" />
+          Retirás en nuestro local: {ADDRESS}.
+        </li>
+      </ul>
+
+      <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
         <button
           type="button"
-          onClick={() => downloadDataUrl(previewImg, "mi-diseno.png")}
-          className="w-full inline-flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+          onClick={handleCopyLink}
+          className="inline-flex items-center gap-2 min-h-10 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
         >
-          <Download className="w-4 h-4" /> Descargar imagen
+          <Link2 className="w-4 h-4" /> {linkCopied ? "¡Link copiado!" : "Compartir diseño"}
         </button>
+        {previewImg && (
+          <button
+            type="button"
+            onClick={() => downloadDataUrl(previewImg, "mi-diseno.png")}
+            className="inline-flex items-center gap-2 min-h-10 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+          >
+            <Download className="w-4 h-4" /> Descargar imagen
+          </button>
+        )}
+      </div>
+      {linkFallback && (
+        <input
+          readOnly
+          value={linkFallback}
+          onFocus={e => e.currentTarget.select()}
+          aria-label="Link de tu diseño"
+          className="w-full rounded-lg border border-border px-3 py-2 text-base"
+        />
       )}
-
-      <p className="text-xs text-muted-foreground text-center leading-relaxed">
-        Te abrimos WhatsApp para seguir con tu pedido. Si querés, descargá la imagen de tu diseño
-        y sumala al chat.
-      </p>
+      {customImage && (
+        <p className="text-xs text-muted-foreground text-center">
+          El link guarda todo menos tu logo o foto: al abrirlo hay que volver a subirla.
+        </p>
+      )}
     </>
   );
 
@@ -2190,6 +2395,7 @@ export default function Customizer() {
           {!material.pens && activeMProduct?.desc && (
             <p className="text-xs text-muted-foreground mt-3">{activeMProduct.desc}</p>
           )}
+          {canBringOwn && <div className="mt-6 max-w-md">{renderOwnProduct()}</div>}
         </div>
         </>
         )}
@@ -2204,6 +2410,7 @@ export default function Customizer() {
               <MaterialChips materials={MATERIALS} value={materialId} onChange={handleSelectMaterial} />
               <ProductChips material={material} value={materialProductId} onChange={handleSelectMaterialProduct} />
               {material.desc && <p className="text-xs text-muted-foreground">{material.desc}</p>}
+              {renderOwnProduct()}
             </div>
           </motion.div>
         )}
@@ -2567,51 +2774,29 @@ export default function Customizer() {
                         Subí tu logo o tu foto: se imprime a todo color (impresión UV) sobre el {product.singular.toLowerCase()}. Si tiene un fondo liso se lo quitamos automáticamente.
                       </p>
 
-                      {activePlan.allowsImage ? (
-                        <>
-                          <ImageUpload
-                            imageSize={activePlan.imageSize === "large" ? "large" : "small"}
-                            value={customImage}
-                            onChange={handleUploadImage}
-                          />
-                          <p className="text-xs text-muted-foreground mt-3">
-                            Con el plan <span className="font-medium text-foreground">{activePlan.shortLabel}</span> la
-                            imagen va en tamaño {activePlan.imageSize === "large" ? "grande (logo)" : "chico (dibujo)"}, ya definido por el plan.
-                          </p>
+                      {/* Antes se exigía un plan "con imagen", pero el plan se deduce
+                          de lo diseñado (sin imagen = "solo nombres"): era circular y
+                          bloqueaba la subida. Ahora se sube directo y el plan pasa a
+                          "logo" solo; el tamaño sale de ese plan. */}
+                      <ImageUpload
+                        imageSize="large"
+                        value={customImage}
+                        onChange={handleUploadImage}
+                      />
 
-                          {customImage && (
-                            <div className="pt-4 mt-4 border-t border-border">
-                              <Label className="text-sm font-medium text-foreground mb-1 block">Orientación de la imagen</Label>
-                              <p className="text-xs text-muted-foreground mb-3">
-                                Arrastrá la imagen sobre el {product.singular.toLowerCase()} para ubicarla, o usá el control de posición del visor.
-                              </p>
-                              <PlacementControls
-                                value={artPlacement}
-                                onChange={applyArtPlacement}
-                                singleFace={singleFace}
-                                frontExtents={artExtents}
-                                areaAspect={faceAreaAspect}
-                              />
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <div className="border border-dashed border-border rounded-xl p-6 text-center space-y-3">
-                          <ImageIcon className="w-6 h-6 text-muted-foreground mx-auto" />
-                          <p className="text-sm text-muted-foreground">
-                            El plan de solo nombres no incluye imagen. Elegí un plan con dibujo o logo para subir tu foto.
+                      {customImage && (
+                        <div className="pt-4 mt-4 border-t border-border">
+                          <Label className="text-sm font-medium text-foreground mb-1 block">Orientación de la imagen</Label>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            Arrastrá la imagen sobre el {product.singular.toLowerCase()} para ubicarla, o usá el control de posición del visor.
                           </p>
-                          <div className="flex justify-center gap-2">
-                            {ENGRAVING_PLANS.filter(p => p.allowsImage).map(p => (
-                              <button
-                                key={p.id}
-                                onClick={() => handleSelectPlan(p.id)}
-                                className="text-xs font-medium border border-border rounded-lg px-3 py-2 text-foreground hover:border-primary/40 hover:bg-secondary/50 transition-colors"
-                              >
-                                {p.shortLabel}
-                              </button>
-                            ))}
-                          </div>
+                          <PlacementControls
+                            value={artPlacement}
+                            onChange={applyArtPlacement}
+                            singleFace={singleFace}
+                            frontExtents={artExtents}
+                            areaAspect={faceAreaAspect}
+                          />
                         </div>
                       )}
                     </div>

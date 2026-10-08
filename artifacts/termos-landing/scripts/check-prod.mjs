@@ -33,9 +33,13 @@ const bad = (msg) => { failures++; console.error(`  ✗ ${msg}`); };
 // ── Budgets sobre el build local ─────────────────────────────────────────────
 console.log("\n== Presupuestos del build (dist/public) ==");
 try {
-  const assets = readdirSync(join(DIST, "assets"));
-  const entry = assets.find((f) => /^index-.*\.js$/.test(f));
-  const css = assets.find((f) => /^index-.*\.css$/.test(f));
+  // El entry y el CSS se leen de index.html: buscarlos por nombre ("index-*.js")
+  // agarraba un chunk lazy cualquiera (hay varios index-*.js) y el presupuesto
+  // medía 0,3 KB en vez del entry real.
+  const html = readFileSync(join(DIST, "index.html"), "utf8");
+  const entry = html.match(/<script[^>]*type="module"[^>]*src="\/assets\/([^"]+\.js)"/)?.[1];
+  const css = html.match(/href="\/assets\/(index-[^"]+\.css)"/)?.[1];
+  if (!entry || !css) throw new Error("no se encontró el entry JS/CSS en index.html");
 
   const brSize = (p) => brotliCompressSync(readFileSync(p)).length;
 

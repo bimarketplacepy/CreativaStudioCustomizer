@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { track } from "@/lib/analytics";
 
 /**
  * Guía del personalizador — a short 3-step guide.
@@ -238,6 +239,8 @@ export default function CustomizerTutorial() {
   /** Closing by any path (X, Saltar, outside, Escape, completing) counts as
    *  seen: the modal never auto-opens again. Manual replay stays available. */
   const cerrar = () => {
+    // Paso (1..N) en el que se cerró; si llegó al final, antes sale tutorial_complete.
+    track("tutorial_close", { step: paso + 1 });
     limpiar();
     setVisible(false);
     document.body.style.overflow = "";
@@ -245,7 +248,11 @@ export default function CustomizerTutorial() {
   };
 
   const siguiente = () => {
-    if (paso >= PASOS.length - 1) { cerrar(); return; }
+    if (paso >= PASOS.length - 1) {
+      track("tutorial_complete");
+      cerrar();
+      return;
+    }
     setPaso(p => p + 1);
   };
 
@@ -256,6 +263,7 @@ export default function CustomizerTutorial() {
     setHabilitado(true);
 
     const abrirManual = () => {
+      track("tutorial_open");
       setPaso(0);
       setVisible(true);
     };

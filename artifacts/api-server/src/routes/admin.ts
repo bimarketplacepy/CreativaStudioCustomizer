@@ -4,9 +4,9 @@
 // tipea el operario queda en sessionStorage y viaja por header en cada fetch.
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db, ordersTable } from "@workspace/db";
-import { checkInternalKey } from "../lib/internal-key";
+import { checkInternalKey, orderImageToken } from "../lib/internal-key";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -38,22 +38,63 @@ router.get("/api/admin/orders", async (req, res) => {
         hasUploadedImage: true,
         previewImagePath: true,
         productionFilePath: true,
+        designState: true,
         createdAt: true,
       },
     });
     res.json(
-      rows.map((r) => ({
-        ...r,
-        createdAt: r.createdAt.toISOString(),
-        hasPreview: !!r.previewImagePath,
-        hasProduction: !!r.productionFilePath,
-        previewImagePath: undefined,
-        productionFilePath: undefined,
-      })),
+      rows.map(({ designState, ...r }) => {
+        // Datos legibles que el personalizador guarda dentro del snapshot.
+        const ds = (designState ?? {}) as Record<string, unknown>;
+        const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+        return {
+          ...r,
+          createdAt: r.createdAt.toISOString(),
+          size: str(ds.sizeLabel) ?? str(ds.sizeId),
+          ownProduct: ds.ownProduct === true,
+          estimate: str(ds.engravingEstimate),
+          imageToken: r.previewImagePath ? orderImageToken(r.orderNumber) : null,
+          hasPreview: !!r.previewImagePath,
+          hasProduction: !!r.productionFilePath,
+          previewImagePath: undefined,
+          productionFilePath: undefined,
+        };
+      }),
     );
   } catch (err) {
     logger.error({ err }, "admin: list failed");
     res.status(500).json({ message: "No se pudo listar los pedidos" });
+  }
+});
+
+const STATUSES = ["nueva", "en_proceso", "completada", "cancelada"] as const;
+type Status = (typeof STATUSES)[number];
+
+// PATCH /api/admin/orders/:orderNumber — cambia el estado del pedido (interno).
+router.patch("/api/admin/orders/:orderNumber", async (req, res) => {
+  if (!hasKey(req)) {
+    res.status(401).json({ message: "No autorizado" });
+    return;
+  }
+  const status = (req.body as { status?: unknown } | undefined)?.status;
+  if (typeof status !== "string" || !STATUSES.includes(status as Status)) {
+    res.status(400).json({ message: "Estado inválido" });
+    return;
+  }
+  try {
+    const [row] = await db
+      .update(ordersTable)
+      .set({ status: status as Status })
+      .where(eq(ordersTable.orderNumber, req.params.orderNumber))
+      .returning({ orderNumber: ordersTable.orderNumber, status: ordersTable.status });
+    if (!row) {
+      res.status(404).json({ message: "Pedido no encontrado" });
+      return;
+    }
+    res.json(row);
+  } catch (err) {
+    logger.error({ err }, "admin: status update failed");
+    res.status(500).json({ message: "No se pudo actualizar el estado" });
   }
 });
 
@@ -112,6 +153,8 @@ const ADMIN_HTML = `<!DOCTYPE html>
   .badge { display:inline-block; font-size:11px; text-transform:uppercase; letter-spacing:.06em; padding:2px 8px;
            border-radius:999px; border:1px solid var(--line); color:var(--muted); margin-left:8px; vertical-align:2px; }
   .badge.nueva { border-color:var(--brand); color:var(--brand); }
+  .status { min-height:40px; padding:6px 10px; border:1px solid var(--line); border-radius:10px; background:#fff; font-size:13px; }
+  .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:6px; background:#f5eaec; color:var(--brand); margin-left:6px; }
   .meta { color:var(--muted); font-size:13px; margin-top:2px; }
   .text { font-size:13px; margin-top:4px; }
   .actions { display:flex; flex-direction:column; gap:8px; }
@@ -180,7 +223,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
     var q = (filter || "").toLowerCase();
     var rows = orders.filter(function (o) {
       if (!q) return true;
-      return [o.orderNumber, o.product, o.material, o.technique, o.customText, o.font, o.iconName]
+      return [o.orderNumber, o.status, o.product, o.size, o.material, o.technique, o.customText, o.font, o.iconName]
         .join(" ").toLowerCase().indexOf(q) >= 0;
     });
     document.getElementById("count").textContent =
@@ -190,33 +233,67 @@ const ADMIN_HTML = `<!DOCTYPE html>
       return;
     }
     list.innerHTML = rows.map(function (o) {
+      var imgUrl = "/api/orders/" + esc(o.orderNumber) + "/image?t=" + esc(o.imageToken);
       var img = o.hasPreview
-        ? '<img class="thumb" loading="lazy" alt="" src="/api/orders/' + esc(o.orderNumber) + '/image">'
+        ? '<img class="thumb" loading="lazy" alt="" src="' + imgUrl + '">'
         : '<div class="thumb empty">sin preview</div>';
-      var detalles = [o.material, o.color, o.technique].filter(Boolean).map(esc).join(" · ");
+      var detalles = [o.size, o.material, o.color, o.technique].filter(Boolean).map(esc).join(" · ");
       var extra = [];
       if (o.customText) extra.push('Texto: “' + esc(o.customText) + '”' + (o.font ? " (" + esc(o.font) + ")" : ""));
       if (o.iconName) extra.push("Ícono: " + esc(o.iconName));
       if (o.hasUploadedImage) extra.push("Logo/foto adjunta");
+      if (o.estimate) extra.push("Grabado estimado: " + esc(o.estimate));
       var svgBtn = o.hasProduction
         ? '<a class="btn primary" href="/api/orders/' + esc(o.orderNumber) + '/production-file?key=' +
           encodeURIComponent(key()) + '" download>SVG producción</a>'
         : '<span class="btn" aria-disabled="true">SVG no generado</span>';
       var imgBtn = o.hasPreview
-        ? '<a class="btn" href="/api/orders/' + esc(o.orderNumber) + '/image" download="' +
+        ? '<a class="btn" href="' + imgUrl + '" download="' +
           esc(o.orderNumber) + '-preview.jpg">Imagen preview</a>'
         : "";
       return '<div class="card">' + img +
         '<div><span class="num">' + esc(o.orderNumber) + '</span>' +
         '<span class="badge ' + esc(o.status) + '">' + esc(o.status).replace("_", " ") + "</span>" +
+        (o.ownProduct ? '<span class="tag">Trae su producto</span>' : "") +
         '<div class="meta">' + esc(o.product) + " — " + detalles + "</div>" +
         '<div class="meta">' + fmtDate(o.createdAt) + "</div>" +
         (extra.length ? '<div class="text">' + extra.join(" · ") + "</div>" : "") +
         "</div>" +
-        '<div class="actions">' + svgBtn + imgBtn + "</div>" +
+        '<div class="actions">' + statusSelect(o) + svgBtn + imgBtn + "</div>" +
         "</div>";
     }).join("");
   }
+
+  var STATUS_LABELS = { nueva: "Nueva", en_proceso: "En proceso", completada: "Completada", cancelada: "Cancelada" };
+  function statusSelect(o) {
+    return '<select class="status" data-order="' + esc(o.orderNumber) + '" aria-label="Estado del pedido">' +
+      Object.keys(STATUS_LABELS).map(function (s) {
+        return '<option value="' + s + '"' + (s === o.status ? " selected" : "") + ">" + STATUS_LABELS[s] + "</option>";
+      }).join("") + "</select>";
+  }
+
+  // Cambio de estado: PATCH y, si falla, vuelve el select a su valor previo.
+  list.addEventListener("change", function (e) {
+    var sel = e.target;
+    if (!sel.classList || !sel.classList.contains("status")) return;
+    var num = sel.getAttribute("data-order");
+    var order = orders.filter(function (o) { return o.orderNumber === num; })[0];
+    var prev = order ? order.status : sel.value;
+    sel.disabled = true;
+    fetch("/api/admin/orders/" + encodeURIComponent(num), {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-internal-key": key() },
+      body: JSON.stringify({ status: sel.value }),
+    }).then(function (r) {
+      if (!r.ok) throw new Error("http " + r.status);
+      if (order) order.status = sel.value;
+      render(document.getElementById("search").value);
+    }).catch(function () {
+      sel.value = prev;
+      sel.disabled = false;
+      alert("No se pudo cambiar el estado. Probá de nuevo.");
+    });
+  });
 
   function load() {
     return fetch("/api/admin/orders", { headers: { "x-internal-key": key() } }).then(function (r) {
