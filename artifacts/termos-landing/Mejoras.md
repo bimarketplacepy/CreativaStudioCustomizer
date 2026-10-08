@@ -236,8 +236,25 @@ Del lado del código: el visor debe aceptar `.glb` además del perfil actual, pa
 - La imagen del producto apunta a `/web/image/...` de Odoo (pública para productos publicados); hoy no se muestra en la landing, queda disponible para el próximo paso.
 - Los productos sin modelo 3D en la landing (jug, botella) se clasifican pero no aparecen en el personalizador hasta sumarlos a `materials.ts`.
 
-### Datos pendientes del negocio
-1. ~~Plataforma del ecommerce~~ → **Odoo**. Falta la URL de la instancia y las credenciales (guía de arriba).
+### 5c. Conexión real con Odoo — probada (2026-10-08)
+
+Probado con `pnpm --filter @workspace/api-server run odoo:check -- hydrate` (diagnóstico **solo lectura**, no crea ni modifica nada en Odoo).
+
+**Resultado: la conexión funciona.**
+- Odoo **19.0 Enterprise** (Odoo Online), login OK, permiso de lectura OK.
+- Campos de esta versión: `is_published`, `free_qty` (stock), `is_storable`. El código ya los soporta.
+- **Bug encontrado y corregido:** el Secret `ODOO_URL` tenía `/odoo` al final (la URL del panel en v17+). La API vive en la raíz, así que Odoo respondía 400 "invalid CSRF token". Ahora el api-server usa solo el origen del dominio, aunque el Secret traiga una ruta. Igual conviene dejar el Secret como `https://marketplace.odoo.com`.
+
+**Hallazgos que cambian la sincronización (próximo paso, todavía no implementado):**
+1. **El catálogo es el de todo Marketplace:** 257.614 plantillas, **2.346 publicadas y vendibles**, de todas las marcas. Clasificar por nombre ("vaso", "termo") mezclaría marcas → hay que **filtrar por marca**.
+2. **La marca está en un campo de Studio:** `x_studio_marca` (texto, ej. `"HYDRATE"`), además de `x_studio_codigo_marca` (`"943"`). El filtro debe ser `x_studio_marca = HYDRATE` (no el nombre).
+3. **Solo 8 productos tienen "hydrate" en el nombre y 1 está publicado** ("Hydrate 530ml Amarillo Sol"). Falta ver cuántos hay por el campo de marca y si se muestran también los no publicados.
+4. **Cada color es un producto aparte**, no una variante: "Hydrate 530ml Amarillo Sol" tiene 1 sola variante, y el color está en el nombre. La sincronización tiene que **agrupar** las plantillas por modelo ("Hydrate 530ml") y tomar cada una como un color.
+5. **La categoría interna describe tipo y material:** `HIDRATACION / HOPPIE / DOBLE PARED INOX / HYDRATE`. Es mejor fuente para el perfil 3D (HOPPIE) y el material que el nombre.
+6. Existen atributos `color`, `size`, `brand`, etc. (estilo Google Shopping); falta ver si estos productos los tienen cargados (sirven para el hex del color).
+7. Odoo 19 marca la API JSON-RPC como **obsoleta** (sigue funcionando; su reemplazo es la API "JSON-2"). Migrar cuando Odoo anuncie la fecha de retiro.
+
+ → **Odoo**. Falta la URL de la instancia y las credenciales (guía de arriba).
 2. ~~Cierre preferido~~ → por ahora WhatsApp; el pago en Odoo queda para el final (§6).
 
 ---
@@ -247,7 +264,7 @@ Del lado del código: el visor debe aceptar `.glb` además del perfil actual, pa
 | # | Etapa | Estado |
 |---|---|---|
 | 0 | Diagnóstico: arreglos de impacto directo, riesgos y fricción (§2–§3) | ✅ Hecho |
-| 1 | **Conectar Odoo:** precios, stock y **colores reales** (fin de la paleta inventada) | ✅ Código listo — falta cargar credenciales (§5b) |
+| 1 | **Conectar Odoo:** precios, stock y **colores reales** (fin de la paleta inventada) | 🟡 Conexión real OK (§5c). Falta adaptar la sincronización: filtro por marca, agrupar colores, tipo por categoría |
 | 2 | **Creación de termos rápida, fácil e intuitiva** (§4: Etapa A + B), reorganizando `customizer.tsx` | ⏭️ Próxima |
 | 3 | **Modelos 3D reales** (Higgsfield → `.glb`, requisitos en §5) | Depende de los modelos del dueño |
 | 4 | **Visor AR** del termo diseñado (`<model-viewer>`: Android Scene Viewer / iPhone Quick Look, con el diseño aplicado) | Después de 3 (funciona con el 3D actual, luce con los reales) |

@@ -4,7 +4,7 @@
  * Odoo Online, Odoo.sh y servidor propio (v14–v18), sin módulos extra.
  *
  * Configuración (Secrets de Replit):
- *   ODOO_URL      https://tu-empresa.odoo.com   (sin barra final)
+ *   ODOO_URL      https://tu-empresa.odoo.com   (si trae ruta, ej. /odoo, se ignora)
  *   ODOO_DB       nombre de la base de datos
  *   ODOO_USER     login del usuario de API (ideal: usuario interno de solo lectura)
  *   ODOO_API_KEY  API key de ese usuario (Preferencias → Seguridad de la cuenta)
@@ -21,7 +21,11 @@ export interface OdooConfig {
 }
 
 export function odooConfig(): OdooConfig | null {
-  const url = process.env.ODOO_URL?.trim().replace(/\/+$/, "");
+  // Solo el origen (https://empresa.odoo.com): la API vive en la raíz. Pegar la
+  // URL del navegador (".../odoo" en v17+, ".../web#...") mandaba las llamadas a
+  // una página web y Odoo respondía 400 "invalid CSRF token".
+  let url: string | undefined;
+  try { url = process.env.ODOO_URL ? new URL(process.env.ODOO_URL.trim()).origin : undefined; } catch { url = undefined; }
   const db = process.env.ODOO_DB?.trim();
   const user = process.env.ODOO_USER?.trim();
   const apiKey = process.env.ODOO_API_KEY?.trim();
