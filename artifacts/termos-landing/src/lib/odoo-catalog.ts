@@ -25,13 +25,25 @@ export function matchingProducts(catalog: Catalog | undefined, productType: stri
   return (catalog?.products ?? []).filter(p => p.productType === productType && p.material === material);
 }
 
-/** Hex de respaldo cuando el valor de color en Odoo no tiene "html_color". */
+/**
+ * Hex de respaldo cuando el valor de color en Odoo no tiene "html_color" (hoy
+ * los productos Hydrate no lo tienen cargado). Lo más específico primero:
+ * "Verde Militar" antes que "Verde". Incluye la paleta propia de Hydrate.
+ */
 const NAMED: [RegExp, string][] = [
-  [/negro|black/, "#161616"], [/blanco|white|perla/, "#f2f2f0"], [/rojo|red|bordo|borgo/, "#a51f2d"],
-  [/celeste|sky/, "#7fbfe6"], [/azul|navy|blue/, "#1e3a5f"], [/verde|green|oliva/, "#3f6b45"],
-  [/rosa|pink/, "#e8a0b4"], [/gris|gray|grey|grafito/, "#6b6f74"], [/amarill|yellow/, "#f2c230"],
-  [/naranja|orange/, "#e8783a"], [/violeta|lila|purple/, "#6e3f8f"], [/marr|cafe|brown|chocolate/, "#6d4c41"],
-  [/beige|arena|crema/, "#d9c6a5"], [/dorad|gold/, "#c9a24b"], [/platead|silver|inox|acero/, "#c7c9cc"],
+  [/negro y naranja/, "#1d1d1d"],
+  [/verde militar/, "#4b5320"], [/verde salvia|salvia/, "#9caf88"], [/verde menta|menta|mint/, "#98d7c2"],
+  [/verde pastel/, "#b8e0b0"], [/verde oliva|oliva|olive/, "#6b7a3a"], [/jade/, "#4f8f7a"], [/lima|lime/, "#c5d94a"],
+  [/amarillo pastel/, "#f6e3a1"], [/amarillo sol|amarill|yellow/, "#f2c230"],
+  [/rosado flamenco|rosa flamenco|flamenco/, "#f08a9a"], [/rosado pastel|rosa pastel|soft pink/, "#f4c2c9"],
+  [/peach/, "#f6b38f"], [/coral/, "#f0806b"], [/cherry/, "#9b1b30"],
+  [/azul pacifico|pacific/, "#1f6fa8"], [/azul marino|navy/, "#1e3a5f"], [/celeste|sky/, "#8ecae6"], [/aqua/, "#7fd3d0"],
+  [/lila pastel/, "#cdb4e3"], [/lila|lilac|lavanda/, "#b39ddb"], [/violeta|purple|morad/, "#7d4fa0"],
+  [/choco|chocolate|marr|brown/, "#5a3a2e"], [/beige|avena|arena|crema|nude/, "#d9c6a5"],
+  [/grafito/, "#3d3f42"], [/gris|gray|grey/, "#9a9da1"],
+  [/naranja|orange/, "#f08a24"], [/dorad|gold/, "#c9a24b"], [/platead|silver|inox|acero/, "#c7c9cc"],
+  [/negro|negra|black/, "#161616"], [/blanco|blanca|white|perla/, "#f2f2f0"],
+  [/rojo|roja|red|bordo|borgo/, "#c62828"], [/azul|blue/, "#2f5fb3"], [/verde|green/, "#3f8f4f"], [/rosa|pink/, "#f2a7bb"],
 ];
 export function colorHexOf(v: Pick<CatalogVariant, "colorHex" | "colorName">): string {
   if (v.colorHex) return v.colorHex;
