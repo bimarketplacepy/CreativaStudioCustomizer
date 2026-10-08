@@ -1,9 +1,11 @@
-// Store for design-preview images, shared by the Vite dev server
-// (configureServer middleware) and the production static server (server.mjs).
+// Read-only store for LEGACY design-preview images (/u/<id>.png|jpg), shared by
+// the Vite dev server and the production server (server.mjs).
 //
-// The customizer captures an image of the finished 3D piece and POSTs it here;
-// we hand back a public URL (/u/<id>.png|jpg) that goes into the WhatsApp
-// message so the image previews in the chat.
+// The upload endpoint (POST /api/design-preview) was removed: the customizer
+// now creates orders via POST /api/orders (api-server), which stores the
+// preview itself. The public, unauthenticated upload let anyone write 8 MB
+// files to the bucket with no rate limit and no expiry. Serving is kept so
+// links already sent in past WhatsApp chats keep working.
 //
 // Durability: every upload is written to the Replit Object Storage bucket
 // (configured in .replit), so the URL keeps working across server restarts and
@@ -14,9 +16,6 @@
 
 const MAX_ENTRIES = 60;
 const TTL_MS = 60 * 60 * 1000; // memory-cache TTL; the bucket copy has no TTL
-// Roomy enough for the raw-PNG fallback when the client-side JPEG re-encode
-// fails; the normal path sends a ~1080px JPEG well under 1 MB.
-const MAX_BYTES = 8 * 1024 * 1024;
 
 /** id -> { buf: Buffer, type: string, at: number } */
 const store = new Map();
@@ -46,93 +45,6 @@ function prune() {
   while (store.size > MAX_ENTRIES) {
     const oldest = store.keys().next().value;
     store.delete(oldest);
-  }
-}
-
-function makeId() {
-  // No crypto import needed; collision-safe enough for short-lived previews.
-  return (
-    Date.now().toString(36) +
-    Math.floor(Math.random() * 1e9).toString(36)
-  );
-}
-
-/** Read the full request body as a Buffer, rejecting oversized payloads. */
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let size = 0;
-    req.on("data", (c) => {
-      size += c.length;
-      if (size > MAX_BYTES) {
-        reject(new Error("payload too large"));
-        req.destroy();
-        return;
-      }
-      chunks.push(c);
-    });
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", reject);
-  });
-}
-
-/**
- * Handle POST /api/design-preview with JSON body `{ dataUrl }` (a data: PNG or
- * JPEG). Responds `{ url: "/u/<id>.<ext>" }`. The bucket write is awaited so a
- * returned URL is durable, but a bucket failure never blocks the flow — the
- * memory copy still serves it for the immediate capture → send round-trip.
- */
-export async function handleUploadRequest(req, res) {
-  try {
-    const raw = await readBody(req);
-    let dataUrl;
-    try {
-      dataUrl = JSON.parse(raw.toString("utf8")).dataUrl;
-    } catch {
-      dataUrl = null;
-    }
-    const m = typeof dataUrl === "string" && dataUrl.match(/^data:(image\/[a-z+]+);base64,(.+)$/i);
-    if (!m) {
-      res.statusCode = 400;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: "invalid dataUrl" }));
-      return;
-    }
-    const buf = Buffer.from(m[2], "base64");
-    if (buf.length > MAX_BYTES) {
-      res.statusCode = 413;
-      res.end(JSON.stringify({ error: "too large" }));
-      return;
-    }
-    prune();
-    const id = makeId();
-    const ext = m[1] === "image/jpeg" ? "jpg" : "png";
-    store.set(id, { buf, type: m[1], at: Date.now() });
-
-    // Persist to the bucket for durability, but never hold the response
-    // hostage: the customer's WhatsApp flow races this endpoint against a
-    // timeout, and the memory copy already serves the immediate round-trip.
-    // Waiting briefly covers the common case (a warm client finishes in
-    // ~150 ms); anything slower keeps running in the background.
-    const persisted = (async () => {
-      const client = await getClient();
-      if (!client) return;
-      const result = await client.uploadFromBytes(objectName(id, ext), buf);
-      if (result && result.ok === false) {
-        console.error("design-preview: bucket upload failed:", result.error?.message ?? result.error);
-      }
-    })().catch((err) => {
-      console.error("design-preview: bucket upload failed:", err?.message ?? err);
-    });
-    await Promise.race([persisted, new Promise((r) => setTimeout(r, 2500))]);
-
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ url: `/u/${id}.${ext}` }));
-  } catch (err) {
-    res.statusCode = 500;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ error: String((err && err.message) || err) }));
   }
 }
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { track } from "@/lib/analytics";
 
 /**
  * "Cómo funciona" — a silent, looping ~16s animation inside a phone frame that
@@ -438,6 +439,7 @@ export default function FunnelDemo({ videoSrc }: { videoSrc?: string }) {
   const escenaActiva = est ? 3 : escena;
 
   const scrollToCustomizer = () => {
+    track("cta_click", { location: "demo" });
     document.getElementById("customizer")?.scrollIntoView({ behavior: "smooth" });
   };
 

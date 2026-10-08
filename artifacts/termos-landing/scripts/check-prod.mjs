@@ -10,7 +10,7 @@
  * WHY THIS EXISTS: production must run server.mjs (autoscale run command =
  * `pnpm --filter @workspace/termos-landing run start`). Every time a publish
  * reverted to plain static serving of dist/public, compression, Cache-Control,
- * llms.txt and the /api/design-preview endpoint silently died — and Lighthouse
+ * llms.txt and the /api/* proxy (pedidos) silently died — and Lighthouse
  * dropped ~20 points. These checks catch that within seconds.
  */
 
@@ -120,10 +120,15 @@ if (!localOnly) {
       ? ok("Ruta inexistente con extensión devuelve 404 (server.mjs vivo)")
       : bad(`/noexiste.xyz devolvió ${nf.status} (hosting estático con catch-all)`);
 
-    const api = await fetch(ORIGIN + "/api/design-preview", { method: "POST" });
-    api.status !== 404
-      ? ok(`POST /api/design-preview responde ${api.status} (endpoint activo)`)
-      : bad("POST /api/design-preview → 404 (la API no está desplegada)");
+    const health = await get("/api/healthz");
+    health.ok
+      ? ok("GET /api/healthz responde 200 (api-server de pedidos vivo)")
+      : bad(`/api/healthz devolvió ${health.status} (pedidos caídos: el personalizador cae al fallback sin número)`);
+
+    const legacy = await fetch(ORIGIN + "/api/design-preview", { method: "POST" });
+    legacy.status === 404
+      ? ok("POST /api/design-preview cerrado (404)")
+      : bad(`POST /api/design-preview responde ${legacy.status}: el upload público sigue abierto`);
   } catch (e) {
     bad(`Error de red contra producción: ${e.message}`);
   }

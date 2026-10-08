@@ -40,6 +40,7 @@ import {
 } from "@/lib/materials";
 import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
 import { whatsappUrl } from "@/lib/contact";
+import { track } from "@/lib/analytics";
 import { dataUrlToJpeg, downloadDataUrl } from "@/lib/share";
 import { useCreateOrder, type CreateOrderRequest } from "@workspace/api-client-react";
 import { Download, Loader2 } from "lucide-react";
@@ -1145,6 +1146,11 @@ export default function Customizer() {
   const designStepIndex = isDrinkware ? 3 : 2;
   const isDesignStep = isMobile && mobileStep === designStepIndex;
 
+  const goToStep = (n: number) => {
+    setMobileStep(n);
+    track("customizer_step", { step: n, step_name: wizardLabels[n - 1] });
+  };
+
   // Keep the step in range if the product kind changes the step count.
   React.useEffect(() => {
     setMobileStep(s => Math.min(s, wizardLabels.length));
@@ -1161,6 +1167,14 @@ export default function Customizer() {
     io.observe(el);
     return () => io.disconnect();
   }, []);
+  // Embudo: el personalizador se vio (una vez por carga de página).
+  const viewTrackedRef = useRef(false);
+  React.useEffect(() => {
+    if (customizerInView && !viewTrackedRef.current) {
+      viewTrackedRef.current = true;
+      track("customizer_view");
+    }
+  }, [customizerInView]);
   React.useEffect(() => {
     document.body.classList.toggle("wa-fab-hidden", isMobile && customizerInView);
     return () => document.body.classList.remove("wa-fab-hidden");
@@ -1482,6 +1496,7 @@ export default function Customizer() {
 
   const handleSelectMaterial = (id: MaterialId) => {
     setMaterialId(id);
+    track("customizer_material_select", { material: id });
     // La captura anterior pertenece a otro producto: nunca ofrecer descargarla.
     setPreviewImg(null);
     previewImgRef.current = null;
@@ -1516,6 +1531,7 @@ export default function Customizer() {
 
   const handleSelectMaterialProduct = (id: string) => {
     setMaterialProductId(id);
+    track("customizer_product_select", { material: materialId, product: id });
     // Ídem: la captura del producto anterior deja de ser válida.
     setPreviewImg(null);
     previewImgRef.current = null;
@@ -1563,14 +1579,29 @@ export default function Customizer() {
     ? activeTechnique.name
     : materialId === "plastico" ? "Plotter de corte" : "Grabado láser";
 
+  // Tamaño legible ("32oz (Grande)", "Mediana (500ml)"). Solo drinkware con más
+  // de un tamaño: con uno solo (chopera) no hay nada que elegir ni que informar.
+  const orderSizeName = isDrinkware && product.sizes.length > 1
+    ? `${activeSize.name} (${activeSize.label})`
+    : undefined;
+  // Color con su hex: el taller necesita el tono exacto, no solo la familia.
+  const orderColorName = isGlass
+    ? "Cristal transparente"
+    : (isDrinkware || activeObject?.colorable)
+      ? `${activeColorName} (${activeColorHex})`
+      : undefined;
+
   /** Campos del pedido — ÚNICA fuente de datos del "Resumen de tu
    *  personalización" (Paso 4) y del mensaje de WhatsApp. Campos sin dato se
    *  omiten por completo (nunca "Texto: —"). */
   const orderFields = (): [string, string][] => {
-    const rows: [string, string][] = [
-      ["Producto", orderProductName],
-      ["Técnica", orderTechniqueName],
-    ];
+    const rows: [string, string][] = [["Producto", orderProductName]];
+    if (orderSizeName) rows.push(["Tamaño", orderSizeName]);
+    // En bolígrafos el material repite el producto; en el resto distingue
+    // (ej. termo de acero pintado vs. inoxidable vs. forrado en cuero).
+    if (!material.pens) rows.push(["Material", material.name]);
+    if (orderColorName) rows.push(["Color", orderColorName]);
+    rows.push(["Técnica", orderTechniqueName]);
     const trimmedText = text.trim();
     if (trimmedText) rows.push(["Texto", `${trimmedText} (${activeFont.name})`]);
     if (selectedIcon) rows.push(["Ícono", selectedIcon.name]);
@@ -1582,15 +1613,10 @@ export default function Customizer() {
    *  completo del diseño (suficiente para reabrirlo/reproducirlo después). */
   const orderPayload = (previewImage: string | null): CreateOrderRequest => {
     const trimmedText = text.trim();
-    const colorLabel = isGlass
-      ? "Cristal transparente"
-      : (isDrinkware || activeObject?.colorable)
-        ? `${activeColorName} (${activeColorHex})`
-        : undefined;
     return {
       product: orderProductName,
       material: material.name,
-      color: colorLabel,
+      color: orderColorName,
       technique: orderTechniqueName,
       customText: trimmedText || undefined,
       font: trimmedText ? activeFont.name : undefined,
@@ -1650,6 +1676,14 @@ export default function Customizer() {
     setIsPreparing(true);
     setOrderFallback(false);
     setLastOrderNumber(null);
+    track("order_submit", {
+      product: orderProductName,
+      material: materialId,
+      technique: orderTechniqueName,
+      has_text: !!text.trim(),
+      has_icon: !!selectedIcon,
+      has_image: !!customImage,
+    });
 
     // La pestaña debe abrirse sincrónica al click (si no, el bloqueador de
     // pop-ups la mata); la URL de WhatsApp se asigna cuando el pedido está
@@ -1687,9 +1721,11 @@ export default function Customizer() {
         ]);
         orderNumber = created.orderNumber;
         imageUrl = created.previewImageUrl ?? null;
+        track("order_created", { order_number: orderNumber, product: orderProductName });
       } catch {
         // Backend caído o lento: aviso sutil y el mensaje sale solo con specs.
         setOrderFallback(true);
+        track("order_fallback", { product: orderProductName });
       }
 
       setLastOrderNumber(orderNumber);
@@ -1721,6 +1757,37 @@ export default function Customizer() {
   // Colour, technique and the plan+order summary are pulled out so both the
   // desktop editor and the mobile wizard steps compose the very same markup —
   // no control is ever duplicated.
+  // Tamaño del drinkware. Se oculta cuando el producto viene en un solo tamaño.
+  // Cambiarlo reescala el 3D en vivo (Thermos3D recibe sizeId).
+  const handleSelectSize = (id: string) => {
+    setSize(id);
+    track("customizer_size_select", { product: productId, size: id });
+  };
+  const renderDrinkSize = () => product.sizes.length > 1 && (
+    <div>
+      <Label className="text-sm font-medium text-foreground mb-3 block">
+        Tamaño {productArticle(product.singular)} {product.singular.toLowerCase()}
+      </Label>
+      <div className="grid grid-cols-3 gap-3">
+        {product.sizes.map(s => {
+          const active = activeSize.id === s.id;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => handleSelectSize(s.id)}
+              aria-pressed={active}
+              className={`min-h-12 px-2 py-2.5 border rounded-xl flex flex-col items-center justify-center transition-all ${active ? activeCard : idleCard}`}
+            >
+              <span className="font-semibold text-sm leading-tight">{s.name}</span>
+              <span className="text-xs text-muted-foreground leading-tight">{s.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   const renderDrinkColor = () => isGlass ? (
     // Glass comes in one finish only: clear. No colour picker, no finish grid.
     <div>
@@ -2149,6 +2216,7 @@ export default function Customizer() {
                 as the colour changes. Only ONE 3D canvas is ever mounted at a time
                 (the wizard steps are exclusive), so no second renderer. */}
             {renderMiniPreview()}
+            {renderDrinkSize()}
             {renderDrinkColor()}
           </motion.div>
         )}
@@ -2394,6 +2462,7 @@ export default function Customizer() {
                   {/* COLOR TAB (desktop editor; on mobile colour lives in Step 2 "Estilo") */}
                   {!isMobile && (
                   <TabsContent value="color" className="mt-0 space-y-5">
+                    {renderDrinkSize()}
                     {renderDrinkColor()}
                   </TabsContent>
                   )}
@@ -2863,7 +2932,7 @@ export default function Customizer() {
           <WizardNav
             step={mobileStep}
             total={wizardLabels.length}
-            onBack={() => setMobileStep(s => Math.max(1, s - 1))}
+            onBack={() => goToStep(Math.max(1, mobileStep - 1))}
             onNext={() => {
               // Leaving the design step: swing the personalized area to face the
               // camera, wait for the repaint, THEN snapshot the live canvas — so
@@ -2874,11 +2943,11 @@ export default function Customizer() {
                 setTimeout(() => {
                   const img = capturePreview();
                   if (img) { setPreviewImg(img); previewImgRef.current = img; }
-                  setMobileStep(s => Math.min(wizardLabels.length, s + 1));
+                  goToStep(Math.min(wizardLabels.length, mobileStep + 1));
                 }, 150);
                 return;
               }
-              setMobileStep(s => Math.min(wizardLabels.length, s + 1));
+              goToStep(Math.min(wizardLabels.length, mobileStep + 1));
             }}
             nextLabel={mobileStep === designStepIndex ? "Continuar" : mobileStep === 1 ? "Diseñar" : "Siguiente"}
           />

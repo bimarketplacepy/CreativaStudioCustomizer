@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from "react";
 import HeroCarousel from "@/components/hero-carousel";
+import { track } from "@/lib/analytics";
 
 /** Solid fallback shown before any carousel image is active. */
 const HERO_BASE = "#1A1614";
@@ -12,7 +13,10 @@ export default function Hero() {
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   };
-  const scrollToCustomizer = () => scrollTo("customizer");
+  const scrollToCustomizer = () => {
+    track("cta_click", { location: "hero" });
+    scrollTo("customizer");
+  };
 
   return (
     <>
@@ -123,7 +127,7 @@ export default function Hero() {
                 Personalizar mi producto
               </button>
               <button
-                onClick={() => scrollTo("precios")}
+                onClick={() => { track("cta_click", { location: "hero_precios" }); scrollTo("precios"); }}
                 className="border border-white/20 hover:border-white/50 text-white/70 hover:text-white px-9 py-4 min-h-12 text-xs font-semibold uppercase tracking-[0.25em] transition-colors"
               >
                 Ver precios

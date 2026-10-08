@@ -4,7 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 // @ts-expect-error — plain .mjs helper shared with the production server.
-import { handleUploadRequest, handleServeRequest } from "./upload-store.mjs";
+import { handleServeRequest } from "./upload-store.mjs";
 
 const rawPort = process.env.PORT;
 const port = rawPort ? Number(rawPort) : 3000;
@@ -28,10 +28,8 @@ const basePath = process.env.BASE_PATH ?? "/";
  * Only affects the production HTML transform; no effect on chunking/splitting.
  */
 /**
- * Dev-server counterpart of the production `/api/design-preview` upload route
- * (see upload-store.mjs). Lets the customizer store a PNG of the finished piece
- * and serve it back at /u/<id>.png so it can go into the WhatsApp message while
- * running `vite dev`.
+ * Dev-server counterpart of server.mjs serving legacy design previews at
+ * /u/<id>.png (read-only; see upload-store.mjs).
  */
 function designPreviewApiPlugin(): Plugin {
   return {
@@ -40,10 +38,6 @@ function designPreviewApiPlugin(): Plugin {
       server.middlewares.use((req, res, next) => {
         const url = req.url || "/";
         const pathname = url.split("?")[0];
-        if (req.method === "POST" && pathname === "/api/design-preview") {
-          handleUploadRequest(req, res);
-          return;
-        }
         if ((req.method === "GET" || req.method === "HEAD") && handleServeRequest(pathname, res)) {
           return;
         }
@@ -127,7 +121,7 @@ export default defineConfig({
     port,
     host: "0.0.0.0",
     allowedHosts: true,
-    // Todo /api (salvo design-preview, atendido arriba por el plugin) va al
+    // Todo /api va al
     // @workspace/api-server (pedidos, health). Mismo puerto interno que usa
     // server.mjs en producción.
     proxy: {

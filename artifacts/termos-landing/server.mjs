@@ -21,7 +21,7 @@ import { spawn } from "node:child_process";
 import { join, normalize, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync, brotliCompressSync, constants as zlibConstants } from "node:zlib";
-import { handleUploadRequest, handleServeRequest } from "./upload-store.mjs";
+import { handleServeRequest } from "./upload-store.mjs";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = join(__dirname, "dist", "public");
@@ -29,8 +29,7 @@ const PORT = Number(process.env.PORT) || 3000;
 
 // ── API server (pedidos) ────────────────────────────────────────────────────
 // El @workspace/api-server (Express + Postgres) corre como proceso hijo en un
-// puerto interno y este server le reenvía todo /api/* (salvo design-preview,
-// que se atiende acá mismo). Si el bundle no está o el hijo se cae, el proxy
+// puerto interno y este server le reenvía todo /api/*. Si el bundle no está o el hijo se cae, el proxy
 // responde 502 y el personalizador cae a su fallback de WhatsApp sin pedido.
 const API_PORT = Number(process.env.API_PORT) || 3101;
 const API_DIST = join(__dirname, "..", "api-server", "dist", "index.mjs");
@@ -219,12 +218,8 @@ async function serve(req, res) {
   const url = new URL(req.url || "/", "http://localhost");
   let pathname = url.pathname;
 
-  // Design-preview upload API (used by the customizer to attach a PNG to the
-  // WhatsApp message). POST stores the image, GET /u/<id>.png serves it back.
-  if (method === "POST" && pathname === "/api/design-preview") {
-    await handleUploadRequest(req, res);
-    return;
-  }
+  // Previews legacy (/u/<id>.png) de links ya enviados por WhatsApp. Solo
+  // lectura: el upload público POST /api/design-preview se eliminó.
   if ((method === "GET" || method === "HEAD") && handleServeRequest(pathname, res)) {
     return;
   }

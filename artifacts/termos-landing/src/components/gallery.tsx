@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useState } from "react";
 import { motion, MotionConfig } from "framer-motion";
 import { GALLERY_IMAGES } from "@/lib/gallery-images";
+import { track } from "@/lib/analytics";
 
 /** A curated selection of real work — a lookbook, not a dump of every file. */
 const CURATED = GALLERY_IMAGES.slice(0, 12);
@@ -10,6 +11,7 @@ const GalleryLightbox = lazy(() => import("@/components/gallery-lightbox"));
 
 export default function Gallery() {
   const scrollToCustomizer = () => {
+    track("cta_click", { location: "galeria" });
     document.getElementById("customizer")?.scrollIntoView({ behavior: "smooth" });
   };
   const [lightbox, setLightbox] = useState<number | null>(null);
