@@ -18,6 +18,7 @@ import type {
 
 import type {
   ApiErrorResponse,
+  Catalog,
   CreateOrderRequest,
   CreateOrderResponse,
   HealthStatus,
@@ -101,6 +102,81 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Published Odoo products that the customizer can personalize, with their variants (real colors, sizes), public prices and stock. Cached on the server for a few minutes; if Odoo is unreachable the last good copy is served. When Odoo is not configured, `source` is "none" and `products` is empty — the customizer then falls back to its built-in catalog.
+
+ * @summary Engravable product catalog from Odoo
+ */
+export const getGetCatalogUrl = () => {
+  return `/api/catalog`;
+};
+
+export const getCatalog = async (options?: RequestInit): Promise<Catalog> => {
+  return customFetch<Catalog>(getGetCatalogUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCatalogQueryKey = () => {
+  return [`/api/catalog`] as const;
+};
+
+export const getGetCatalogQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCatalog>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getCatalog>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCatalogQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCatalog>>> = ({
+    signal,
+  }) => getCatalog({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCatalog>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCatalogQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCatalog>>
+>;
+export type GetCatalogQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Engravable product catalog from Odoo
+ */
+
+export function useGetCatalog<
+  TData = Awaited<ReturnType<typeof getCatalog>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getCatalog>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCatalogQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

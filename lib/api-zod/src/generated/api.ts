@@ -16,6 +16,72 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
+ * Published Odoo products that the customizer can personalize, with their variants (real colors, sizes), public prices and stock. Cached on the server for a few minutes; if Odoo is unreachable the last good copy is served. When Odoo is not configured, `source` is "none" and `products` is empty — the customizer then falls back to its built-in catalog.
+
+ * @summary Engravable product catalog from Odoo
+ */
+export const GetCatalogResponse = zod.object({
+  source: zod.enum(["odoo", "none"]),
+  updatedAt: zod
+    .string()
+    .nullable()
+    .describe("ISO timestamp of the last successful sync"),
+  stale: zod
+    .boolean()
+    .describe("True when Odoo failed and an older copy is being served"),
+  currency: zod.string().describe('Currency symbol for display, e.g. \"Gs.\"'),
+  products: zod.array(
+    zod.object({
+      id: zod.number().describe("Odoo product.template id"),
+      name: zod.string(),
+      productType: zod
+        .string()
+        .describe(
+          "Customizer 3D profile (termo, vaso, hoppie, jug, guampa, copa, botella, chopera)",
+        ),
+      material: zod
+        .string()
+        .describe("Customizer material id (acero, inox, cuero, cristal)"),
+      url: zod
+        .string()
+        .nullable()
+        .describe("Absolute product page URL in the Odoo shop"),
+      imageUrl: zod.string().nullable(),
+      variants: zod.array(
+        zod.object({
+          id: zod.number().describe("Odoo product.product id"),
+          sku: zod.string().nullable(),
+          colorName: zod.string().nullable(),
+          colorHex: zod.string().nullable(),
+          size: zod.string().nullable(),
+          price: zod
+            .number()
+            .describe("Public sales price (list price + variant extra)"),
+          available: zod
+            .number()
+            .nullable()
+            .describe(
+              "Units available to sell; null when stock is not tracked",
+            ),
+          inStock: zod
+            .boolean()
+            .describe("Whether this variant can be ordered right now"),
+        }),
+      ),
+    }),
+  ),
+  engraving: zod
+    .object({
+      names: zod.number().nullable(),
+      drawing: zod.number().nullable(),
+      logo: zod.number().nullable(),
+    })
+    .describe(
+      "Engraving service prices read from Odoo service products by internal reference (GRAB-NOMBRES, GRAB-ICONO, GRAB-LOGO). Null when missing.\n",
+    ),
+});
+
+/**
  * Creates an order from the customizer's final step. Accepts the customization specs plus the rendered preview image as a base64 data URL (~1080px JPEG/PNG, decoded size capped at 3MB). Returns the human-readable order number and the permanent public URL of the stored preview image.
 
  * @summary Create a customizer order

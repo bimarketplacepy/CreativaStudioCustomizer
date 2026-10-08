@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: orders
     description: Customizer order operations
+  - name: catalog
+    description: Product catalog synced from the Odoo ecommerce
 paths:
   /healthz:
     get:
@@ -26,6 +28,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /catalog:
+    get:
+      operationId: getCatalog
+      tags: [catalog]
+      summary: Engravable product catalog from Odoo
+      description: >
+        Published Odoo products that the customizer can personalize, with their
+        variants (real colors, sizes), public prices and stock. Cached on the
+        server for a few minutes; if Odoo is unreachable the last good copy is
+        served. When Odoo is not configured, `source` is "none" and `products`
+        is empty — the customizer then falls back to its built-in catalog.
+      responses:
+        "200":
+          description: The catalog
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Catalog"
   /orders:
     post:
       operationId: createOrder
@@ -95,6 +115,89 @@ paths:
                 $ref: "#/components/schemas/ApiErrorResponse"
 components:
   schemas:
+    Catalog:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [odoo, none]
+        updatedAt:
+          type: [string, "null"]
+          description: ISO timestamp of the last successful sync
+        stale:
+          type: boolean
+          description: True when Odoo failed and an older copy is being served
+        currency:
+          type: string
+          description: Currency symbol for display, e.g. "Gs."
+        products:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogProduct"
+        engraving:
+          $ref: "#/components/schemas/CatalogEngraving"
+      required: [source, updatedAt, stale, currency, products, engraving]
+    CatalogEngraving:
+      type: object
+      description: >
+        Engraving service prices read from Odoo service products by internal
+        reference (GRAB-NOMBRES, GRAB-ICONO, GRAB-LOGO). Null when missing.
+      properties:
+        names:
+          type: [number, "null"]
+        drawing:
+          type: [number, "null"]
+        logo:
+          type: [number, "null"]
+      required: [names, drawing, logo]
+    CatalogProduct:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Odoo product.template id
+        name:
+          type: string
+        productType:
+          type: string
+          description: Customizer 3D profile (termo, vaso, hoppie, jug, guampa, copa, botella, chopera)
+        material:
+          type: string
+          description: Customizer material id (acero, inox, cuero, cristal)
+        url:
+          type: [string, "null"]
+          description: Absolute product page URL in the Odoo shop
+        imageUrl:
+          type: [string, "null"]
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogVariant"
+      required: [id, name, productType, material, url, imageUrl, variants]
+    CatalogVariant:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Odoo product.product id
+        sku:
+          type: [string, "null"]
+        colorName:
+          type: [string, "null"]
+        colorHex:
+          type: [string, "null"]
+        size:
+          type: [string, "null"]
+        price:
+          type: number
+          description: Public sales price (list price + variant extra)
+        available:
+          type: [number, "null"]
+          description: Units available to sell; null when stock is not tracked
+        inStock:
+          type: boolean
+          description: Whether this variant can be ordered right now
+      required: [id, sku, colorName, colorHex, size, price, available, inStock]
     HealthStatus:
       type: object
       properties:

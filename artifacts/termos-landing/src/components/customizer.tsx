@@ -41,6 +41,10 @@ import {
 import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
 import { ADDRESS, whatsappUrl } from "@/lib/contact";
 import { clearSharedDesign, designLink, readSharedDesign, type SharedDesign } from "@/lib/design-link";
+import {
+  colorOptions, defaultVariant, engravingPrice, findVariant, formatGs, matchingProducts,
+  sizeOptions, useCatalog, viewSizeId,
+} from "@/lib/odoo-catalog";
 import { track } from "@/lib/analytics";
 import { dataUrlToJpeg, downloadDataUrl } from "@/lib/share";
 import { useCreateOrder, type CreateOrderRequest } from "@workspace/api-client-react";
@@ -1084,7 +1088,56 @@ export default function Customizer() {
   const productId = activeMProduct?.drinkwareProductId ?? DEFAULT_PRODUCT_ID;
   const product = getProduct(productId);
   const [size, setSize] = useState(getProduct(DEFAULT_PRODUCT_ID).sizes[1].id);
-  const activeSize = getSize(product, size);
+
+  // ── Catálogo real de Odoo ───────────────────────────────────────────────────
+  // Si Odoo tiene productos para este material + producto, los colores, tamaños,
+  // precio y stock salen de ahí (variantes reales) y la paleta inventada se
+  // oculta. Sin datos de Odoo, todo sigue con el catálogo propio.
+  const catalog = useCatalog();
+  const odooProducts = useMemo(
+    () => (isDrinkware ? matchingProducts(catalog, productId, materialId) : []),
+    [catalog, isDrinkware, productId, materialId],
+  );
+  const [odooTemplateId, setOdooTemplateId] = useState<number | null>(null);
+  const [odooColor, setOdooColor] = useState<string | null>(null);
+  const [odooSize, setOdooSize] = useState<string | null>(null);
+  const odooProduct = odooProducts.find(p => p.id === odooTemplateId) ?? odooProducts[0] ?? null;
+  const odooMode = !!odooProduct;
+  const odooColors = useMemo(() => (odooProduct ? colorOptions(odooProduct) : []), [odooProduct]);
+  const odooSizes = useMemo(() => (odooProduct ? sizeOptions(odooProduct) : []), [odooProduct]);
+  const odooVariant = odooProduct ? findVariant(odooProduct, odooColor, odooSize) : null;
+  const odooAllOut = !!odooProduct && odooProduct.variants.every(v => !v.inStock);
+  // Al cambiar de producto (o al llegar el catálogo), si la combinación elegida
+  // no existe en ese producto, arrancar en su primera variante con stock.
+  React.useEffect(() => {
+    if (!odooProduct || findVariant(odooProduct, odooColor, odooSize)) return;
+    const v = defaultVariant(odooProduct);
+    if (v) { setOdooColor(v.colorName ?? null); setOdooSize(v.size ?? null); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [odooProduct]);
+  /** Elegir color: mantiene el tamaño si existe con ese color; si no, el primero con stock. */
+  const selectOdooColor = (name: string) => {
+    if (!odooProduct) return;
+    const v = findVariant(odooProduct, name, odooSize)
+      ?? odooProduct.variants.find(x => x.colorName === name && x.inStock)
+      ?? odooProduct.variants.find(x => x.colorName === name);
+    setOdooColor(name);
+    setOdooSize(v?.size ?? null);
+    track("customizer_color_select", { source: "odoo", color: name });
+  };
+  /** Elegir tamaño: mantiene el color si existe en ese tamaño; si no, el primero con stock. */
+  const selectOdooSize = (label: string) => {
+    if (!odooProduct) return;
+    const v = findVariant(odooProduct, odooColor, label)
+      ?? odooProduct.variants.find(x => x.size === label && x.inStock)
+      ?? odooProduct.variants.find(x => x.size === label);
+    setOdooSize(label);
+    setOdooColor(v?.colorName ?? null);
+    track("customizer_size_select", { product: productId, size: label, source: "odoo" });
+  };
+  // Tamaño que dibuja el 3D: el de Odoo mapeado al perfil, o el elegido a mano.
+  const viewSize = odooMode ? viewSizeId(product, odooSizes, odooSize) : size;
+  const activeSize = getSize(product, viewSize);
 
   const [color, setColor] = useState(COLORS[0].id);
   const [customHex, setCustomHex] = useState<string | null>(null);
@@ -1140,9 +1193,11 @@ export default function Customizer() {
 
   const baseColor = COLORS.find(c => c.id === color) || COLORS[0];
   // El inoxidable natural no se pinta: gris acero fijo, ignora la paleta.
-  const activeColorHex = isInox ? INOX_HEX : customHex ?? baseColor.hex;
+  const odooHex = odooMode && odooColor ? odooColors.find(c => c.name === odooColor)?.hex ?? null : null;
+  const activeColorHex = isInox ? INOX_HEX : odooHex ?? customHex ?? baseColor.hex;
   const activeColorName = isInox
     ? "Acero natural"
+    : odooMode && odooColor ? odooColor
     : customHex ? `${baseColor.name} · ${customHex.toUpperCase()}` : baseColor.name;
   const activePlan = ENGRAVING_PLANS.find(p => p.id === plan) || ENGRAVING_PLANS[0];
   const MaterialGlyph = MATERIAL_ICON[material.icon] ?? Box;
@@ -1192,6 +1247,11 @@ export default function Customizer() {
     if (isHex(d.textColor)) setTextColor(d.textColor);
     setIconId(ENGRAVING_ICONS.some(i => i.id === d.iconId) ? d.iconId : null);
     setOwnProduct(d.ownProduct === true);
+    // Variante de Odoo: si el link es viejo o el producto ya no existe, el
+    // efecto de selección vuelve sola a la primera variante con stock.
+    if (typeof d.odooTemplateId === "number") setOdooTemplateId(d.odooTemplateId);
+    if (typeof d.odooColor === "string") setOdooColor(d.odooColor);
+    if (typeof d.odooSize === "string") setOdooSize(d.odooSize);
     if (d.textPlacement && typeof d.textPlacement === "object") setTextPlacement({ ...DEFAULT_TEXT_PLACEMENT, ...d.textPlacement });
     if (d.artPlacement && typeof d.artPlacement === "object") setArtPlacement({ ...DEFAULT_ART_PLACEMENT, ...d.artPlacement });
     setDrinkTab("text");
@@ -1527,7 +1587,7 @@ export default function Customizer() {
     }, 500);
     return () => clearTimeout(t);
   }, [
-    capturePreview, isDrinkware, is3DObject, productId, size, activeColorHex,
+    capturePreview, isDrinkware, is3DObject, productId, viewSize, activeColorHex,
     finish, text, font, iconId, artUrl, textColor, effectiveTechnique, isGlass,
     singleFace, textPlacement, artPlacement, mobileStep, isMobile,
   ]);
@@ -1539,6 +1599,7 @@ export default function Customizer() {
 
   const handleSelectMaterial = (id: MaterialId) => {
     setMaterialId(id);
+    setOdooTemplateId(null);
     track("customizer_material_select", { material: id });
     // La captura anterior pertenece a otro producto: nunca ofrecer descargarla.
     setPreviewImg(null);
@@ -1574,6 +1635,7 @@ export default function Customizer() {
 
   const handleSelectMaterialProduct = (id: string) => {
     setMaterialProductId(id);
+    setOdooTemplateId(null);
     track("customizer_product_select", { material: materialId, product: id });
     // Ídem: la captura del producto anterior deja de ser válida.
     setPreviewImg(null);
@@ -1617,9 +1679,13 @@ export default function Customizer() {
 
   // Tamaño legible ("32oz (Grande)", "Mediana (500ml)"). Solo drinkware con más
   // de un tamaño: con uno solo (chopera) no hay nada que elegir ni que informar.
-  const orderSizeName = isDrinkware && product.sizes.length > 1
-    ? `${activeSize.name} (${activeSize.label})`
-    : undefined;
+  const orderSizeName = odooMode
+    ? odooSize ?? undefined
+    : isDrinkware && product.sizes.length > 1
+      ? `${activeSize.name} (${activeSize.label})`
+      : undefined;
+  // Nombre comercial real (Odoo) para el resumen y el pedido; si no, el tipo.
+  const orderProductLabel = odooProduct?.name ?? orderProductName;
   // Color con su hex: el taller necesita el tono exacto, no solo la familia.
   const orderColorName = isGlass
     ? "Cristal transparente"
@@ -1638,15 +1704,26 @@ export default function Customizer() {
       const opt = PEN_OPTIONS.find(o => o.id === (isOwnProduct ? "own" : "shop")) ?? PEN_OPTIONS[0];
       return { price: opt.priceLabel, note: opt.label };
     }
+    // Pieza: precio real de la variante de Odoo (si el cliente no trae la suya).
+    const piece = !isOwnProduct && odooVariant ? odooVariant.price : null;
     if (isDrinkware && effectiveTechnique === "laser") {
+      const engraving = engravingPrice(catalog, activePlan.id);
+      const engravingLabel = `grabado (${activePlan.shortLabel.toLowerCase()}) ${formatGs(engraving)}`;
+      if (piece !== null) {
+        return { price: formatGs(piece + engraving), note: `${orderProductLabel} ${formatGs(piece)} + ${engravingLabel}` };
+      }
       return {
-        price: activePlan.priceLabel,
+        price: formatGs(engraving),
         note: isOwnProduct
           ? `Grabado (${activePlan.shortLabel.toLowerCase()}) sobre tu producto`
           : `Grabado (${activePlan.shortLabel.toLowerCase()}). La pieza se cotiza aparte`,
       };
     }
-    if (isDrinkware) return { price: null, note: "La impresión UV a color se cotiza según el diseño" };
+    if (isDrinkware) {
+      return piece !== null
+        ? { price: formatGs(piece), note: `${orderProductLabel}. La impresión UV a color se suma según el diseño` }
+        : { price: null, note: "La impresión UV a color se cotiza según el diseño" };
+    }
     return { price: null, note: "Te pasamos el precio por WhatsApp" };
   })();
   const estimateText = estimate.price ? `${estimate.price} — ${estimate.note}` : estimate.note;
@@ -1655,13 +1732,15 @@ export default function Customizer() {
    *  personalización" (Paso 4) y del mensaje de WhatsApp. Campos sin dato se
    *  omiten por completo (nunca "Texto: —"). */
   const orderFields = (): [string, string][] => {
-    const rows: [string, string][] = [["Producto", orderProductName]];
+    const rows: [string, string][] = [["Producto", isOwnProduct ? orderProductName : orderProductLabel]];
     if (isOwnProduct) rows.push(["Origen", "Lo trae el cliente"]);
+    else if (odooVariant?.sku) rows.push(["Código", odooVariant.sku]);
     if (orderSizeName) rows.push(["Tamaño", orderSizeName]);
     // En bolígrafos el material repite el producto; en el resto distingue
     // (ej. termo de acero pintado vs. inoxidable vs. forrado en cuero).
     if (!material.pens) rows.push(["Material", material.name]);
     if (orderColorName) rows.push(["Color", orderColorName]);
+    if (!isOwnProduct && odooVariant && !odooVariant.inStock) rows.push(["Stock", "Sin stock en este momento"]);
     rows.push(["Técnica", orderTechniqueName]);
     const trimmedText = text.trim();
     if (trimmedText) rows.push(["Texto", `${trimmedText} (${activeFont.name})`]);
@@ -1675,7 +1754,7 @@ export default function Customizer() {
   const orderPayload = (previewImage: string | null): CreateOrderRequest => {
     const trimmedText = text.trim();
     return {
-      product: orderProductName,
+      product: (isOwnProduct ? orderProductName : orderProductLabel).slice(0, 120),
       material: material.name,
       color: orderColorName,
       technique: orderTechniqueName,
@@ -1689,7 +1768,7 @@ export default function Customizer() {
         materialId,
         materialProductId,
         productId,
-        sizeId: size,
+        sizeId: viewSize,
         colorId: color,
         customHex,
         colorHex: activeColorHex,
@@ -1708,6 +1787,11 @@ export default function Customizer() {
         sizeLabel: orderSizeName,
         ownProduct: isOwnProduct,
         engravingEstimate: estimateText,
+        // Vínculo con Odoo (para el futuro pedido de venta / pago online).
+        odooTemplateId: odooProduct?.id ?? null,
+        odooVariantId: isOwnProduct ? null : odooVariant?.id ?? null,
+        sku: isOwnProduct ? null : odooVariant?.sku ?? null,
+        piecePrice: isOwnProduct ? null : odooVariant?.price ?? null,
       },
       previewImage: previewImage ?? undefined,
       // Logo/foto original en la máxima resolución que tiene el cliente: el
@@ -1840,7 +1924,33 @@ export default function Customizer() {
     setSize(id);
     track("customizer_size_select", { product: productId, size: id });
   };
-  const renderDrinkSize = () => product.sizes.length > 1 && (
+  /** Tamaños reales de Odoo; deshabilitado el que no tiene ninguna variante con stock. */
+  const renderOdooSize = () => odooSizes.length > 1 && odooProduct && (
+    <div>
+      <Label className="text-sm font-medium text-foreground mb-3 block">Tamaño</Label>
+      <div className="grid grid-cols-3 gap-3">
+        {odooSizes.map(label => {
+          const active = odooSize === label;
+          const sellable = odooProduct.variants.some(v => v.size === label && v.inStock);
+          return (
+            <button
+              key={label}
+              type="button"
+              onClick={() => selectOdooSize(label)}
+              disabled={!sellable}
+              aria-pressed={active}
+              className={`min-h-12 px-2 py-2.5 border rounded-xl flex flex-col items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed ${active ? activeCard : idleCard}`}
+            >
+              <span className="font-semibold text-sm leading-tight">{label}</span>
+              {!sellable && <span className="text-xs text-muted-foreground leading-tight">Sin stock</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderDrinkSize = () => odooMode ? renderOdooSize() : product.sizes.length > 1 && (
     <div>
       <Label className="text-sm font-medium text-foreground mb-3 block">
         Tamaño {productArticle(product.singular)} {product.singular.toLowerCase()}
@@ -1876,6 +1986,55 @@ export default function Customizer() {
           <p className="text-xs text-muted-foreground">El grabado se ve esmerilado sobre el vidrio.</p>
         </div>
       </div>
+    </div>
+  ) : odooMode && odooColors.length > 0 && !isInox ? (
+    // Colores reales de la tienda (variantes de Odoo). Sin "tono exacto": solo
+    // se puede elegir lo que existe; sin stock queda visible pero deshabilitado.
+    <div>
+      <Label className="text-sm font-medium text-foreground mb-1 block">Color</Label>
+      <p className="text-xs text-muted-foreground mb-3">Colores disponibles de {odooProduct!.name}.</p>
+      {/* Tamaño fijo: la cantidad de colores la define Odoo (pueden ser 2 o 15). */}
+      <div className="flex flex-wrap gap-3">
+        {odooColors.map(c => {
+          const active = odooColor === c.name;
+          return (
+            <button
+              key={c.name}
+              type="button"
+              onClick={() => selectOdooColor(c.name)}
+              disabled={!c.inStock}
+              title={c.inStock ? c.name : `${c.name} — sin stock`}
+              aria-label={c.inStock ? c.name : `${c.name}, sin stock`}
+              aria-pressed={active}
+              className={`relative w-11 h-11 shrink-0 rounded-full overflow-hidden border border-black/10 transition-all hover:scale-105 disabled:hover:scale-100 disabled:cursor-not-allowed ring-offset-2 ${active ? "ring-2 ring-primary" : ""}`}
+            >
+              <span className={`absolute inset-0 ${c.inStock ? "" : "opacity-35"}`} style={{ backgroundColor: c.hex }} />
+              {!c.inStock && (
+                // Diagonal de "agotado".
+                <span className="absolute inset-0" style={{ background: "linear-gradient(to top right, transparent 46%, #6b6f74 46%, #6b6f74 54%, transparent 54%)" }} />
+              )}
+              {active && (
+                <span className="absolute inset-0 flex items-center justify-center bg-black/20">
+                  <Check className="text-white w-5 h-5 drop-shadow" />
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-sm text-muted-foreground mt-3 flex items-center gap-2">
+        <span className="w-3 h-3 rounded-full border border-black/10" style={{ backgroundColor: activeColorHex }} />
+        {activeColorName}
+        {odooVariant && odooVariant.inStock && odooVariant.available !== null && odooVariant.available <= 3 && (
+          <span className="text-xs text-primary">· {odooVariant.available === 1 ? "¡Queda 1!" : `Quedan ${odooVariant.available}`}</span>
+        )}
+      </p>
+      {odooAllOut && (
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+          Este producto está sin stock en este momento. Podés diseñarlo igual y te avisamos por WhatsApp, o
+          elegir "Traigo el mío".
+        </p>
+      )}
     </div>
   ) : isInox ? (
     // El inoxidable natural no se pinta: en lugar de la paleta y el "Tono
@@ -2023,6 +2182,7 @@ export default function Customizer() {
   /** Estado mínimo para el link del diseño (sin el logo subido: no entra en una URL). */
   const sharedDesignState = (): SharedDesign => ({
     v: 1, materialId, materialProductId, sizeId: size, colorId: color, customHex, finish,
+    odooTemplateId: odooProduct?.id ?? null, odooColor, odooSize,
     technique: effectiveTechnique, text, fontId: font, textColor, iconId, ownProduct,
     textPlacement, artPlacement,
   });
@@ -2046,6 +2206,29 @@ export default function Customizer() {
     }
   };
 
+  /** Modelo de la tienda: solo cuando Odoo tiene más de un producto para este tipo. */
+  const renderOdooModel = () => odooProducts.length > 1 && (
+    <div>
+      <Label className="text-sm font-medium text-foreground mb-3 block">Modelo</Label>
+      <div className="flex flex-wrap gap-2">
+        {odooProducts.map(p => {
+          const active = odooProduct?.id === p.id;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => { setOdooTemplateId(p.id); track("customizer_model_select", { odoo_id: p.id }); }}
+              className={`min-h-11 px-3 py-2 border rounded-xl text-sm font-medium transition-all ${active ? activeCard : idleCard}`}
+            >
+              {p.name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   /** "¿De dónde sale el producto?" — drinkware y bolígrafos. */
   const renderOwnProduct = () => canBringOwn && (
     <div>
@@ -2054,7 +2237,13 @@ export default function Customizer() {
       </Label>
       <div className="grid grid-cols-2 gap-3">
         {[
-          { own: false, title: material.pens ? "De la tienda" : "Lo compro acá", sub: material.pens ? "Incluye el bolígrafo" : "Te cotizamos la pieza" },
+          {
+            own: false,
+            title: material.pens ? "De la tienda" : "Lo compro acá",
+            sub: material.pens ? "Incluye el bolígrafo"
+              // Con Odoo, el precio real de la variante elegida.
+              : odooVariant ? `Pieza ${formatGs(odooVariant.price)}` : "Te cotizamos la pieza",
+          },
           { own: true, title: material.pens ? "Traigo los míos" : "Traigo el mío", sub: "Solo el grabado" },
         ].map(o => {
           const active = ownProduct === o.own;
@@ -2212,7 +2401,7 @@ export default function Customizer() {
               fontClass=""
               fontStyle={activeFont.style}
               productId={productId}
-              sizeId={size}
+              sizeId={viewSize}
               customImageUrl={artUrl}
               imageSize={artImageSize}
               textPlacement={textPlacement}
@@ -2395,6 +2584,7 @@ export default function Customizer() {
           {!material.pens && activeMProduct?.desc && (
             <p className="text-xs text-muted-foreground mt-3">{activeMProduct.desc}</p>
           )}
+          {odooProducts.length > 1 && <div className="mt-6">{renderOdooModel()}</div>}
           {canBringOwn && <div className="mt-6 max-w-md">{renderOwnProduct()}</div>}
         </div>
         </>
@@ -2410,6 +2600,7 @@ export default function Customizer() {
               <MaterialChips materials={MATERIALS} value={materialId} onChange={handleSelectMaterial} />
               <ProductChips material={material} value={materialProductId} onChange={handleSelectMaterialProduct} />
               {material.desc && <p className="text-xs text-muted-foreground">{material.desc}</p>}
+              {renderOdooModel()}
               {renderOwnProduct()}
             </div>
           </motion.div>
@@ -2466,7 +2657,7 @@ export default function Customizer() {
                       fontClass=""
                       fontStyle={activeFont.style}
                       productId={productId}
-                      sizeId={size}
+                      sizeId={viewSize}
                       customImageUrl={artUrl}
                       imageSize={artImageSize}
                       textPlacement={textPlacement}

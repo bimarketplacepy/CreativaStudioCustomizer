@@ -1,8 +1,12 @@
 import React from "react";
 import { motion, MotionConfig } from "framer-motion";
 import { ENGRAVING_BASE, ENGRAVING_PLANS } from "@/lib/engraving-plans";
+import { engravingPrice, formatGs, useCatalog } from "@/lib/odoo-catalog";
 
 export default function PricingEngraving() {
+  // Precios de grabado desde Odoo (servicios GRAB-*) cuando existen; si no, los
+  // publicados en engraving-plans.ts. Misma fuente que el precio del personalizador.
+  const catalog = useCatalog();
   return (
     // py alineado al ritmo del resto de las secciones (antes py-24/32, outlier).
     <section id="precios" className="scroll-mt-20 bg-[#1A1614] py-16 md:py-24 px-6">
@@ -37,7 +41,7 @@ export default function PricingEngraving() {
                 {plan.shortLabel}
               </p>
               <span className="shrink-0 font-serif text-lg md:text-xl text-white/90 tracking-wide tabular-nums">
-                {plan.priceLabel}
+                {formatGs(engravingPrice(catalog, plan.id))}
               </span>
             </motion.div>
           ))}

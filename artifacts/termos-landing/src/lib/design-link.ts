@@ -22,6 +22,10 @@ export interface SharedDesign {
   ownProduct: boolean;
   textPlacement: Placement;
   artPlacement: Placement;
+  /** Variante del catálogo de Odoo (opcional: links anteriores no la traen). */
+  odooTemplateId?: number | null;
+  odooColor?: string | null;
+  odooSize?: string | null;
 }
 
 const PREFIX = "#diseno=";

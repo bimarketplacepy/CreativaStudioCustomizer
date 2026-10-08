@@ -5,6 +5,81 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type CatalogSource = (typeof CatalogSource)[keyof typeof CatalogSource];
+
+export const CatalogSource = {
+  odoo: "odoo",
+  none: "none",
+} as const;
+
+export interface CatalogVariant {
+  /** Odoo product.product id */
+  id: number;
+  /** @nullable */
+  sku: string | null;
+  /** @nullable */
+  colorName: string | null;
+  /** @nullable */
+  colorHex: string | null;
+  /** @nullable */
+  size: string | null;
+  /** Public sales price (list price + variant extra) */
+  price: number;
+  /**
+   * Units available to sell; null when stock is not tracked
+   * @nullable
+   */
+  available: number | null;
+  /** Whether this variant can be ordered right now */
+  inStock: boolean;
+}
+
+export interface CatalogProduct {
+  /** Odoo product.template id */
+  id: number;
+  name: string;
+  /** Customizer 3D profile (termo, vaso, hoppie, jug, guampa, copa, botella, chopera) */
+  productType: string;
+  /** Customizer material id (acero, inox, cuero, cristal) */
+  material: string;
+  /**
+   * Absolute product page URL in the Odoo shop
+   * @nullable
+   */
+  url: string | null;
+  /** @nullable */
+  imageUrl: string | null;
+  variants: CatalogVariant[];
+}
+
+/**
+ * Engraving service prices read from Odoo service products by internal reference (GRAB-NOMBRES, GRAB-ICONO, GRAB-LOGO). Null when missing.
+
+ */
+export interface CatalogEngraving {
+  /** @nullable */
+  names: number | null;
+  /** @nullable */
+  drawing: number | null;
+  /** @nullable */
+  logo: number | null;
+}
+
+export interface Catalog {
+  source: CatalogSource;
+  /**
+   * ISO timestamp of the last successful sync
+   * @nullable
+   */
+  updatedAt: string | null;
+  /** True when Odoo failed and an older copy is being served */
+  stale: boolean;
+  /** Currency symbol for display, e.g. "Gs." */
+  currency: string;
+  products: CatalogProduct[];
+  engraving: CatalogEngraving;
+}
+
 export interface HealthStatus {
   status: string;
 }

@@ -153,7 +153,7 @@ En bolígrafos se omite el material (repite el producto); en productos de un sol
 
 ---
 
-## 5. Integración con el ecommerce (productos Hydrate) y modelos 3D reales
+## 5. Integración con el ecommerce (Odoo, productos Hydrate) y modelos 3D reales
 
 Hoy el catálogo está escrito a mano (`products.ts`, `materials.ts`, `COLORS`) y el 3D se genera por código desde un perfil (`THREE.LatheGeometry` en `thermos-3d.tsx`), no se carga desde un archivo.
 
@@ -192,12 +192,66 @@ El sistema de grabado ubica el diseño con coordenadas sobre el cuerpo (u alrede
 Del lado del código: el visor debe aceptar `.glb` además del perfil actual, para migrar producto por producto sin romper nada.
 
 ### Plan
-1. Conectar el catálogo (`/api/catalog`) mostrando productos y precios reales, todavía con los modelos 3D actuales.
-2. Precio y SKU en el resumen y en WhatsApp (opción A).
+1. ✅ Conectar el catálogo (`/api/catalog`) con productos, colores, tamaños, precios y stock reales, todavía con los modelos 3D actuales.
+2. ✅ Precio y SKU en el resumen y en WhatsApp (opción A).
 3. Visor con soporte `.glb` + prueba con un primer modelo de Higgsfield.
-4. Agregar al carrito del ecommerce (opción B), si la plataforma lo permite.
+4. Pago del servicio en Odoo (ver §6, al final de la hoja de ruta).
+
+### 5b. Conexión con Odoo — implementada (2026-10-08)
+
+**Estado:** el código está listo y probado contra un Odoo simulado (misma API que Odoo 17). **Se activa sola** al cargar los Secrets; mientras no estén, la landing funciona exactamente como antes (catálogo propio).
+
+**Qué hace**
+- `GET /api/catalog` (api-server, `src/lib/catalog.ts` + `src/lib/odoo.ts`): lee de Odoo las plantillas **publicadas** en el ecommerce y vendibles, sus variantes, colores, tamaños, precio público y stock. Caché de 10 min; si Odoo falla, sirve la última copia buena (y si nunca la tuvo, la landing usa su catálogo propio).
+- Usa la API externa estándar de Odoo (JSON-RPC): funciona en Odoo Online, Odoo.sh y servidor propio, v14–v18, sin módulos extra. Pide solo los campos que existen en la instancia (cambian entre versiones).
+- **Personalizador** (cuando Odoo tiene un producto para el material + producto elegidos):
+  - **Colores reales** de las variantes (con su color hex de Odoo). Desaparecen la paleta inventada y el "Tono exacto". Los colores sin stock se ven tachados y no se pueden elegir; con ≤ 3 unidades muestra "Quedan N".
+  - **Tamaños reales** (si el producto tiene atributo de tamaño). El 3D usa el perfil de capacidad más cercana ("20 oz" → vaso 20oz).
+  - **Modelo:** si hay varios productos de Odoo del mismo tipo (ej. dos termos distintos), aparece un selector.
+  - **Precio real:** pieza + grabado = total (ej. "Gs. 224.000 — Termo Hydrate Mate 1L Gs. 189.000 + grabado Gs. 35.000"). Con "Traigo el mío", solo el grabado.
+  - El resumen, el mensaje de WhatsApp y el pedido llevan el **nombre real, el código (SKU) y la variante**; el `designState` guarda `odooTemplateId`, `odooVariantId`, `sku` y `piecePrice` (base para el pago en Odoo).
+  - El link "Compartir diseño" también guarda la variante elegida.
+- **Tarifas** muestra los precios de grabado de Odoo si existen los servicios (ver abajo).
+
+**Verificado:** typecheck y build; API contra el Odoo simulado (clasificación, publicados vs. no publicados, stock, servicios), casos de error (sin configurar, clave inválida, Odoo caído → nunca rompe); y la página real en Chromium sin pantalla, en desktop y en celular (colores, tamaños, sin stock, precio total, resumen con SKU, y el modo sin Odoo intacto). Sin errores de consola.
+
+#### Guía de configuración (para el dueño)
+1. **Usuario de API en Odoo:** crear un usuario interno (ej. `api-landing`) con permisos de **solo lectura** de Ventas/Inventario. Con ese usuario: *Preferencias → Seguridad de la cuenta → Nueva API key*.
+2. **Secrets en Replit** (los lee el api-server):
+   | Secret | Ejemplo |
+   |---|---|
+   | `ODOO_URL` | `https://tuempresa.odoo.com` |
+   | `ODOO_DB` | nombre de la base (en Odoo Online suele ser el subdominio) |
+   | `ODOO_USER` | login del usuario de API |
+   | `ODOO_API_KEY` | la API key generada |
+   | `ODOO_CURRENCY_LABEL` | opcional, por defecto `Gs.` |
+3. **Colores:** en Odoo, el atributo de color debe ser de tipo de visualización **"Color"** y cada valor tener su color cargado. Si falta, la landing usa un tono aproximado por el nombre ("Negro", "Celeste"…).
+4. **Tamaños:** atributo con nombre que contenga "Tamaño", "Capacidad", "Medida" o "Volumen", con valores tipo `20 oz`, `500 ml`, `1.2 L`.
+5. **Clasificación de productos:** por el **nombre** del producto. Tipo: guampa, hoppie, chopera, jug/bidón, copa, vaso/tumbler, termo, botella. Material: "inox/inoxidable" → acero inoxidable; "cuero/forrado" → cuero; "cristal/vidrio" → cristal; si no, acero pintado. Los productos que no encajan (ej. bombillas) se omiten y se listan en el log del api-server ("productos de Odoo sin perfil 3D") para ajustar las reglas (`TYPE_RULES` / `MATERIAL_RULES` en `catalog.ts`).
+6. **Precios de grabado desde Odoo (opcional):** crear productos de tipo **Servicio** con referencia interna `GRAB-NOMBRES`, `GRAB-ICONO` y `GRAB-LOGO`. Si no existen, se usan los precios de `engraving-plans.ts`.
+7. **Probar:** abrir `/api/catalog` en la web publicada: `"source": "odoo"` y la lista de productos. Si `stale: true` y la lista vacía, revisar el log del api-server (credenciales o URL).
+
+**Limitaciones conocidas**
+- El precio es el **precio público** del producto (+ extra de la variante); si la tienda usa listas de precios especiales, no se aplican todavía.
+- La imagen del producto apunta a `/web/image/...` de Odoo (pública para productos publicados); hoy no se muestra en la landing, queda disponible para el próximo paso.
+- Los productos sin modelo 3D en la landing (jug, botella) se clasifican pero no aparecen en el personalizador hasta sumarlos a `materials.ts`.
 
 ### Datos pendientes del negocio
-1. ~~Plataforma del ecommerce~~ → **Odoo**. Falta la URL de la instancia.
-2. Acceso de administrador para crear un usuario de API de solo lectura en Odoo (la API es XML-RPC/JSON-RPC: url, base de datos, usuario y API key).
-3. Cierre preferido: WhatsApp o carrito de la tienda.
+1. ~~Plataforma del ecommerce~~ → **Odoo**. Falta la URL de la instancia y las credenciales (guía de arriba).
+2. ~~Cierre preferido~~ → por ahora WhatsApp; el pago en Odoo queda para el final (§6).
+
+---
+
+## 6. Hoja de ruta acordada (2026-10-08)
+
+| # | Etapa | Estado |
+|---|---|---|
+| 0 | Diagnóstico: arreglos de impacto directo, riesgos y fricción (§2–§3) | ✅ Hecho |
+| 1 | **Conectar Odoo:** precios, stock y **colores reales** (fin de la paleta inventada) | ✅ Código listo — falta cargar credenciales (§5b) |
+| 2 | **Creación de termos rápida, fácil e intuitiva** (§4: Etapa A + B), reorganizando `customizer.tsx` | ⏭️ Próxima |
+| 3 | **Modelos 3D reales** (Higgsfield → `.glb`, requisitos en §5) | Depende de los modelos del dueño |
+| 4 | **Visor AR** del termo diseñado (`<model-viewer>`: Android Scene Viewer / iPhone Quick Look, con el diseño aplicado) | Después de 3 (funciona con el 3D actual, luce con los reales) |
+| 5 | **Pagar el servicio en Odoo:** el server crea un pedido de venta (variante + servicio de grabado + número de diseño) y el cliente paga con el link del portal de Odoo. Funciona en Odoo Online; requiere un medio de pago online configurado en Odoo (Bancard/Pagopar en Paraguay necesitan módulo de terceros) | Al final |
+| 6 | **Combos:** varias piezas (ej. termo + guampa) en un solo pedido; descuento opcional definido en Odoo (Promociones) | Al final, junto con 5 |
+
+> Nota de arquitectura: aunque los combos van al final, la reorganización del personalizador de la etapa 2 debe dejar el estado preparado para **varias piezas**, para no rehacerla dos veces.

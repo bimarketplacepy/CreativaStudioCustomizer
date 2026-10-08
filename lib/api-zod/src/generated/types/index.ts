@@ -7,6 +7,11 @@
  */
 
 export * from "./apiErrorResponse";
+export * from "./catalog";
+export * from "./catalogEngraving";
+export * from "./catalogProduct";
+export * from "./catalogSource";
+export * from "./catalogVariant";
 export * from "./createOrderRequest";
 export * from "./createOrderRequestDesignState";
 export * from "./createOrderResponse";
