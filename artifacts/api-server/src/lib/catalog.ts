@@ -55,7 +55,17 @@ const TYPE_RULES: [RegExp, string][] = [
 const TYPE_LABEL: Record<string, string> = {
   guampa: "Guampa", hoppie: "Hoppie", chopera: "Chopera", jug: "Jug",
   copa: "Copa", vaso: "Vaso", termo: "Termo", botella: "Botella",
-  "vaso-manija": "Vaso",
+  "vaso-manija": "Vaso", "botella-ancha": "Botella",
+};
+
+/**
+ * Perfiles con modelo 3D real de UN producto concreto: los demás modelos del
+ * mismo tipo pasan a la forma genérica. Hoy: el .glb del Hoppie es el "Hoppie"
+ * (tapa con asa); Termo, Hoppie V2 Pro y Hoppie Kids tienen otra tapa y usan
+ * la botella de boca ancha genérica.
+ */
+const EXACT_MODEL: Record<string, { name: string; fallback: string }> = {
+  hoppie: { name: "Hoppie", fallback: "botella-ancha" },
 };
 
 const LEATHER = /\bcuero\b|\bforrad[oa]\b/;
@@ -123,8 +133,10 @@ const ruleType = (text: string) => {
 const STRONG_NAME: [RegExp, string][] = [
   [/\btermo mate\b|\bmate system\b/, "termo"],
   [/\bguampa\b/, "guampa"],
-  // Forma "vaso con manija" (modelo .glb real): antes que la regla de "vaso".
-  [/\bagarre\b|\bsunbeam\b|\bmanija\b/, "vaso-manija"],
+  // Forma "vaso con manija" (forma-vaso-manija.glb): es SOLO el "Vaso con Pico
+  // y Agarre". El Sunbeam (alto, con pajita) y el "Vaso Manija" (jarro) son
+  // otros productos y siguen como vaso. Antes que la regla de "vaso".
+  [/\bagarre\b/, "vaso-manija"],
   [/\bvaso\b|\btumbler\b|\bshaker\b|\blowball\b/, "vaso"],
 ];
 /**
@@ -287,6 +299,8 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
       excluded.add(t.name);
       continue;
     }
+    // Ediciones de clubes: fuera por ahora (decisión del dueño, 2026-10-09).
+    if (parseProductName(t.name).club) { excluded.add(t.name); continue; }
     const type = productTypeOf(t.name, category);
     if (!type) { unmatched.add(t.name); continue; }
 
@@ -330,23 +344,41 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
     byKey.set(key, [...(byKey.get(key) ?? []), e]);
   }
 
+  // Fotos: cada color es una plantilla aparte y no todas tienen imagen cargada
+  // (Odoo devuelve un ícono gris). Para cada modelo se usa una que sí tenga.
+  const withImage = new Set(
+    entries.length
+      ? (await client.searchRead<{ id: number }>(
+          "product.template",
+          [["id", "in", [...new Set(entries.map(e => e.t.id))]], ["image_1920", "!=", false]],
+          ["id"],
+        )).map(r => r.id)
+      : [],
+  );
+
   const categories: Record<string, string[]> = {};
   const products: CatalogProduct[] = [...byKey.values()].map(list => {
     const votes = new Map<string, number>();
     for (const e of list) votes.set(e.type, (votes.get(e.type) ?? 0) + 1);
-    const productType = [...votes].sort((a, b) => b[1] - a[1])[0][0];
+    let productType = [...votes].sort((a, b) => b[1] - a[1])[0][0];
     const first = list[0];
     // Nombre visible: si el modelo no nombra ningún tipo ("" o "Kids"), se
-    // antepone el del perfil ("Hoppie", "Hoppie Kids"); el club va al final.
+    // antepone el del perfil ("Hoppie", "Hoppie Kids").
     let name = first.model;
     if (!ruleType(name)) name = `${TYPE_LABEL[productType]} ${name}`.trim();
-    if (first.club) name = `${name} · ${first.club}`;
+    const exact = EXACT_MODEL[productType];
+    if (exact && norm(name) !== norm(exact.name)) productType = exact.fallback;
     categories[name] = [...new Set(list.map(e => e.category))];
     const published = list.find(e => e.t.is_published && e.t.website_url);
+    // Foto: preferir una plantilla publicada con imagen. Sin ninguna: null (la
+    // landing muestra la silueta, no el ícono gris de Odoo).
+    const pictured = list.find(e => withImage.has(e.t.id) && e.t.is_published) ?? list.find(e => withImage.has(e.t.id));
     return {
       id: first.t.id, name, productType, material: first.material,
       url: published ? `${client.baseUrl}${published.t.website_url}` : null,
-      imageUrl: `${client.baseUrl}/web/image/product.template/${first.t.id}/image_512`,
+      // Servida por /api/catalog/image: la tienda solo publica la foto de los
+      // productos publicados (al resto le muestra un ícono gris).
+      imageUrl: pictured ? `/api/catalog/image/${pictured.t.id}` : null,
       variants: list.map(e => e.variant),
     };
   })
@@ -413,4 +445,35 @@ export async function getCatalog(): Promise<Catalog> {
     }
   })();
   return inflight;
+}
+
+// ── Fotos de producto ────────────────────────────────────────────────────────
+const IMAGE_TTL_MS = 24 * 60 * 60_000;
+const imageCache = new Map<number, { at: number; data: Buffer | null }>();
+
+/**
+ * Foto (256 px) de una plantilla del catálogo actual, leída de Odoo con la API
+ * (funciona aunque el producto no esté publicado). Solo ids del catálogo: no
+ * es un proxy abierto a cualquier producto de Odoo. Caché en memoria 24 h.
+ */
+export async function getCatalogImage(templateId: number): Promise<Buffer | null> {
+  const known = lastGood?.products.some(p => p.imageUrl === `/api/catalog/image/${templateId}`);
+  if (!known) return null;
+  const hit = imageCache.get(templateId);
+  if (hit && Date.now() - hit.at < IMAGE_TTL_MS) return hit.data;
+  const cfg = odooConfig();
+  if (!cfg) return null;
+  client ??= new OdooClient(cfg);
+  try {
+    const rows = await client.call<{ image_256?: string | false }[]>(
+      "product.template", "read", [[templateId], ["image_256"]],
+    );
+    const b64 = rows[0]?.image_256;
+    const data = typeof b64 === "string" && b64 ? Buffer.from(b64, "base64") : null;
+    imageCache.set(templateId, { at: Date.now(), data });
+    return data;
+  } catch (err) {
+    logger.warn({ err: String(err), templateId }, "catalog: no se pudo leer la foto");
+    return null;
+  }
 }

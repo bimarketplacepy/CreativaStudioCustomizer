@@ -130,3 +130,36 @@ export function engravingPrice(catalog: Catalog | undefined, plan: EngravingPlan
   const fromOdoo = catalog?.engraving?.[plan];
   return typeof fromOdoo === "number" ? fromOdoo : (ENGRAVING_PLANS.find(p => p.id === plan)?.price ?? 0);
 }
+
+/** Secciones del catálogo de la tienda en el personalizador, en este orden. */
+const CATALOG_SECTIONS: { title: string; types: string[] }[] = [
+  { title: "Termos", types: ["termo"] },
+  { title: "Botellas", types: ["hoppie", "botella-ancha"] },
+  { title: "Vasos", types: ["vaso-manija", "vaso"] },
+  { title: "Guampas y copas", types: ["guampa"] },
+];
+
+export interface CatalogSection { title: string; products: CatalogProduct[] }
+
+/**
+ * Productos de la tienda para un material, agrupados para elegirlos con foto.
+ * Dentro de cada sección, los modelos con más colores primero (el orden del
+ * servidor); los tipos sin perfil 3D en la landing no aparecen.
+ */
+export function catalogSections(catalog: Catalog | undefined, material: string, known: (type: string) => boolean): CatalogSection[] {
+  const list = (catalog?.products ?? []).filter(p => p.material === material && known(p.productType));
+  return CATALOG_SECTIONS
+    .map(s => ({ title: s.title, products: list.filter(p => s.types.includes(p.productType)) }))
+    .filter(s => s.products.length > 0);
+}
+
+/** Foto chica del producto (la de 512 px pesa ~20 KB; para la tarjeta alcanza 256). */
+export function catalogThumb(p: CatalogProduct): string | null {
+  return p.imageUrl ? p.imageUrl.replace(/\/image_\d+$/, "/image_256") : null;
+}
+
+/** Precio más bajo con stock (o el más bajo, si ninguno tiene). */
+export function priceFrom(p: CatalogProduct): number | null {
+  const prices = (p.variants.some(v => v.inStock) ? p.variants.filter(v => v.inStock) : p.variants).map(v => v.price);
+  return prices.length ? Math.min(...prices) : null;
+}

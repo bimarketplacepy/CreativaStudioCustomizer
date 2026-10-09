@@ -43,8 +43,9 @@ import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
 import { ADDRESS, whatsappUrl } from "@/lib/contact";
 import { clearSharedDesign, designLink, readSharedDesign, type SharedDesign } from "@/lib/design-link";
 import {
-  colorOptions, defaultVariant, engravingPrice, findVariant, formatGs, matchingProducts,
-  sizeOptions, useCatalog, viewSizeId,
+  catalogSections, catalogThumb, colorOptions, defaultVariant, engravingPrice, findVariant, formatGs,
+  matchingProducts, priceFrom, sizeOptions, useCatalog, viewSizeId,
+  type CatalogProduct, type CatalogSection,
 } from "@/lib/odoo-catalog";
 import { track } from "@/lib/analytics";
 import { dataUrlToJpeg, downloadDataUrl } from "@/lib/share";
@@ -327,6 +328,59 @@ function ProductChips({ material, value, onChange }: {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Catálogo de la tienda (Odoo) para elegir QUÉ producto personalizar: foto,
+ * nombre, colores con stock y precio "desde". Reemplaza a la elección por tipo
+ * genérico + "Modelo" cuando hay catálogo real para el material.
+ */
+function CatalogPicker({ sections, value, onPick, compact }: {
+  sections: CatalogSection[];
+  value: number | null;
+  onPick: (p: CatalogProduct) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className="space-y-5">
+      {sections.map(sec => (
+        <div key={sec.title}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{sec.title}</p>
+          <div className={`grid ${compact ? "grid-cols-3 gap-2" : "grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2.5"}`}>
+            {sec.products.map(p => {
+              const on = p.id === value;
+              const colors = new Set(p.variants.filter(v => v.inStock).map(v => v.colorName)).size;
+              const from = priceFrom(p);
+              const thumb = catalogThumb(p);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => onPick(p)}
+                  className={`p-2 border rounded-xl flex flex-col items-center text-center gap-1 transition-all ${on ? activeCard : idleCard}`}
+                >
+                  <span className="w-full aspect-square rounded-lg bg-white overflow-hidden flex items-center justify-center">
+                    {thumb ? (
+                      <img src={thumb} alt="" loading="lazy" decoding="async" width={256} height={256} className="w-full h-full object-contain" />
+                    ) : (
+                      <ProductGlyph product={getProduct(p.productType)} className="h-3/4 w-full" />
+                    )}
+                  </span>
+                  <span className={`${compact ? "text-[12px]" : "text-[13px]"} font-medium leading-tight ${on ? "text-primary" : "text-foreground"}`}>{p.name}</span>
+                  <span className="text-[11px] text-muted-foreground leading-tight">
+                    {compact
+                      ? (from !== null ? `desde ${formatGs(from)}` : `${colors} ${colors === 1 ? "color" : "colores"}`)
+                      : `${colors} ${colors === 1 ? "color" : "colores"}${from !== null ? ` · desde ${formatGs(from)}` : ""}`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1191,6 +1245,25 @@ export default function Customizer() {
     setOdooColor(v?.colorName ?? null);
     track("customizer_size_select", { product: productId, size: label, source: "odoo" });
   };
+  // Catálogo de la tienda para el material elegido (con foto, agrupado). Cuando
+  // existe, el cliente elige el producto real de ahí en vez del tipo genérico.
+  const shopSections = useMemo(
+    () => catalogSections(catalog, materialId, t => material.products.some(p => p.drinkwareProductId === t)),
+    [catalog, materialId, material],
+  );
+  const shopMode = shopSections.length > 0;
+  const pickShopProduct = (p: CatalogProduct) => {
+    const mp = material.products.find(x => x.drinkwareProductId === p.productType);
+    if (!mp) return;
+    if (mp.id !== materialProductId) handleSelectMaterialProduct(mp.id);
+    setOdooTemplateId(p.id);
+    track("customizer_catalog_select", { odoo_id: p.id, product: p.name, type: p.productType });
+  };
+  /** Sin modelo 3D propio, la vista usa la forma genérica del tipo: avisarlo. */
+  const approxNote = shopMode && odooProduct && !product.model
+    ? `La vista 3D de ${odooProduct.name} es aproximada; el diseño y el grabado son los reales.`
+    : null;
+
   // Tamaño que dibuja el 3D: el de Odoo mapeado al perfil, o el elegido a mano.
   const viewSize = odooMode ? viewSizeId(product, odooSizes, odooSize) : size;
   const activeSize = getSize(product, viewSize);
@@ -2745,7 +2818,9 @@ export default function Customizer() {
             2 · {material.pens ? "Bolígrafo" : `Producto en ${material.name.toLowerCase()}`}
           </Label>
 
-          {material.pens ? (
+          {shopMode ? (
+            <CatalogPicker sections={shopSections} value={odooProduct?.id ?? null} onPick={pickShopProduct} />
+          ) : material.pens ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               <div className={`p-3 border rounded-xl flex flex-col items-center justify-end gap-2 ${activeCard}`}>
                 <span className="h-16 flex items-center justify-center">
@@ -2779,10 +2854,11 @@ export default function Customizer() {
               })}
             </div>
           )}
-          {!material.pens && activeMProduct?.desc && (
+          {!material.pens && !shopMode && activeMProduct?.desc && (
             <p className="text-xs text-muted-foreground mt-3">{activeMProduct.desc}</p>
           )}
-          {odooProducts.length > 1 && <div className="mt-6">{renderOdooModel()}</div>}
+          {approxNote && <p className="text-xs text-muted-foreground mt-3">{approxNote}</p>}
+          {!shopMode && odooProducts.length > 1 && <div className="mt-6">{renderOdooModel()}</div>}
           {canBringOwn && <div className="mt-6 max-w-md">{renderOwnProduct()}</div>}
         </div>
         </>
@@ -2796,9 +2872,19 @@ export default function Customizer() {
             {renderMiniPreview()}
             <div className="space-y-8">
               <MaterialChips materials={MATERIALS} value={materialId} onChange={handleSelectMaterial} />
-              <ProductChips material={material} value={materialProductId} onChange={handleSelectMaterialProduct} />
-              {material.desc && <p className="text-xs text-muted-foreground">{material.desc}</p>}
-              {renderOdooModel()}
+              {shopMode ? (
+                <div>
+                  <Label className="text-sm font-medium text-foreground mb-3 block">Elegí tu producto</Label>
+                  <CatalogPicker sections={shopSections} value={odooProduct?.id ?? null} onPick={pickShopProduct} compact />
+                  {approxNote && <p className="text-xs text-muted-foreground mt-3">{approxNote}</p>}
+                </div>
+              ) : (
+                <>
+                  <ProductChips material={material} value={materialProductId} onChange={handleSelectMaterialProduct} />
+                  {material.desc && <p className="text-xs text-muted-foreground">{material.desc}</p>}
+                  {renderOdooModel()}
+                </>
+              )}
               {renderOwnProduct()}
             </div>
           </motion.div>
@@ -2912,7 +2998,7 @@ export default function Customizer() {
                   {/* Summary badges — hidden on mobile to keep the sticky preview compact. */}
                   <div className="hidden md:flex flex-wrap gap-2 justify-center px-4 pb-4">
                     <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground">
-                      {product.singular}
+                      {odooProduct?.name ?? product.singular}
                     </span>
                     <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground flex items-center gap-1">
                       {isGlass ? (

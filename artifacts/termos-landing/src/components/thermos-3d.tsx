@@ -645,7 +645,7 @@ function ThermosMesh({
     const base = { roughness: 0.35, metalness: 0.15, clearcoat: 0.8, clearcoatRoughness: 0.15 };
     if (finish === "matte") {
       // Hoppie, chopera y vaso con manija llevan powder-coat real: mate con cuerpo, no tiza.
-      if (product.id === "hoppie" || product.id === "chopera" || product.id === "vaso-manija")
+      if (product.id === "hoppie" || product.id === "botella-ancha" || product.id === "chopera" || product.id === "vaso-manija")
         return { ...base, roughness: 0.6, metalness: 0.1, clearcoat: 0.06, clearcoatRoughness: 0.7 };
       return { ...base, roughness: 0.88, metalness: 0.0, clearcoat: 0.0, clearcoatRoughness: 0.8 };
     }
@@ -1048,20 +1048,20 @@ function ThermosMesh({
         )
       )}
 
-      {/* Piezas a medida: cuello de acero del hoppie y remate (banda de acero +
+      {/* Piezas a medida: cuello de acero de la botella de boca ancha y remate (banda de acero +
           tapa transparente) de la chopera. El resto usa cap/handle genéricos. */}
-      {product.id === "hoppie" && <HoppieNeck sil={sil} />}
+      {product.id === "botella-ancha" && <HoppieNeck sil={sil} />}
       {product.id === "chopera" && <ChoperaTop sil={sil} />}
 
       {/* Cap / lid */}
-      {capGeo && product.id !== "hoppie" && product.id !== "chopera" && (
+      {capGeo && product.id !== "botella-ancha" && product.id !== "chopera" && (
         <mesh geometry={capGeo} position={[0, capCenterY, 0]} castShadow>
           <meshPhysicalMaterial color="#1a1a1a" roughness={0.28} metalness={0.55} clearcoat={0.7} clearcoatRoughness={0.08} envMapIntensity={1.6} />
         </mesh>
       )}
 
       {/* Handle: buried halfway so the depth test hides the inner half */}
-      {handleGeo && handle && product.id !== "hoppie" && (
+      {handleGeo && handle && product.id !== "botella-ancha" && (
         <mesh geometry={handleGeo} position={handle.position} castShadow>
           {handle.mat === "plastic" ? (
             // Matte plastic — no metal, no clearcoat sheen. Colour matches the
@@ -1084,7 +1084,7 @@ function ThermosMesh({
       )}
 
       {/* Metal collar seam ring (el hoppie trae su propio labio en HoppieNeck) */}
-      {collarGeo && product.id !== "hoppie" && (
+      {collarGeo && product.id !== "botella-ancha" && (
         <mesh geometry={collarGeo} position={[0, collarY, 0]}>
           <meshPhysicalMaterial color="#aaaaaa" roughness={0.12} metalness={0.98} clearcoat={0.6} envMapIntensity={2.2} />
         </mesh>

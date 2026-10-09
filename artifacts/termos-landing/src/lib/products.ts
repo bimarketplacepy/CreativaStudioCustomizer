@@ -1,4 +1,4 @@
-export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija";
+export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -107,6 +107,37 @@ export const PRODUCTS: ProductDef[] = [
     id: "hoppie",
     name: "Hoppies",
     singular: "Hoppie",
+    // Hydrate Hoppie 710 ml con tapa de asa (artifacts/3D/forma-botella.glb).
+    // Perfil = radio del cuerpo medido sobre el .glb (m × 10, centrado en
+    // 0,13 m): cilindro recto con hombro corto bajo el aro de acero.
+    desc: "Botella térmica de boca ancha con tapa con asa.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.423, -1.163], [0.425, -1.050], [0.425, 0.384],
+      [0.423, 0.494], [0.400, 0.550], [0.375, 0.605],
+    ],
+    band: [-1.0, 0.40],
+    frontFace: { uHalfWidth: 0.15 },
+    model: {
+      url: "/models/forma-botella.glb?v=1",
+      unitsPerMeter: 10,
+      centerYm: 0.13,
+      heightM: 0.26,
+      reachM: 0.047,
+    },
+    sizes: [
+      { id: "hoppie-530",  name: "530ml", label: "Chico",   scale: 0.90 },
+      { id: "hoppie-710",  name: "710ml", label: "Clásico", scale: 1.00 },
+      { id: "hoppie-1000", name: "1L",    label: "Grande",  scale: 1.12 },
+    ],
+  },
+  {
+    id: "botella-ancha",
+    name: "Botellas",
+    singular: "Botella",
+    // Botella de boca ancha GENÉRICA (lathe): Termo, Hoppie V2 Pro y Hoppie
+    // Kids de Odoo, que no tienen modelo 3D propio (el .glb es del Hoppie).
     // Botella de boca ancha (h:d ≈ 2.6:1): fondo plano con fillet suave, cuerpo
     // cilíndrico perfecto con una junta horizontal muy sutil a ~12% de la altura
     // (unión del fondo aislante), hombro convexo tipo domo y cuello ANCHO
@@ -129,9 +160,9 @@ export const PRODUCTS: ProductDef[] = [
     // abarca ~55% del arco visible, así el decal nunca se distorsiona en el domo.
     frontFace: { uHalfWidth: 0.14 },
     sizes: [
-      { id: "hoppie-20", name: "20oz", label: "Chico",   scale: 0.86 },
-      { id: "hoppie-30", name: "30oz", label: "Clásico", scale: 1.00 },
-      { id: "hoppie-40", name: "40oz", label: "Grande",  scale: 1.14 },
+      { id: "botella-ancha-20", name: "20oz", label: "Chico",   scale: 0.86 },
+      { id: "botella-ancha-30", name: "30oz", label: "Clásico", scale: 1.00 },
+      { id: "botella-ancha-40", name: "40oz", label: "Grande",  scale: 1.14 },
     ],
   },
   {
