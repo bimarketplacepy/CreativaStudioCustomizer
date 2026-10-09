@@ -1426,7 +1426,7 @@ export default function Customizer() {
     const fromOdoo = odooShopItems(catalog, materialId, knownType);
     if (!fromOdoo.length) return [];
     // Genéricos: las formas propias que no son el modelo de un producto
-    // puntual de una marca (vaso con manija = Pico y Agarre, Hoppie).
+    // puntual de una marca (vaso con manija = Pico y Agarre, botella con asa = Hoppie V2 Pro).
     const generic: ShopItem[] = material.products
       .filter(p => p.drinkwareProductId && !getProduct(p.drinkwareProductId).model?.exactFor?.length)
       .map(p => ({
@@ -2991,7 +2991,7 @@ export default function Customizer() {
         {/* STEP 1 — MATERIAL */}
         <div className="mb-8">
           <Label className="text-sm font-medium text-foreground mb-3 block">1 · Tipo de material</Label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             {MATERIALS.map(m => {
               const Icon = MATERIAL_ICON[m.icon] ?? Box;
               const active = materialId === m.id;

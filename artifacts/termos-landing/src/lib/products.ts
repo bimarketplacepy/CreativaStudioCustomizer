@@ -115,9 +115,10 @@ export const PRODUCTS: ProductDef[] = [
   },
   {
     id: "hoppie",
-    name: "Hoppies",
-    singular: "Hoppie",
-    // Hydrate Hoppie 710 ml con tapa de asa (artifacts/3D/forma-botella.glb).
+    name: "Hoppies V2 Pro",
+    singular: "Hoppie V2 Pro",
+    // Hydrate Hoppie V2 Pro Series con tapa de asa (artifacts/3D/forma-botella.glb).
+    // El Hoppie común tiene otra tapa: usa la botella de boca ancha genérica.
     // Perfil = radio del cuerpo medido sobre el .glb (m × 10, centrado en
     // 0,13 m): cilindro recto con hombro corto bajo el aro de acero.
     desc: "Botella térmica de boca ancha con tapa con asa.",
@@ -131,24 +132,23 @@ export const PRODUCTS: ProductDef[] = [
     frontFace: { uHalfWidth: 0.15 },
     model: {
       url: "/models/forma-botella.glb?v=1",
-      exactFor: ["Hoppie"],
+      exactFor: ["Hoppie V2 Pro Series"],
       unitsPerMeter: 10,
       centerYm: 0.13,
       heightM: 0.26,
       reachM: 0.047,
     },
     sizes: [
-      { id: "hoppie-530",  name: "530ml", label: "Chico",   scale: 0.90 },
-      { id: "hoppie-710",  name: "710ml", label: "Clásico", scale: 1.00 },
-      { id: "hoppie-1000", name: "1L",    label: "Grande",  scale: 1.12 },
+      { id: "hoppie-770",  name: "770ml", label: "Clásico", scale: 1.00 },
+      { id: "hoppie-1000", name: "1L",    label: "Grande",  scale: 1.09 },
     ],
   },
   {
     id: "botella-ancha",
     name: "Botellas",
     singular: "Botella",
-    // Botella de boca ancha GENÉRICA (lathe): Termo, Hoppie V2 Pro y Hoppie
-    // Kids de Odoo, que no tienen modelo 3D propio (el .glb es del Hoppie).
+    // Botella de boca ancha GENÉRICA (lathe): Hoppie, Termo, Hoppie Kids y
+    // Termo Kids de Odoo, sin modelo 3D propio (el .glb es del Hoppie V2 Pro).
     // Botella de boca ancha (h:d ≈ 2.6:1): fondo plano con fillet suave, cuerpo
     // cilíndrico perfecto con una junta horizontal muy sutil a ~12% de la altura
     // (unión del fondo aislante), hombro convexo tipo domo y cuello ANCHO

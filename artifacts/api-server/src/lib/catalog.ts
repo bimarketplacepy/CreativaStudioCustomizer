@@ -60,12 +60,12 @@ const TYPE_LABEL: Record<string, string> = {
 
 /**
  * Perfiles con modelo 3D real de UN producto concreto: los demás modelos del
- * mismo tipo pasan a la forma genérica. Hoy: el .glb del Hoppie es el "Hoppie"
- * (tapa con asa); Termo, Hoppie V2 Pro y Hoppie Kids tienen otra tapa y usan
- * la botella de boca ancha genérica.
+ * mismo tipo pasan a la forma genérica. Hoy: forma-botella.glb (tapa con asa)
+ * es el "Hoppie V2 Pro Series"; Hoppie, Termo, Hoppie Kids y Termo Kids
+ * tienen otra tapa y usan la botella de boca ancha genérica.
  */
 const EXACT_MODEL: Record<string, { name: string; fallback: string }> = {
-  hoppie: { name: "Hoppie", fallback: "botella-ancha" },
+  hoppie: { name: "Hoppie V2 Pro Series", fallback: "botella-ancha" },
 };
 
 const LEATHER = /\bcuero\b|\bforrad[oa]\b/;

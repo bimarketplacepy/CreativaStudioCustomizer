@@ -42,29 +42,16 @@ export const MATERIALS: MaterialDef[] = [
       { id: "termo",   name: "Termo",   drinkwareProductId: "termo" },
       { id: "vaso",    name: "Vaso",    drinkwareProductId: "vaso" },
       { id: "vaso-manija", name: "Vaso con manija", desc: "Vaso térmico de 887 ml con manija lateral y tapa transparente.", drinkwareProductId: "vaso-manija" },
-      { id: "hoppie",  name: "Hoppie",  drinkwareProductId: "hoppie" },
+      { id: "hoppie",  name: "Hoppie V2 Pro",  drinkwareProductId: "hoppie" },
       { id: "botella-ancha", name: "Botella", desc: "Botella térmica de boca ancha.", drinkwareProductId: "botella-ancha" },
       { id: "guampa",  name: "Guampa",  drinkwareProductId: "guampa" },
       { id: "chopera", name: "Chopera", desc: "Chopera térmica de 710 ml con manija angular y tapa transparente.", drinkwareProductId: "chopera" },
     ],
   },
-  {
-    // Los mismos productos que "Acero con pintura recubierta", pero en su
-    // acabado de acero natural sin pintar. Es una variante de acabado sobre los
-    // mismos modelos 3D, no un catálogo aparte.
-    id: "inox",
-    name: "Acero inoxidable",
-    icon: "steel",
-    desc: "Acero inoxidable en su acabado natural cepillado, sin pintura: un estilo clásico y atemporal.",
-    products: [
-      { id: "termo",   name: "Termo",   drinkwareProductId: "termo" },
-      { id: "vaso",    name: "Vaso",    drinkwareProductId: "vaso" },
-      { id: "hoppie",  name: "Hoppie",  drinkwareProductId: "hoppie" },
-      { id: "guampa",  name: "Guampa",  drinkwareProductId: "guampa" },
-      { id: "chopera", name: "Chopera", desc: "Chopera térmica de 710 ml con manija angular y tapa transparente.", drinkwareProductId: "chopera" },
-      { id: "abridor", name: "Abridor", desc: "Abridor de botellas de metal, plano y alargado.", objectId: "abridor" },
-    ],
-  },
+  // "Acero inoxidable" (acabado natural cepillado) se quitó del selector por
+  // pedido del dueño (2026-10-09). El código de acabado "inox" sigue en el
+  // visor por si vuelve; los links compartidos con ese material abren en el
+  // primero de la lista.
   {
     id: "cuero",
     name: "Cuero",
