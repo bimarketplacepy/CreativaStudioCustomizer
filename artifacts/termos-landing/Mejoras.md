@@ -281,7 +281,7 @@ Probado con `pnpm --filter @workspace/api-server run odoo:check -- hydrate` (dia
 | # | Etapa | Estado |
 |---|---|---|
 | 0 | Diagnóstico: arreglos de impacto directo, riesgos y fricción (§2–§3) | ✅ Hecho |
-| 1 | **Conectar Odoo:** precios, stock y **colores reales** (fin de la paleta inventada) | ⏸️ Listo y validado con datos reales (§5c), pero **apagado en la landing** (`ODOO_CATALOG_ENABLED = false` en `src/lib/odoo-catalog.ts`) por decisión del dueño hasta tener los modelos 3D de cada forma. Para reactivarlo: `true` y republicar |
+| 1 | **Conectar Odoo:** precios, stock y **colores reales** (fin de la paleta inventada) | ✅ **Encendido** (2026-10-09, pedido del dueño: `ODOO_CATALOG_ENABLED = true`). "Vaso con Pico y Agarre", "Sunbeam" y "Vaso Manija" usan la forma `vaso-manija` (.glb). Chopera, copa y botella siguen con el catálogo propio (Odoo no tiene esos productos con stock) |
 | 2 | **Creación de termos rápida, fácil e intuitiva** (§4: Etapa A + B), reorganizando `customizer.tsx` | ⏭️ Próxima |
 | 3 | **Modelos 3D reales** (Higgsfield → `.glb`, requisitos en §5) | Depende de los modelos del dueño |
 | 4 | **Visor AR** del termo diseñado (`<model-viewer>`: Android Scene Viewer / iPhone Quick Look, con el diseño aplicado) | Después de 3 (funciona con el 3D actual, luce con los reales) |

@@ -13,13 +13,12 @@ import type { ProductDef } from "@/lib/products";
 export type { Catalog, CatalogProduct, CatalogVariant };
 
 /**
- * Interruptor del catálogo de Odoo en la landing. APAGADO por decisión del
- * dueño (2026-10-08) hasta que estén los modelos 3D reales de cada forma: con
- * `false` no se pide /api/catalog y el personalizador usa su catálogo propio
- * (paleta, tamaños y precios de Tarifas), igual que antes de la integración.
- * Para reactivarlo: `true` y republicar. El backend (/api/catalog) sigue listo.
+ * Interruptor del catálogo de Odoo en la landing. ENCENDIDO (2026-10-09, pedido
+ * del dueño: colores reales con stock). Con `false` no se pide /api/catalog y
+ * el personalizador usa su catálogo propio (paleta, tamaños y precios de
+ * Tarifas). Si Odoo no responde, la landing cae sola a ese catálogo propio.
  */
-export const ODOO_CATALOG_ENABLED = false;
+export const ODOO_CATALOG_ENABLED = true;
 
 /** Catálogo compartido por el personalizador y Tarifas (una sola request, 5 min de vida). */
 export function useCatalog(): Catalog | undefined {

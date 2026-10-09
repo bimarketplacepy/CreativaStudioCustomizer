@@ -55,6 +55,7 @@ const TYPE_RULES: [RegExp, string][] = [
 const TYPE_LABEL: Record<string, string> = {
   guampa: "Guampa", hoppie: "Hoppie", chopera: "Chopera", jug: "Jug",
   copa: "Copa", vaso: "Vaso", termo: "Termo", botella: "Botella",
+  "vaso-manija": "Vaso",
 };
 
 const LEATHER = /\bcuero\b|\bforrad[oa]\b/;
@@ -122,6 +123,8 @@ const ruleType = (text: string) => {
 const STRONG_NAME: [RegExp, string][] = [
   [/\btermo mate\b|\bmate system\b/, "termo"],
   [/\bguampa\b/, "guampa"],
+  // Forma "vaso con manija" (modelo .glb real): antes que la regla de "vaso".
+  [/\bagarre\b|\bsunbeam\b|\bmanija\b/, "vaso-manija"],
   [/\bvaso\b|\btumbler\b|\bshaker\b|\blowball\b/, "vaso"],
 ];
 /**

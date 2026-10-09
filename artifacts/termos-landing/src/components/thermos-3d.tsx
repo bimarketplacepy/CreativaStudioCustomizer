@@ -87,6 +87,14 @@ interface Thermos3DProps {
    * capturing the summary snapshot, so the personalized area is fully visible.
    */
   snapToURef?: React.MutableRefObject<((u: number) => void) | null>;
+  /**
+   * El padre guarda acá una función que dibuja un cuadro en el momento. Con
+   * frameloop="demand" el canvas puede no tener el último cuadro listo: la
+   * captura para el resumen la llama justo antes de leer los píxeles.
+   */
+  renderNowRef?: React.MutableRefObject<(() => void) | null>;
+  /** La pieza ya está en pantalla (modelo .glb incluido): sirve para capturarla. */
+  onReady?: () => void;
 }
 
 /** Everything the meshes and the camera rig need, derived from the product profile. */
@@ -450,7 +458,7 @@ function FrontFaceGuide({ sil, product }: { sil: Silhouette; product: ProductDef
 function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
   textPlacement, artPlacement, colorPrint, textColor, engraveStyle, singleFace, editSingleFace, showGuides, frontFaceU, glass,
-  designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, snapToURef,
+  designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, snapToURef, renderNowRef, onReady,
   autoSpin = false, rotationLocked = false,
 }: {
   colorHex: string; finish: string; text: string;
@@ -465,6 +473,8 @@ function ThermosMesh({
   onDesignDragEnd?: () => void;
   onTap?: (hit: { u: number; v: number } | null) => void;
   snapToURef?: React.MutableRefObject<((u: number) => void) | null>;
+  renderNowRef?: React.MutableRefObject<(() => void) | null>;
+  onReady?: () => void;
   autoSpin?: boolean; rotationLocked?: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
@@ -887,6 +897,21 @@ function ThermosMesh({
     };
     return () => { snapToURef.current = null; };
   }, [snapToURef, invalidate]);
+
+  useEffect(() => {
+    if (!renderNowRef) return;
+    renderNowRef.current = () => {
+      const { gl: r, scene, camera } = get();
+      r.render(scene, camera);
+    };
+    return () => { renderNowRef.current = null; };
+  }, [renderNowRef, get]);
+
+  // Este componente recién monta cuando el Suspense resolvió (con un .glb, ya
+  // cargado): avisar para que la captura del resumen no salga vacía.
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  useEffect(() => { onReadyRef.current?.(); }, [product.id]);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
@@ -1407,7 +1432,9 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
       }}
     >
       <Rig sil={sil} />
-      <StudioLighting intensity={0.9} />
+      {/* 0.5: con las luces direccionales de abajo, más reflejo lava los colores
+          y el color del 3D tiene que coincidir con el real de Odoo. */}
+      <StudioLighting intensity={0.5} />
 
       <Suspense fallback={null}>
 
@@ -1436,6 +1463,8 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           onDesignDragEnd={props.onDesignDragEnd}
           onTap={props.onTap}
           snapToURef={props.snapToURef}
+          renderNowRef={props.renderNowRef}
+          onReady={props.onReady}
           autoSpin={props.autoSpin ?? false}
           rotationLocked={props.rotationLocked ?? false}
         />

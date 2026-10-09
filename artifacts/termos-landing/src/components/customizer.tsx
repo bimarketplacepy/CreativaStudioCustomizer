@@ -1640,6 +1640,10 @@ export default function Customizer() {
   // textura quede mirando a cámara. Antes de capturar la imagen del resumen la
   // usamos para que el área personalizada salga completa en la foto.
   const thermosSnapRef = useRef<((u: number) => void) | null>(null);
+  // Dibuja un cuadro en el momento (el visor solo dibuja cuando algo cambia).
+  const thermosRenderRef = useRef<(() => void) | null>(null);
+  // Sube cuando el visor terminó de montar la pieza (re-dispara la captura).
+  const [viewerReady, setViewerReady] = useState(0);
 
   // u que debe quedar de frente: el centro de la cara frontal en "una cara", o
   // la posición real del texto cuando el modo de edición vigente es libre (el
@@ -1730,6 +1734,7 @@ export default function Customizer() {
     const canvas = previewPanelRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
     if (!canvas) return null;
     try {
+      thermosRenderRef.current?.();
       const sw = canvas.width, sh = canvas.height;
       if (!sw || !sh) return null;
       // Upscale the captured frame so the longest side reaches ~1600px (never
@@ -1781,7 +1786,7 @@ export default function Customizer() {
   }, [
     capturePreview, isDrinkware, is3DObject, productId, viewSize, activeColorHex,
     finish, text, font, iconId, artUrl, textColor, effectiveTechnique, isGlass,
-    singleFace, textPlacement, artPlacement, mobileStep, isMobile,
+    singleFace, textPlacement, artPlacement, mobileStep, isMobile, viewerReady,
   ]);
 
   const handleSelectColor = (id: string) => {
@@ -2869,6 +2874,8 @@ export default function Customizer() {
                       onDesignDragEnd={endDesignDrag}
                       onTap={handleViewerTap}
                       snapToURef={thermosSnapRef}
+                      renderNowRef={thermosRenderRef}
+                      onReady={() => setViewerReady(n => n + 1)}
                       autoSpin={wrapSpin}
                       rotationLocked={wrapSpin}
                     />
