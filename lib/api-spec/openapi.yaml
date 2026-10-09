@@ -158,6 +158,9 @@ components:
           description: Odoo product.template id
         name:
           type: string
+        brand:
+          type: string
+          description: Product brand as loaded in Odoo (e.g. Hydrate). The customizer groups the catalog by it.
         productType:
           type: string
           description: Customizer 3D profile (termo, vaso, vaso-manija, hoppie, botella-ancha, jug, guampa, copa, botella, chopera)
@@ -173,7 +176,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CatalogVariant"
-      required: [id, name, productType, material, url, imageUrl, variants]
+      required: [id, name, brand, productType, material, url, imageUrl, variants]
     CatalogVariant:
       type: object
       properties:

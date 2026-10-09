@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import {
   Check, Palette, Type, Box, Pipette, ImageIcon, MoveHorizontal, MoveVertical,
   Shapes, Zap, Sparkles, Wallet, TreePine, Square, PenLine, Wine, CupSoda, Snowflake,
@@ -15,7 +16,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
   WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
   ChevronUp, Crosshair, CirclePlay, Orbit, Link2, MessageCircle, MapPin, HandCoins,
-  Undo2, Trash2,
+  Undo2, Trash2, Search,
 } from "lucide-react";
 import Thermos3D from "./thermos-3d";
 import Object3D from "./object-3d";
@@ -43,9 +44,9 @@ import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
 import { ADDRESS, whatsappUrl } from "@/lib/contact";
 import { clearSharedDesign, designLink, readSharedDesign, type SharedDesign } from "@/lib/design-link";
 import {
-  catalogSections, catalogThumb, colorOptions, defaultVariant, engravingPrice, findVariant, formatGs,
-  matchingProducts, priceFrom, sizeOptions, useCatalog, viewSizeId,
-  type CatalogProduct, type CatalogSection,
+  colorOptions, defaultVariant, engravingPrice, findVariant, formatGs, GENERIC_BRAND,
+  matchingProducts, odooShopItems, priceFrom, sectionTitles, shopBrands, shopSections, sizeOptions,
+  useCatalog, viewSizeId, type CatalogSection, type ShopItem,
 } from "@/lib/odoo-catalog";
 import { track } from "@/lib/analytics";
 import { dataUrlToJpeg, downloadDataUrl } from "@/lib/share";
@@ -332,49 +333,49 @@ function ProductChips({ material, value, onChange }: {
   );
 }
 
-/**
- * Catálogo de la tienda (Odoo) para elegir QUÉ producto personalizar: foto,
- * nombre, colores con stock y precio "desde". Reemplaza a la elección por tipo
- * genérico + "Modelo" cuando hay catálogo real para el material.
- */
-function CatalogPicker({ sections, value, onPick, compact }: {
+/** Foto del producto de la tienda, o la silueta de su forma (genéricos o sin foto). */
+function ShopThumb({ item, className }: { item: ShopItem; className: string }) {
+  return (
+    <span className={`rounded-lg bg-white overflow-hidden flex items-center justify-center shrink-0 ${className}`}>
+      {item.thumb ? (
+        <img src={item.thumb} alt="" loading="lazy" decoding="async" width={256} height={256} className="w-full h-full object-contain" />
+      ) : (
+        <ProductGlyph product={getProduct(item.type)} className="h-3/4 w-full" />
+      )}
+    </span>
+  );
+}
+
+/** "desde Gs. X" para los de la tienda; los genéricos se cotizan aparte. */
+function itemPrice(item: ShopItem): string {
+  return item.from !== null ? `desde ${formatGs(item.from)}` : "Se cotiza";
+}
+
+/** Tarjetas con foto, agrupadas por sección (la grilla de la hoja de celular). */
+function CatalogPicker({ sections, value, onPick }: {
   sections: CatalogSection[];
-  value: number | null;
-  onPick: (p: CatalogProduct) => void;
-  compact?: boolean;
+  value: string | null;
+  onPick: (item: ShopItem) => void;
 }) {
   return (
     <div className="space-y-5">
       {sections.map(sec => (
         <div key={sec.title}>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{sec.title}</p>
-          <div className={`grid ${compact ? "grid-cols-3 gap-2" : "grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2.5"}`}>
-            {sec.products.map(p => {
-              const on = p.id === value;
-              const colors = new Set(p.variants.filter(v => v.inStock).map(v => v.colorName)).size;
-              const from = priceFrom(p);
-              const thumb = catalogThumb(p);
+          <div className="grid grid-cols-3 gap-2">
+            {sec.items.map(it => {
+              const on = it.key === value;
               return (
                 <button
-                  key={p.id}
+                  key={it.key}
                   type="button"
                   aria-pressed={on}
-                  onClick={() => onPick(p)}
+                  onClick={() => onPick(it)}
                   className={`p-2 border rounded-xl flex flex-col items-center text-center gap-1 transition-all ${on ? activeCard : idleCard}`}
                 >
-                  <span className="w-full aspect-square rounded-lg bg-white overflow-hidden flex items-center justify-center">
-                    {thumb ? (
-                      <img src={thumb} alt="" loading="lazy" decoding="async" width={256} height={256} className="w-full h-full object-contain" />
-                    ) : (
-                      <ProductGlyph product={getProduct(p.productType)} className="h-3/4 w-full" />
-                    )}
-                  </span>
-                  <span className={`${compact ? "text-[12px]" : "text-[13px]"} font-medium leading-tight ${on ? "text-primary" : "text-foreground"}`}>{p.name}</span>
-                  <span className="text-[11px] text-muted-foreground leading-tight">
-                    {compact
-                      ? (from !== null ? `desde ${formatGs(from)}` : `${colors} ${colors === 1 ? "color" : "colores"}`)
-                      : `${colors} ${colors === 1 ? "color" : "colores"}${from !== null ? ` · desde ${formatGs(from)}` : ""}`}
-                  </span>
+                  <ShopThumb item={it} className="w-full aspect-square" />
+                  <span className={`text-[12px] font-medium leading-tight ${on ? "text-primary" : "text-foreground"}`}>{it.name}</span>
+                  <span className="text-[11px] text-muted-foreground leading-tight">{itemPrice(it)}</span>
                 </button>
               );
             })}
@@ -382,6 +383,175 @@ function CatalogPicker({ sections, value, onPick, compact }: {
         </div>
       ))}
     </div>
+  );
+}
+
+/** Buscador del catálogo de la tienda. */
+function ShopSearch({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="flex items-center gap-2 h-11 px-3 border border-border rounded-xl bg-white focus-within:ring-2 focus-within:ring-primary/30">
+      <Search className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden />
+      <span className="sr-only">Buscar producto</span>
+      <input
+        type="search"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder="Buscar (ej. Hoppie, vaso con manija)"
+        className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+      />
+    </label>
+  );
+}
+
+/** Selector de marca (Hydrate · Genéricos · …): solo si hay más de una. */
+function BrandTabs({ brands, value, onChange }: { brands: string[]; value: string; onChange: (b: string) => void }) {
+  if (brands.length < 2) return null;
+  return (
+    <div className="grid gap-1 p-1 rounded-xl bg-secondary/50" style={{ gridTemplateColumns: `repeat(${brands.length}, minmax(0, 1fr))` }}>
+      {brands.map(b => (
+        <button
+          key={b}
+          type="button"
+          aria-pressed={b === value}
+          onClick={() => onChange(b)}
+          className={`h-9 rounded-lg text-[13px] font-medium transition ${b === value ? "bg-white text-primary shadow-sm" : "text-foreground/70"}`}
+        >
+          {b}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Celular: el producto elegido en una tarjeta de una línea con "Cambiar". El
+ * catálogo completo vive en una hoja que sube solo cuando se pide, así el 3D y
+ * los colores quedan siempre a la vista.
+ */
+function ShopProductCard({ item, detail, onChange }: { item: ShopItem; detail: string; onChange: () => void }) {
+  return (
+    <div className="flex items-center gap-3 p-2.5 border border-border rounded-2xl bg-white">
+      <ShopThumb item={item} className="w-14 h-14" />
+      <div className="flex-1 min-w-0">
+        <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Tu producto · {item.brand}</p>
+        <p className="text-[15px] font-semibold leading-tight truncate">{item.name}</p>
+        <p className="text-xs text-muted-foreground truncate">{detail}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onChange}
+        className="h-10 px-4 rounded-full border border-primary text-primary text-sm font-semibold bg-white active:scale-95 transition shrink-0"
+      >
+        Cambiar
+      </button>
+    </div>
+  );
+}
+
+/** Hoja inferior con el catálogo: marca, buscador, secciones y grilla de 3 columnas. */
+function ShopSheet({ open, onOpenChange, items, value, initialBrand, onPick }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  items: ShopItem[];
+  value: string | null;
+  initialBrand: string;
+  onPick: (item: ShopItem) => void;
+}) {
+  const brands = shopBrands(items);
+  const [brand, setBrand] = useState(initialBrand);
+  const [query, setQuery] = useState("");
+  const [section, setSection] = useState<string | null>(null);
+  // Cada vez que se abre, arranca en la marca del producto elegido.
+  useEffect(() => { if (open) { setBrand(initialBrand); setSection(null); } }, [open, initialBrand]);
+  const titles = sectionTitles(items, brand);
+  const shown = shopSections(items, { brand, section, query });
+  const chip = (on: boolean) =>
+    `shrink-0 h-9 px-3.5 rounded-full border text-[13px] font-medium transition ${on ? "border-primary bg-[#f5eaec] text-primary" : "border-border bg-white text-foreground/80"}`;
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="bottom" className="h-[82vh] p-0 rounded-t-3xl flex flex-col gap-0">
+        <div className="flex justify-center pt-2.5"><span className="w-10 h-1.5 rounded-full bg-border" /></div>
+        <div className="px-4 pt-3 pr-12">
+          <SheetTitle className="font-serif font-light text-2xl text-[#1A1614]">Elegí tu producto</SheetTitle>
+          <SheetDescription className="sr-only">Catálogo de la tienda con stock y formas genéricas</SheetDescription>
+        </div>
+        <div className="px-4 pt-3 space-y-3">
+          <BrandTabs brands={brands} value={brand} onChange={b => { setBrand(b); setSection(null); }} />
+          <ShopSearch value={query} onChange={setQuery} />
+          {!query && titles.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 [scrollbar-width:none]">
+              <button type="button" aria-pressed={!section} className={chip(!section)} onClick={() => setSection(null)}>Todos</button>
+              {titles.map(t => (
+                <button key={t} type="button" aria-pressed={section === t} className={chip(section === t)} onClick={() => setSection(t)}>{t}</button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 pt-2 pb-8">
+          {brand === GENERIC_BRAND && !query && (
+            <p className="text-xs text-muted-foreground mb-3">Formas sin marca: para personalizar un producto que traés vos o uno genérico. El precio se cotiza por WhatsApp.</p>
+          )}
+          {shown.length ? (
+            <CatalogPicker sections={shown} value={value} onPick={it => { onPick(it); onOpenChange(false); }} />
+          ) : (
+            <p className="text-sm text-muted-foreground py-8 text-center">No hay productos con ese nombre.</p>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/**
+ * Desktop: el catálogo como barra lateral angosta al lado del 3D (marca,
+ * miniatura, nombre y precio), con buscador. Nunca empuja el área de diseño.
+ */
+function ShopRail({ items, value, initialBrand, onPick }: {
+  items: ShopItem[]; value: string | null; initialBrand: string; onPick: (item: ShopItem) => void;
+}) {
+  const brands = shopBrands(items);
+  const [brand, setBrand] = useState(initialBrand);
+  const [query, setQuery] = useState("");
+  useEffect(() => { setBrand(initialBrand); }, [initialBrand]);
+  const shown = shopSections(items, { brand, query });
+  return (
+    <aside className="lg:sticky lg:top-24 bg-white rounded-2xl border border-border p-3 flex flex-col gap-3 lg:max-h-[calc(100vh-7rem)]">
+      <div className="flex items-baseline justify-between px-1">
+        <span className="text-sm font-semibold">Productos</span>
+        <span className="text-xs text-muted-foreground">{items.filter(i => i.brand === brand).length} en {brand}</span>
+      </div>
+      <BrandTabs brands={brands} value={brand} onChange={setBrand} />
+      <ShopSearch value={query} onChange={setQuery} />
+      <div className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1 space-y-3">
+        {brand === GENERIC_BRAND && !query && (
+          <p className="text-[11px] text-muted-foreground px-1">Formas sin marca: para un producto que traés vos o uno genérico. Se cotiza por WhatsApp.</p>
+        )}
+        {shown.map(sec => (
+          <div key={sec.title} className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-1 pt-1">{sec.title}</p>
+            {sec.items.map(it => {
+              const on = it.key === value;
+              return (
+                <button
+                  key={it.key}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => onPick(it)}
+                  className={`w-full flex items-center gap-2.5 p-1.5 rounded-xl border text-left transition ${on ? "border-primary bg-[#f5eaec]" : "border-transparent hover:bg-secondary/40"}`}
+                >
+                  <ShopThumb item={it} className="w-11 h-11" />
+                  <span className="min-w-0">
+                    <span className={`block text-[13px] font-medium leading-tight ${on ? "text-primary" : "text-foreground"}`}>{it.name}</span>
+                    <span className="block text-[11px] text-muted-foreground">{query ? `${it.brand} · ` : ""}{itemPrice(it)}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
+        {!shown.length && <p className="text-sm text-muted-foreground py-6 text-center">No hay productos con ese nombre.</p>}
+      </div>
+    </aside>
   );
 }
 
@@ -1204,9 +1374,12 @@ export default function Customizer() {
   // precio y stock salen de ahí (variantes reales) y la paleta inventada se
   // oculta. Sin datos de Odoo, todo sigue con el catálogo propio.
   const catalog = useCatalog();
+  // Forma genérica elegida a propósito (sin producto de la tienda detrás):
+  // vuelve al catálogo propio (paleta, tamaños, "se cotiza aparte").
+  const [genericPick, setGenericPick] = useState(false);
   const odooProducts = useMemo(
-    () => (isDrinkware ? matchingProducts(catalog, productId, materialId) : []),
-    [catalog, isDrinkware, productId, materialId],
+    () => (isDrinkware && !genericPick ? matchingProducts(catalog, productId, materialId) : []),
+    [catalog, isDrinkware, genericPick, productId, materialId],
   );
   const [odooTemplateId, setOdooTemplateId] = useState<number | null>(null);
   const [odooColor, setOdooColor] = useState<string | null>(null);
@@ -1245,22 +1418,47 @@ export default function Customizer() {
     setOdooColor(v?.colorName ?? null);
     track("customizer_size_select", { product: productId, size: label, source: "odoo" });
   };
-  // Catálogo de la tienda para el material elegido (con foto, agrupado). Cuando
-  // existe, el cliente elige el producto real de ahí en vez del tipo genérico.
-  const shopSections = useMemo(
-    () => catalogSections(catalog, materialId, t => material.products.some(p => p.drinkwareProductId === t)),
-    [catalog, materialId, material],
-  );
-  const shopMode = shopSections.length > 0;
-  const pickShopProduct = (p: CatalogProduct) => {
-    const mp = material.products.find(x => x.drinkwareProductId === p.productType);
+  // Catálogo del personalizador para el material elegido: los productos de la
+  // tienda (Odoo, por marca) + las formas genéricas propias. Cuando hay
+  // productos de la tienda, el cliente elige de acá en vez del tipo genérico.
+  const shopItems = useMemo<ShopItem[]>(() => {
+    const knownType = (t: string) => material.products.some(p => p.drinkwareProductId === t);
+    const fromOdoo = odooShopItems(catalog, materialId, knownType);
+    if (!fromOdoo.length) return [];
+    // Genéricos: las formas propias que no son el modelo de un producto
+    // puntual de una marca (vaso con manija = Pico y Agarre, Hoppie).
+    const generic: ShopItem[] = material.products
+      .filter(p => p.drinkwareProductId && !getProduct(p.drinkwareProductId).model?.exactFor?.length)
+      .map(p => ({
+        key: `gen:${p.drinkwareProductId}`,
+        name: p.name,
+        brand: GENERIC_BRAND,
+        type: p.drinkwareProductId!,
+        thumb: null, from: null, colors: null, odooId: null,
+      }));
+    return [...fromOdoo, ...generic];
+  }, [catalog, materialId, material]);
+  const shopMode = shopItems.length > 0;
+  const [shopSheetOpen, setShopSheetOpen] = useState(false);
+  const shopKey = !shopMode ? null : genericPick ? `gen:${productId}` : odooProduct ? `odoo:${odooProduct.id}` : null;
+  const shopItem = shopItems.find(i => i.key === shopKey) ?? null;
+  const pickShopItem = (it: ShopItem) => {
+    const mp = material.products.find(x => x.drinkwareProductId === it.type);
     if (!mp) return;
     if (mp.id !== materialProductId) handleSelectMaterialProduct(mp.id);
-    setOdooTemplateId(p.id);
-    track("customizer_catalog_select", { odoo_id: p.id, product: p.name, type: p.productType });
+    setGenericPick(it.odooId === null);
+    setOdooTemplateId(it.odooId);
+    track("customizer_catalog_select", { key: it.key, product: it.name, brand: it.brand, type: it.type });
   };
+  /** Línea de detalle de la tarjeta "Tu producto": tamaño y precio de la variante. */
+  const shopDetail = genericPick
+    ? "Forma genérica · se cotiza por WhatsApp"
+    : odooProduct
+      ? [odooSize, odooVariant ? formatGs(odooVariant.price) : (priceFrom(odooProduct) !== null ? `desde ${formatGs(priceFrom(odooProduct)!)}` : null)]
+          .filter(Boolean).join(" · ")
+      : "";
   /** Sin modelo 3D propio, la vista usa la forma genérica del tipo: avisarlo. */
-  const approxNote = shopMode && odooProduct && !product.model
+  const approxNote = shopMode && !genericPick && odooProduct && !product.model?.exactFor?.includes(odooProduct.name)
     ? `La vista 3D de ${odooProduct.name} es aproximada; el diseño y el grabado son los reales.`
     : null;
 
@@ -1870,6 +2068,7 @@ export default function Customizer() {
   const handleSelectMaterial = (id: MaterialId) => {
     setMaterialId(id);
     setOdooTemplateId(null);
+    setGenericPick(false);
     track("customizer_material_select", { material: id });
     // La captura anterior pertenece a otro producto: nunca ofrecer descargarla.
     setPreviewImg(null);
@@ -2819,7 +3018,9 @@ export default function Customizer() {
           </Label>
 
           {shopMode ? (
-            <CatalogPicker sections={shopSections} value={odooProduct?.id ?? null} onPick={pickShopProduct} />
+            <p className="text-sm text-muted-foreground">
+              Elegí el producto en la lista de la izquierda, junto a la vista 3D.
+            </p>
           ) : material.pens ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               <div className={`p-3 border rounded-xl flex flex-col items-center justify-end gap-2 ${activeCard}`}>
@@ -2872,11 +3073,18 @@ export default function Customizer() {
             {renderMiniPreview()}
             <div className="space-y-8">
               <MaterialChips materials={MATERIALS} value={materialId} onChange={handleSelectMaterial} />
-              {shopMode ? (
+              {shopMode && shopItem ? (
                 <div>
-                  <Label className="text-sm font-medium text-foreground mb-3 block">Elegí tu producto</Label>
-                  <CatalogPicker sections={shopSections} value={odooProduct?.id ?? null} onPick={pickShopProduct} compact />
+                  <ShopProductCard item={shopItem} detail={shopDetail} onChange={() => setShopSheetOpen(true)} />
                   {approxNote && <p className="text-xs text-muted-foreground mt-3">{approxNote}</p>}
+                  <ShopSheet
+                    open={shopSheetOpen}
+                    onOpenChange={setShopSheetOpen}
+                    items={shopItems}
+                    value={shopKey}
+                    initialBrand={shopItem.brand}
+                    onPick={pickShopItem}
+                  />
                 </div>
               ) : (
                 <>
@@ -2913,6 +3121,12 @@ export default function Customizer() {
           {/* On mobile the preview wrapper is sticky within the tall flex column,
               so the live 3D stays pinned at the top while the editor scrolls
               beneath it — same single canvas, no second WebGL context. */}
+          {/* Desktop con catálogo de la tienda: barra lateral a la izquierda del 3D. */}
+          {shopMode && !isMobile && (
+            <div className="w-full min-w-0 lg:col-span-3 lg:self-start">
+              <ShopRail items={shopItems} value={shopKey} initialBrand={shopItem?.brand ?? shopBrands(shopItems)[0]} onPick={pickShopItem} />
+            </div>
+          )}
           <div className="w-full min-w-0 lg:col-span-4 relative max-lg:sticky max-lg:top-0 max-lg:z-30 lg:self-start">
             <div ref={previewPanelRef} className="lg:sticky lg:top-24 z-20 bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[280px] md:min-h-[520px] max-lg:shadow-lg max-lg:shadow-black/5">
               {isGlass ? (
@@ -3135,7 +3349,7 @@ export default function Customizer() {
           </div>
 
           {/* CONTROLS AREA */}
-          <div className="w-full min-w-0 lg:col-span-8 bg-white rounded-2xl border border-border">
+          <div className={`w-full min-w-0 ${shopMode && !isMobile ? "lg:col-span-5" : "lg:col-span-8"} bg-white rounded-2xl border border-border`}>
             {isDrinkware ? (
               <Tabs value={drinkTab} onValueChange={setDrinkTab} className="w-full">
                 <div className="px-4 sm:px-6 pt-4 pb-1">

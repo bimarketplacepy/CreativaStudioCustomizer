@@ -11,7 +11,9 @@ export interface CatalogProduct {
   /** Odoo product.template id */
   id: number;
   name: string;
-  /** Customizer 3D profile (termo, vaso, hoppie, jug, guampa, copa, botella, chopera) */
+  /** Product brand as loaded in Odoo (e.g. Hydrate). The customizer groups the catalog by it. */
+  brand: string;
+  /** Customizer 3D profile (termo, vaso, vaso-manija, hoppie, botella-ancha, jug, guampa, copa, botella, chopera) */
   productType: string;
   /** Customizer material id (acero, inox, cuero, cristal) */
   material: string;

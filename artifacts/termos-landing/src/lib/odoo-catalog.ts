@@ -135,22 +135,73 @@ export function engravingPrice(catalog: Catalog | undefined, plan: EngravingPlan
 const CATALOG_SECTIONS: { title: string; types: string[] }[] = [
   { title: "Termos", types: ["termo"] },
   { title: "Botellas", types: ["hoppie", "botella-ancha"] },
-  { title: "Vasos", types: ["vaso-manija", "vaso"] },
+  { title: "Vasos", types: ["vaso-manija", "vaso", "chopera"] },
   { title: "Guampas y copas", types: ["guampa"] },
 ];
 
-export interface CatalogSection { title: string; products: CatalogProduct[] }
+/** Marca de las formas propias de la landing (sin producto de Odoo detrás). */
+export const GENERIC_BRAND = "Genéricos";
 
 /**
- * Productos de la tienda para un material, agrupados para elegirlos con foto.
- * Dentro de cada sección, los modelos con más colores primero (el orden del
- * servidor); los tipos sin perfil 3D en la landing no aparecen.
+ * Un producto elegible en el catálogo del personalizador: uno de Odoo (con
+ * foto, precio y stock) o una forma genérica propia (se cotiza aparte).
  */
-export function catalogSections(catalog: Catalog | undefined, material: string, known: (type: string) => boolean): CatalogSection[] {
-  const list = (catalog?.products ?? []).filter(p => p.material === material && known(p.productType));
+export interface ShopItem {
+  key: string;
+  name: string;
+  brand: string;
+  /** Perfil 3D (ProductId de la landing). */
+  type: string;
+  thumb: string | null;
+  from: number | null;
+  /** Colores con stock (null en los genéricos: usan la paleta propia). */
+  colors: number | null;
+  odooId: number | null;
+}
+
+export interface CatalogSection { title: string; items: ShopItem[] }
+
+/** Productos de Odoo de un material como ShopItem; los tipos sin perfil 3D en la landing no entran. */
+export function odooShopItems(catalog: Catalog | undefined, material: string, known: (type: string) => boolean): ShopItem[] {
+  return (catalog?.products ?? [])
+    .filter(p => p.material === material && known(p.productType))
+    .map(p => ({
+      key: `odoo:${p.id}`,
+      name: p.name,
+      brand: p.brand || "Tienda",
+      type: p.productType,
+      thumb: catalogThumb(p),
+      from: priceFrom(p),
+      colors: new Set(p.variants.filter(v => v.inStock).map(v => v.colorName)).size,
+      odooId: p.id,
+    }));
+}
+
+/** Marcas presentes, en el orden de los ítems (las de Odoo primero, genéricos al final). */
+export function shopBrands(items: ShopItem[]): string[] {
+  const out = [...new Set(items.map(i => i.brand))];
+  return [...out.filter(b => b !== GENERIC_BRAND), ...out.filter(b => b === GENERIC_BRAND)];
+}
+
+const fold = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+/**
+ * Ítems agrupados por sección (Termos, Botellas…), filtrados por marca,
+ * sección y texto (sin acentos ni mayúsculas). Con texto se busca en TODAS
+ * las marcas: quien escribe "hoppie" quiere encontrarlo esté donde esté.
+ */
+export function shopSections(items: ShopItem[], opts: { brand?: string | null; section?: string | null; query?: string }): CatalogSection[] {
+  const q = fold(opts.query?.trim() ?? "");
+  const list = items.filter(i => (q ? fold(i.name).includes(q) : !opts.brand || i.brand === opts.brand));
   return CATALOG_SECTIONS
-    .map(s => ({ title: s.title, products: list.filter(p => s.types.includes(p.productType)) }))
-    .filter(s => s.products.length > 0);
+    .filter(s => !opts.section || s.title === opts.section)
+    .map(s => ({ title: s.title, items: list.filter(i => s.types.includes(i.type)) }))
+    .filter(s => s.items.length > 0);
+}
+
+/** Títulos de sección con algo para una marca (para los chips de categoría). */
+export function sectionTitles(items: ShopItem[], brand: string | null): string[] {
+  return shopSections(items, { brand }).map(s => s.title);
 }
 
 /** Foto chica del producto (la de 512 px pesa ~20 KB; para la tarjeta alcanza 256). */

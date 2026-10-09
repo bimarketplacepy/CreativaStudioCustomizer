@@ -207,7 +207,7 @@ export function parseProductName(name: string): ParsedName {
 type M2O = [number, string] | false;
 interface OTemplate {
   id: number; name: string; website_url?: string | false; type?: string;
-  categ_id?: M2O; is_published?: boolean;
+  categ_id?: M2O; is_published?: boolean; [brandField: string]: unknown;
 }
 interface OVariant {
   id: number; product_tmpl_id: M2O; default_code?: string | false; lst_price: number;
@@ -254,7 +254,7 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
 
   const templates = await client.searchRead<OTemplate>(
     "product.template", domain,
-    ["id", "name", "website_url", "type", "categ_id", "is_published"],
+    ["id", "name", "website_url", "type", "categ_id", "is_published", BRAND_FIELD],
     { limit: MAX_TEMPLATES, order: "name" },
   );
   const tById = new Map(templates.filter(t => t.type !== "combo").map(t => [t.id, t]));
@@ -340,7 +340,7 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
 
   const byKey = new Map<string, Entry[]>();
   for (const e of entries) {
-    const key = `${e.material}|${norm(e.model)}|${e.club ?? ""}`;
+    const key = `${norm(String(e.t[BRAND_FIELD] ?? ""))}|${e.material}|${norm(e.model)}|${e.club ?? ""}`;
     byKey.set(key, [...(byKey.get(key) ?? []), e]);
   }
 
@@ -370,11 +370,13 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
     if (exact && norm(name) !== norm(exact.name)) productType = exact.fallback;
     categories[name] = [...new Set(list.map(e => e.category))];
     const published = list.find(e => e.t.is_published && e.t.website_url);
+    const rawBrand = first.t[BRAND_FIELD];
+    const brand = typeof rawBrand === "string" && rawBrand.trim() ? titleCase(rawBrand.trim()) : (BRANDS[0] ? titleCase(BRANDS[0]) : "");
     // Foto: preferir una plantilla publicada con imagen. Sin ninguna: null (la
     // landing muestra la silueta, no el ícono gris de Odoo).
     const pictured = list.find(e => withImage.has(e.t.id) && e.t.is_published) ?? list.find(e => withImage.has(e.t.id));
     return {
-      id: first.t.id, name, productType, material: first.material,
+      id: first.t.id, name, brand, productType, material: first.material,
       url: published ? `${client.baseUrl}${published.t.website_url}` : null,
       // Servida por /api/catalog/image: la tienda solo publica la foto de los
       // productos publicados (al resto le muestra un ícono gris).

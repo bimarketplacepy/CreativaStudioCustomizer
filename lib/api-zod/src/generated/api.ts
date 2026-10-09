@@ -34,10 +34,15 @@ export const GetCatalogResponse = zod.object({
     zod.object({
       id: zod.number().describe("Odoo product.template id"),
       name: zod.string(),
+      brand: zod
+        .string()
+        .describe(
+          "Product brand as loaded in Odoo (e.g. Hydrate). The customizer groups the catalog by it.",
+        ),
       productType: zod
         .string()
         .describe(
-          "Customizer 3D profile (termo, vaso, hoppie, jug, guampa, copa, botella, chopera)",
+          "Customizer 3D profile (termo, vaso, vaso-manija, hoppie, botella-ancha, jug, guampa, copa, botella, chopera)",
         ),
       material: zod
         .string()

@@ -54,6 +54,11 @@ export interface ProductModel {
   heightM: number;
   /** Distancia máxima al eje, manija incluida (m): encuadre por ancho. */
   reachM: number;
+  /**
+   * Productos de la tienda que ESTE modelo representa tal cual (por nombre). Los
+   * demás que usan la misma forma la ven como aproximación (y se avisa).
+   */
+  exactFor?: string[];
 }
 
 export const PRODUCTS: ProductDef[] = [
@@ -61,18 +66,23 @@ export const PRODUCTS: ProductDef[] = [
     id: "vaso",
     name: "Vasos",
     singular: "Vaso",
-    // Stanley Classic Pint Tumbler — short conical tumbler, wider at top, sliding lid
-    desc: "Vaso térmico cónico con tapa deslizable.",
-    cap: "lid",
+    // Vaso GENÉRICO (artifacts/3D/forma-vaso.glb): vaso térmico cónico tipo
+    // pinta, sin tapa, con aros de acero arriba y abajo. Perfil = radio del
+    // cuerpo medido sobre el .glb (m × 14, centrado en 0,0775 m).
+    desc: "Vaso térmico cónico, más ancho arriba.",
+    cap: "none",
     handle: "none",
     profile: [
-      [0.00, -1.10], [0.08, -1.10],
-      [0.34, -1.07], [0.46, -0.96],
-      [0.52, -0.80], [0.56, -0.45],
-      [0.62,  0.15], [0.68,  0.72],
-      [0.72,  1.05], [0.72,  1.12],
+      [0.456, -0.822], [0.508, -0.175], [0.595, 0.904],
     ],
-    band: [-0.90, 0.92],
+    band: [-0.70, 0.80],
+    model: {
+      url: "/models/forma-vaso.glb?v=1",
+      unitsPerMeter: 14,
+      centerYm: 0.0775,
+      heightM: 0.155,
+      reachM: 0.0435,
+    },
     sizes: [
       { id: "vaso-12", name: "12oz", label: "Chico",   scale: 0.84 },
       { id: "vaso-20", name: "20oz", label: "Clásico", scale: 1.00 },
@@ -121,6 +131,7 @@ export const PRODUCTS: ProductDef[] = [
     frontFace: { uHalfWidth: 0.15 },
     model: {
       url: "/models/forma-botella.glb?v=1",
+      exactFor: ["Hoppie"],
       unitsPerMeter: 10,
       centerYm: 0.13,
       heightM: 0.26,
@@ -313,6 +324,7 @@ export const PRODUCTS: ProductDef[] = [
     frontFace: { uHalfWidth: 0.16, vCenter: 0.27, vHeightFrac: 0.46 },
     model: {
       url: "/models/forma-vaso-manija.glb?v=3",
+      exactFor: ["Vaso con Pico y Agarre"],
       unitsPerMeter: 12,
       centerYm: 0.1015,
       heightM: 0.203,
