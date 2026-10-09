@@ -1,4 +1,4 @@
-export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera";
+export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -36,6 +36,24 @@ export interface ProductDef {
    */
   frontFace?: { uHalfWidth?: number; vCenter?: number; vHeightFrac?: number };
   sizes: ProductSize[];
+  /**
+   * Modelo 3D real (.glb, ver GUIA-MODELOS-3D.md) en lugar del lathe generado.
+   * El `profile` describe solo el cuerpo pintable, medido sobre el propio .glb:
+   * así el grabado, las guías y el fallback 2D siguen usando el mismo sistema.
+   */
+  model?: ProductModel;
+}
+
+export interface ProductModel {
+  url: string;
+  /** Unidades de perfil por metro del .glb (el .glb viene en metros). */
+  unitsPerMeter: number;
+  /** Altura (m, en el .glb) que queda en y = 0 del perfil. */
+  centerYm: number;
+  /** Alto total del .glb con tapa (m). */
+  heightM: number;
+  /** Distancia máxima al eje, manija incluida (m): encuadre por ancho. */
+  reachM: number;
 }
 
 export const PRODUCTS: ProductDef[] = [
@@ -238,6 +256,40 @@ export const PRODUCTS: ProductDef[] = [
     frontFace: { uHalfWidth: 0.14 },
     sizes: [
       { id: "chopera-710", name: "710ml", label: "Clásica", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-manija",
+    name: "Vasos con manija",
+    singular: "Vaso con manija",
+    // Hydrate "Vaso con Pico y Agarre" 887 ml — primera forma con modelo real
+    // (artifacts/3D/forma-vaso-manija.glb). Perfil = radio del cuerpo medido
+    // sobre el .glb (m × 12, centrado en 0,1015 m). Cuerpo cónico abajo, escalón
+    // a ~45% de la altura y parte superior casi recta, donde va la manija.
+    desc: "Vaso térmico de 887 ml con manija lateral y tapa transparente.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.438, -0.994], [0.446, -0.871], [0.452, -0.748], [0.458, -0.625],
+      [0.466, -0.502], [0.473, -0.379], [0.481, -0.256], [0.532, -0.133],
+      [0.572, -0.010], [0.576,  0.113], [0.578,  0.236], [0.582,  0.359],
+      [0.586,  0.482], [0.588,  0.605], [0.590,  0.727], [0.594,  0.850],
+      [0.596,  0.973],
+    ],
+    band: [-0.92, 0.90],
+    // Cara frontal a 90° de la manija (u 0.75), en la parte superior recta:
+    // el área no baja al escalón del cuerpo ni toca la manija.
+    frontFace: { uHalfWidth: 0.16, vCenter: 0.27, vHeightFrac: 0.46 },
+    model: {
+      url: "/models/forma-vaso-manija.glb?v=3",
+      unitsPerMeter: 12,
+      centerYm: 0.1015,
+      heightM: 0.203,
+      reachM: 0.0842,
+    },
+    sizes: [
+      { id: "vaso-manija-887",  name: "887ml",  label: "Clásico", scale: 1.00 },
+      { id: "vaso-manija-1183", name: "1183ml", label: "Grande",  scale: 1.10 },
     ],
   },
 ];

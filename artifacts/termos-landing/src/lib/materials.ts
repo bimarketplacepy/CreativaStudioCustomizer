@@ -41,6 +41,7 @@ export const MATERIALS: MaterialDef[] = [
     products: [
       { id: "termo",   name: "Termo",   drinkwareProductId: "termo" },
       { id: "vaso",    name: "Vaso",    drinkwareProductId: "vaso" },
+      { id: "vaso-manija", name: "Vaso con manija", desc: "Vaso térmico de 887 ml con manija lateral y tapa transparente.", drinkwareProductId: "vaso-manija" },
       { id: "hoppie",  name: "Hoppie",  drinkwareProductId: "hoppie" },
       { id: "guampa",  name: "Guampa",  drinkwareProductId: "guampa" },
       { id: "chopera", name: "Chopera", desc: "Chopera térmica de 710 ml con manija angular y tapa transparente.", drinkwareProductId: "chopera" },

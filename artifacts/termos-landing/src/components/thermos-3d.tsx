@@ -1,9 +1,9 @@
 import React, { useRef, useEffect, useMemo, useState, useDeferredValue, Suspense, Component, ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Environment, ContactShadows, PerspectiveCamera } from "@react-three/drei";
+import { Environment, ContactShadows, PerspectiveCamera, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { getProduct, getSize, resampledProfile, type ProductDef } from "@/lib/products";
-import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "@/lib/placement";
+import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, vForY, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
 import { makeBodyMaps, makeGlassEngraving, type EngraveStyle } from "@/lib/engraving-maps";
 import { FRONT_FACE, frontAreaBounds } from "@/lib/face-area";
@@ -116,10 +116,25 @@ function buildSilhouette(product: ProductDef, scale: number): Silhouette {
   // ancho debe contemplarla para que nunca quede recortada.
   const fitR = product.handle === "body-square" ? maxR + 0.23 * scale : maxR;
 
+  const band = [product.band[0] * scale, product.band[1] * scale] as [number, number];
+
+  // Modelo .glb: el perfil cubre solo el cuerpo pintable; la base de acero, la
+  // tapa y la manija salen de las medidas del propio modelo.
+  if (product.model) {
+    const m = product.model;
+    const k = m.unitsPerMeter * scale;
+    return {
+      points, scale, maxR, fitR: m.reachM * k, neckY, neckR, capR: neckR, capH: 0,
+      bottomY: -m.centerYm * k,
+      topY: (m.heightM - m.centerYm) * k,
+      band,
+    };
+  }
+
   return {
     points, scale, maxR, fitR, bottomY, neckY, neckR, capR, capH,
     topY: neckY + capH,
-    band: [product.band[0] * scale, product.band[1] * scale] as [number, number],
+    band,
   };
 }
 
@@ -238,6 +253,108 @@ function ChoperaTop({ sil }: { sil: Silhouette }) {
         <meshPhysicalMaterial {...clear} side={THREE.DoubleSide} />
       </mesh>
     </group>
+  );
+}
+
+/** Decoder Draco servido localmente (public/draco), no desde el CDN de Google. */
+const DRACO_PATH = "/draco/";
+
+/**
+ * Piezas de un modelo .glb (forma base de GUIA-MODELOS-3D.md), llevadas al
+ * mismo espacio que el lathe para que el resto del visor no note la diferencia:
+ *  - escala `unitsPerMeter × talla` y centro en `centerYm`;
+ *  - giro de 180° en Y: el frente del .glb (+Z) queda en u = 0.5, la cara que
+ *    el personalizador trata como frente (FRONT_FACE.uCenter), y la manija
+ *    (+X del .glb) en u = 0.75, igual que la del termo;
+ *  - el cuerpo conserva la u cilíndrica del .glb (0.5 al frente, crece hacia la
+ *    manija, igual que el lathe tras el giro) y recibe una v nueva calculada con
+ *    `vForY`, la misma que usan las texturas de grabado y las guías.
+ */
+function useModelGeometries(product: ProductDef, sil: Silhouette) {
+  const model = product.model!;
+  const gltf = useGLTF(model.url, DRACO_PATH);
+
+  const parts = useMemo(() => {
+    const k = model.unitsPerMeter * sil.scale;
+    const xf = new THREE.Matrix4()
+      .makeScale(k, k, k)
+      .multiply(new THREE.Matrix4().makeRotationY(Math.PI))
+      .multiply(new THREE.Matrix4().makeTranslation(0, -model.centerYm, 0));
+    const out: Record<string, { geometry: THREE.BufferGeometry; material: THREE.Material }> = {};
+    gltf.scene.updateMatrixWorld(true);
+    gltf.scene.traverse(o => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const geometry = mesh.geometry.clone();
+      geometry.applyMatrix4(new THREE.Matrix4().multiplyMatrices(xf, mesh.matrixWorld));
+      if (mesh.name === "body") {
+        const pos = geometry.attributes.position;
+        const uvSrc = geometry.attributes.uv;
+        const uv = new Float32Array(pos.count * 2);
+        for (let i = 0; i < pos.count; i++) {
+          uv[i * 2] = uvSrc ? uvSrc.getX(i) : 0.5;
+          uv[i * 2 + 1] = vForY(product, pos.getY(i) / sil.scale);
+        }
+        geometry.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+      }
+      out[mesh.name] = { geometry, material: mesh.material as THREE.Material };
+    });
+    return out;
+  }, [gltf, model, product, sil.scale]);
+
+  useEffect(() => () => {
+    Object.values(parts).forEach(p => p.geometry.dispose());
+  }, [parts]);
+
+  return parts;
+}
+
+/**
+ * El modelo completo. El cuerpo lleva `bodyMaterial`, el mismo material con las
+ * texturas de color y grabado que usa el lathe; el resto son piezas fijas.
+ */
+function ModelPieces({
+  product, sil, colorHex, finish, bodyMaterial,
+}: {
+  product: ProductDef;
+  sil: Silhouette;
+  colorHex: string;
+  finish: string;
+  bodyMaterial: ReactNode;
+}) {
+  const parts = useModelGeometries(product, sil);
+  const steel = { color: "#c9cdd1", roughness: 0.3, metalness: 1.0, envMapIntensity: 1.9 };
+  return (
+    <>
+      {parts.body && (
+        <mesh geometry={parts.body.geometry} castShadow receiveShadow>
+          {bodyMaterial}
+        </mesh>
+      )}
+      {parts.steel && (
+        <mesh geometry={parts.steel.geometry}>
+          <meshPhysicalMaterial {...steel} />
+        </mesh>
+      )}
+      {parts.interior && (
+        <mesh geometry={parts.interior.geometry}>
+          <meshPhysicalMaterial {...steel} color="#b6bbc0" roughness={0.35} metalness={0.9} side={THREE.DoubleSide} />
+        </mesh>
+      )}
+      {/* Manija: del color del cuerpo (pintura en polvo); en inox, acero. */}
+      {parts.handle && (
+        <mesh geometry={parts.handle.geometry}>
+          {finish === "inox" ? (
+            <meshPhysicalMaterial color={colorHex} roughness={0.32} metalness={0.95} envMapIntensity={2.0} />
+          ) : (
+            <meshPhysicalMaterial color={colorHex} roughness={0.6} metalness={0.1} clearcoat={0.06} clearcoatRoughness={0.7} envMapIntensity={0.9} />
+          )}
+        </mesh>
+      )}
+      {/* Tapa: el material tal cual viene en el .glb. */}
+      {parts.lid && <mesh geometry={parts.lid.geometry} material={parts.lid.material} />}
+      {parts.straw && <mesh geometry={parts.straw.geometry} material={parts.straw.material} />}
+    </>
   );
 }
 
@@ -490,8 +607,8 @@ function ThermosMesh({
   const matProps = useMemo(() => {
     const base = { roughness: 0.35, metalness: 0.15, clearcoat: 0.8, clearcoatRoughness: 0.15 };
     if (finish === "matte") {
-      // Hoppie y chopera llevan powder-coat real: mate con cuerpo, no tiza.
-      if (product.id === "hoppie" || product.id === "chopera")
+      // Hoppie, chopera y vaso con manija llevan powder-coat real: mate con cuerpo, no tiza.
+      if (product.id === "hoppie" || product.id === "chopera" || product.id === "vaso-manija")
         return { ...base, roughness: 0.6, metalness: 0.1, clearcoat: 0.06, clearcoatRoughness: 0.7 };
       return { ...base, roughness: 0.88, metalness: 0.0, clearcoat: 0.0, clearcoatRoughness: 0.8 };
     }
@@ -714,6 +831,26 @@ function ThermosMesh({
     }
   });
 
+  // Keyed on finish: three only recompiles a shader when material.version
+  // changes, so toggling clearcoat on a live material never lights up the
+  // USE_CLEARCOAT define. Remounting sidesteps that.
+  const bodyMaterial = maps && (
+    <meshPhysicalMaterial
+      key={finish}
+      map={maps!.map}
+      roughnessMap={maps!.roughnessMap}
+      roughness={1}
+      metalnessMap={maps!.metalnessMap}
+      metalness={1}
+      bumpMap={maps!.grooveMap}
+      bumpScale={0.42}
+      clearcoatMap={maps!.grooveMap}
+      clearcoat={matProps.clearcoat}
+      clearcoatRoughness={matProps.clearcoatRoughness}
+      envMapIntensity={finish === "metallic" || finish === "inox" ? 2.0 : finish === "glossy" ? 1.8 : 1.4}
+    />
+  );
+
   const capCenterY = sil.neckY + sil.capH / 2;
   const collarY    = sil.neckY - 0.10 * sil.scale;
 
@@ -764,26 +901,15 @@ function ThermosMesh({
         </>
       ) : (
         /* Main body. The maps carry the colour and the finish; leaving `color`
-           white keeps the exposed steel steel-coloured instead of tinting it. */
-        <mesh geometry={bodyGeo} castShadow receiveShadow>
-          {/* Keyed on finish: three only recompiles a shader when material.version
-              changes, so toggling clearcoat on a live material never lights up the
-              USE_CLEARCOAT define. Remounting sidesteps that. */}
-          <meshPhysicalMaterial
-            key={finish}
-            map={maps!.map}
-            roughnessMap={maps!.roughnessMap}
-            roughness={1}
-            metalnessMap={maps!.metalnessMap}
-            metalness={1}
-            bumpMap={maps!.grooveMap}
-            bumpScale={0.42}
-            clearcoatMap={maps!.grooveMap}
-            clearcoat={matProps.clearcoat}
-            clearcoatRoughness={matProps.clearcoatRoughness}
-            envMapIntensity={finish === "metallic" || finish === "inox" ? 2.0 : finish === "glossy" ? 1.8 : 1.4}
-          />
-        </mesh>
+           white keeps the exposed steel steel-coloured instead of tinting it.
+           Con modelo .glb, el mismo material va sobre el cuerpo del modelo. */
+        product.model ? (
+          <ModelPieces product={product} sil={sil} colorHex={colorHex} finish={finish} bodyMaterial={bodyMaterial} />
+        ) : (
+          <mesh geometry={bodyGeo} castShadow receiveShadow>
+            {bodyMaterial}
+          </mesh>
+        )
       )}
 
       {/* Piezas a medida: cuello de acero del hoppie y remate (banda de acero +

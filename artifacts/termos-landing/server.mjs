@@ -98,6 +98,8 @@ const MIME = {
   ".woff": "font/woff",
   ".woff2": "font/woff2",
   ".ttf": "font/ttf",
+  ".glb": "model/gltf-binary",
+  ".wasm": "application/wasm",
   ".otf": "font/otf",
 };
 
