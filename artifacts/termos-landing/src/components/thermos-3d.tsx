@@ -308,9 +308,10 @@ function useModelGeometries(product: ProductDef, sil: Silhouette) {
 
   const parts = useMemo(() => {
     const k = model.unitsPerMeter * sil.scale;
+    const yaw = model.yawDeg ?? 0;
     const xf = new THREE.Matrix4()
       .makeScale(k, k, k)
-      .multiply(new THREE.Matrix4().makeRotationY(Math.PI))
+      .multiply(new THREE.Matrix4().makeRotationY(Math.PI + THREE.MathUtils.degToRad(yaw)))
       .multiply(new THREE.Matrix4().makeTranslation(0, -model.centerYm, 0));
     const out: Record<string, { geometry: THREE.BufferGeometry; material: THREE.Material }> = {};
     gltf.scene.updateMatrixWorld(true);
@@ -320,14 +321,32 @@ function useModelGeometries(product: ProductDef, sil: Silhouette) {
       const geometry = mesh.geometry.clone();
       geometry.applyMatrix4(new THREE.Matrix4().multiplyMatrices(xf, mesh.matrixWorld));
       if (mesh.name === "body") {
-        const pos = geometry.attributes.position;
-        const uvSrc = geometry.attributes.uv;
+        // Con giro extra, la u del .glb se corre la misma fracción de vuelta.
+        // Su costura (atrás en el .glb) pasa a otro lado y aparece una nueva
+        // donde u salta de 1 a 0: se desindexa y, en los triángulos que la
+        // cruzan, la u chica se lleva a >1 (las texturas repiten en S).
+        const shift = yaw / 360;
+        const g = shift ? geometry.toNonIndexed() : geometry;
+        if (g !== geometry) geometry.dispose();
+        const pos = g.attributes.position;
+        const uvSrc = g.attributes.uv;
         const uv = new Float32Array(pos.count * 2);
         for (let i = 0; i < pos.count; i++) {
-          uv[i * 2] = uvSrc ? uvSrc.getX(i) : 0.5;
+          const u0 = uvSrc ? uvSrc.getX(i) : 0.5;
+          uv[i * 2] = shift ? (((u0 + shift) % 1) + 1) % 1 : u0;
           uv[i * 2 + 1] = vForY(product, pos.getY(i) / sil.scale);
         }
-        geometry.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+        if (shift) {
+          for (let t = 0; t < pos.count; t += 3) {
+            const a = uv[t * 2], b = uv[t * 2 + 2], c = uv[t * 2 + 4];
+            if (Math.max(a, b, c) - Math.min(a, b, c) > 0.5) {
+              for (let j = 0; j < 3; j++) if (uv[(t + j) * 2] < 0.5) uv[(t + j) * 2] += 1;
+            }
+          }
+        }
+        g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+        out[mesh.name] = { geometry: g, material: mesh.material as THREE.Material };
+        return;
       }
       out[mesh.name] = { geometry, material: mesh.material as THREE.Material };
     });
@@ -383,11 +402,39 @@ function ModelPieces({
           )}
         </mesh>
       )}
-      {/* Tapa: el material tal cual viene en el .glb. */}
-      {parts.lid && <mesh geometry={parts.lid.geometry} material={parts.lid.material} />}
-      {parts.straw && <mesh geometry={parts.straw.geometry} material={parts.straw.material} />}
+      {/* Tapa, pajita, logos y demás piezas: el material del .glb, salvo las
+          que el producto pinta con el color elegido (funda, boquilla…). */}
+      {Object.entries(parts)
+        .filter(([name]) => !BUILT_IN_PARTS.has(name))
+        .map(([name, part]) => {
+          const m = product.model!;
+          const light = m.paintLight?.includes(name);
+          if (m.paint?.includes(name) || light) {
+            const src = part.material as THREE.MeshStandardMaterial;
+            return (
+              <mesh key={name} geometry={part.geometry}>
+                <meshStandardMaterial
+                  color={light ? lighten(colorHex, 0.22) : colorHex}
+                  roughness={src.roughness ?? 0.8}
+                  metalness={0}
+                  side={src.side}
+                />
+              </mesh>
+            );
+          }
+          return <mesh key={name} geometry={part.geometry} material={part.material} />;
+        })}
     </>
   );
+}
+
+/** Piezas con tratamiento propio en ModelPieces (el resto usa su material del .glb). */
+const BUILT_IN_PARTS = new Set(["body", "steel", "interior", "handle"]);
+
+/** Mezcla un hex con blanco (0..1). */
+function lighten(hex: string, t: number): string {
+  const c = new THREE.Color(hex);
+  return "#" + c.lerp(new THREE.Color("#ffffff"), t).getHexString();
 }
 
 /**
@@ -645,7 +692,7 @@ function ThermosMesh({
     const base = { roughness: 0.35, metalness: 0.15, clearcoat: 0.8, clearcoatRoughness: 0.15 };
     if (finish === "matte") {
       // Hoppie, chopera y vaso con manija llevan powder-coat real: mate con cuerpo, no tiza.
-      if (product.id === "hoppie" || product.id === "botella-ancha" || product.id === "chopera" || product.id === "vaso-manija")
+      if (product.id === "hoppie" || product.id === "botella-ancha" || product.id === "chopera" || product.id === "vaso-manija" || product.id === "vaso-hydrate" || product.id === "vaso-sunbeam")
         return { ...base, roughness: 0.6, metalness: 0.1, clearcoat: 0.06, clearcoatRoughness: 0.7 };
       return { ...base, roughness: 0.88, metalness: 0.0, clearcoat: 0.0, clearcoatRoughness: 0.8 };
     }

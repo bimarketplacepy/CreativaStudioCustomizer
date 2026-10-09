@@ -41,6 +41,8 @@ export const MATERIALS: MaterialDef[] = [
     products: [
       { id: "termo",   name: "Termo",   drinkwareProductId: "termo" },
       { id: "vaso",    name: "Vaso",    drinkwareProductId: "vaso" },
+      { id: "vaso-hydrate", name: "Vaso Hydrate", desc: "Vaso térmico con tapa transparente deslizable.", drinkwareProductId: "vaso-hydrate" },
+      { id: "vaso-sunbeam", name: "Vaso Sunbeam", desc: "Vaso térmico con funda de silicona, tapa y pajita.", drinkwareProductId: "vaso-sunbeam" },
       { id: "vaso-manija", name: "Vaso con manija", desc: "Vaso térmico de 887 ml con manija lateral y tapa transparente.", drinkwareProductId: "vaso-manija" },
       { id: "hoppie",  name: "Hoppie V2 Pro",  drinkwareProductId: "hoppie" },
       { id: "botella-ancha", name: "Botella", desc: "Botella térmica de boca ancha.", drinkwareProductId: "botella-ancha" },

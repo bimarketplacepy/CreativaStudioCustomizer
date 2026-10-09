@@ -1,4 +1,4 @@
-export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha";
+export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -59,6 +59,16 @@ export interface ProductModel {
    * demás que usan la misma forma la ven como aproximación (y se avisa).
    */
   exactFor?: string[];
+  /**
+   * Giro extra (grados, eje Y) para que el FRENTE del personalizador (donde se
+   * graba) no caiga sobre el logo que el modelo trae en su +Z: con 180 el logo
+   * queda atrás y la cara libre adelante.
+   */
+  yawDeg?: number;
+  /** Piezas del .glb que se pintan con el color elegido (funda, boquilla…). */
+  paint?: string[];
+  /** Piezas pintadas con el color elegido, un poco más claro (texto en relieve). */
+  paintLight?: string[];
 }
 
 export const PRODUCTS: ProductDef[] = [
@@ -333,6 +343,73 @@ export const PRODUCTS: ProductDef[] = [
     sizes: [
       { id: "vaso-manija-887",  name: "887ml",  label: "Clásico", scale: 1.00 },
       { id: "vaso-manija-1183", name: "1183ml", label: "Grande",  scale: 1.10 },
+    ],
+  },
+  {
+    id: "vaso-hydrate",
+    name: "Vasos Hydrate",
+    singular: "Vaso",
+    // Hydrate "Vaso" con tapa transparente deslizable (artifacts/3D/
+    // vaso-hydrate-verde-landing.glb). Mismo cuerpo que el vaso con manija,
+    // sin manija. El logo del modelo queda atrás (yawDeg 180): adelante, la cara libre.
+    desc: "Vaso térmico con tapa transparente deslizable.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.438, -0.994], [0.446, -0.871], [0.452, -0.748], [0.458, -0.625],
+      [0.466, -0.502], [0.473, -0.379], [0.481, -0.256], [0.532, -0.133],
+      [0.572, -0.010], [0.576,  0.113], [0.578,  0.236], [0.582,  0.359],
+      [0.586,  0.482], [0.588,  0.605], [0.590,  0.727], [0.594,  0.850],
+      [0.596,  0.973],
+    ],
+    band: [-0.92, 0.90],
+    frontFace: { uHalfWidth: 0.2, vCenter: 0.27, vHeightFrac: 0.46 },
+    model: {
+      url: "/models/vaso-hydrate.glb?v=1",
+      unitsPerMeter: 12,
+      centerYm: 0.1015,
+      heightM: 0.203,
+      reachM: 0.0582,
+      exactFor: ["Vaso"],
+      yawDeg: 180,
+    },
+    sizes: [
+      { id: "vaso-hydrate-470", name: "470ml", label: "Chico",   scale: 0.84 },
+      { id: "vaso-hydrate-600", name: "600ml", label: "Mediano", scale: 0.91 },
+      { id: "vaso-hydrate-900", name: "900ml", label: "Grande",  scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-sunbeam",
+    name: "Vasos Sunbeam",
+    singular: "Vaso Sunbeam",
+    // Hydrate Sunbeam con funda de silicona, tapa gris y pajita (artifacts/3D/
+    // vaso-hydrate-petroleo.glb). Funda y boquilla van del color elegido. El
+    // modelo no trae la manija del producto real. Logo atrás (yawDeg 180).
+    desc: "Vaso térmico con funda de silicona, tapa y pajita.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.444, -1.258], [0.455, -1.020], [0.468, -0.781], [0.474, -0.661],
+      [0.493, -0.542], [0.550, -0.424], [0.574, -0.304], [0.580, -0.066],
+      [0.586, 0.173], [0.592, 0.412], [0.596, 0.650],
+    ],
+    band: [-1.10, 0.55],
+    frontFace: { uHalfWidth: 0.2, vCenter: 0.26, vHeightFrac: 0.48 },
+    model: {
+      url: "/models/vaso-sunbeam.glb?v=1",
+      unitsPerMeter: 12,
+      centerYm: 0.13,
+      heightM: 0.2605,
+      reachM: 0.054,
+      exactFor: ["Vaso Sunbeam"],
+      yawDeg: 180,
+      paint: ["boot", "straw_tip"],
+      paintLight: ["logo_funda"],
+    },
+    sizes: [
+      { id: "vaso-sunbeam-887",  name: "887ml",  label: "Clásico", scale: 1.00 },
+      { id: "vaso-sunbeam-1183", name: "1183ml", label: "Grande",  scale: 1.10 },
     ],
   },
 ];

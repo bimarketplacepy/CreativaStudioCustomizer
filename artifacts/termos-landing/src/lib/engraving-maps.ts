@@ -531,7 +531,7 @@ export function makeBodyMaps({
     const roughnessMap = new THREE.CanvasTexture(rough);
     const metalnessMap = new THREE.CanvasTexture(metal);
     const grooveMap = new THREE.CanvasTexture(groove);
-    for (const t of [map, roughnessMap, metalnessMap, grooveMap]) t.anisotropy = anisotropy;
+    for (const t of [map, roughnessMap, metalnessMap, grooveMap]) { t.anisotropy = anisotropy; t.wrapS = THREE.RepeatWrapping; }
     return {
       map, roughnessMap, metalnessMap, grooveMap,
       dispose: () => { map.dispose(); roughnessMap.dispose(); metalnessMap.dispose(); grooveMap.dispose(); },
@@ -615,8 +615,11 @@ export function makeBodyMaps({
   const grooveMap = new THREE.CanvasTexture(groove);
 
   // Text wraps around a cylinder, so it is always viewed at a grazing angle.
+  // RepeatWrapping in S: a model turned to hide its logo has u past 1 along
+  // its new seam, and the texture is a full turn anyway.
   for (const t of [map, roughnessMap, metalnessMap, grooveMap]) {
     t.anisotropy = anisotropy;
+    t.wrapS = THREE.RepeatWrapping;
   }
 
   return {

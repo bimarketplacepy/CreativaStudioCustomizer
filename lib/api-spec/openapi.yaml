@@ -163,7 +163,7 @@ components:
           description: Product brand as loaded in Odoo (e.g. Hydrate). The customizer groups the catalog by it.
         productType:
           type: string
-          description: Customizer 3D profile (termo, vaso, vaso-manija, hoppie, botella-ancha, jug, guampa, copa, botella, chopera)
+          description: Customizer 3D profile (termo, vaso, vaso-hydrate, vaso-sunbeam, vaso-manija, hoppie, botella-ancha, jug, guampa, copa, botella, chopera)
         material:
           type: string
           description: Customizer material id (acero, inox, cuero, cristal)

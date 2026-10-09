@@ -55,7 +55,7 @@ const TYPE_RULES: [RegExp, string][] = [
 const TYPE_LABEL: Record<string, string> = {
   guampa: "Guampa", hoppie: "Hoppie", chopera: "Chopera", jug: "Jug",
   copa: "Copa", vaso: "Vaso", termo: "Termo", botella: "Botella",
-  "vaso-manija": "Vaso", "botella-ancha": "Botella",
+  "vaso-manija": "Vaso", "botella-ancha": "Botella", "vaso-hydrate": "Vaso", "vaso-sunbeam": "Vaso",
 };
 
 /**
@@ -66,6 +66,14 @@ const TYPE_LABEL: Record<string, string> = {
  */
 const EXACT_MODEL: Record<string, { name: string; fallback: string }> = {
   hoppie: { name: "Hoppie V2 Pro Series", fallback: "botella-ancha" },
+};
+
+/**
+ * Modelos con .glb propio dentro de un tipo genérico: ese nombre exacto pasa a
+ * su perfil; los demás del tipo siguen con la forma genérica.
+ */
+const NAMED_MODEL: Record<string, Record<string, string>> = {
+  vaso: { "vaso": "vaso-hydrate", "vaso sunbeam": "vaso-sunbeam" },
 };
 
 const LEATHER = /\bcuero\b|\bforrad[oa]\b/;
@@ -368,6 +376,7 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
     if (!ruleType(name)) name = `${TYPE_LABEL[productType]} ${name}`.trim();
     const exact = EXACT_MODEL[productType];
     if (exact && norm(name) !== norm(exact.name)) productType = exact.fallback;
+    productType = NAMED_MODEL[productType]?.[norm(name)] ?? productType;
     categories[name] = [...new Set(list.map(e => e.category))];
     const published = list.find(e => e.t.is_published && e.t.website_url);
     const rawBrand = first.t[BRAND_FIELD];
