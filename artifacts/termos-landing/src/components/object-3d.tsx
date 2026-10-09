@@ -397,17 +397,16 @@ function ObjectMesh({
   useEffect(() => {
     const canvas = gl.domElement;
 
-    // Lock de intención táctil (mismo patrón que thermos-3d): con touch-action
-    // pan-y, un gesto vertical scrollea la página; a los ~10px el eje dominante
-    // decide y recién ahí se captura el puntero para rotar.
-    const INTENT_SLOP = 10;
-    let pendingTouch: { x: number; y: number; id: number } | null = null;
+    // touch-action: none (igual que thermos-3d): todo gesto sobre el objeto lo
+    // gira o inclina al instante; la página se scrollea tocando fuera del visor.
+    let rotGain = 0.008;
 
     const startDrag = (e: PointerEvent, mode: "design" | "rotate") => {
       isDragging.current = true;
       velYaw.current = 0; velPitch.current = 0;
       lastX.current = e.clientX; lastY.current = e.clientY;
       dragMode.current = mode;
+      rotGain = e.pointerType === "mouse" ? 0.008 : 0.013;
       if (mode === "design") designRef.current.onDesignDragStart?.();
       canvas.setPointerCapture(e.pointerId);
     };
@@ -416,23 +415,9 @@ function ObjectMesh({
       // Objects have a single flat engraving face, so an active design always
       // drags rather than rotates.
       const mode = designRef.current.designActive ? "design" : "rotate";
-      if (mode === "rotate" && e.pointerType !== "mouse") {
-        pendingTouch = { x: e.clientX, y: e.clientY, id: e.pointerId };
-        return;
-      }
       startDrag(e, mode);
     };
     const onMove = (e: PointerEvent) => {
-      if (pendingTouch && e.pointerId === pendingTouch.id && !isDragging.current) {
-        const px = e.clientX - pendingTouch.x;
-        const py = e.clientY - pendingTouch.y;
-        if (Math.hypot(px, py) < INTENT_SLOP) return;
-        const horizontal = Math.abs(px) > Math.abs(py);
-        pendingTouch = null;
-        if (!horizontal) return; // vertical: el scroll es del navegador
-        startDrag(e, "rotate");
-        return;
-      }
       if (!isDragging.current) return;
       const dx = e.clientX - lastX.current;
       const dy = e.clientY - lastY.current;
@@ -445,13 +430,12 @@ function ObjectMesh({
       velYaw.current = dx * 0.5;
       velPitch.current = dy * 0.5;
       if (groupRef.current) {
-        groupRef.current.rotation.y += dx * 0.008;
-        const np = groupRef.current.rotation.x + dy * 0.008;
+        groupRef.current.rotation.y += dx * rotGain;
+        const np = groupRef.current.rotation.x + dy * rotGain;
         groupRef.current.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, np));
       }
     };
     const onUp = () => {
-      pendingTouch = null;
       if (isDragging.current && dragMode.current === "design") designRef.current.onDesignDragEnd?.();
       isDragging.current = false;
       dragMode.current = "rotate";
@@ -460,7 +444,7 @@ function ObjectMesh({
     canvas.addEventListener("pointermove", onMove);
     canvas.addEventListener("pointerup", onUp);
     canvas.addEventListener("pointerleave", onUp);
-    // pan-y: cuando el navegador toma el scroll emite pointercancel.
+    // pointercancel: el sistema cortó el gesto.
     canvas.addEventListener("pointercancel", onUp);
     return () => {
       canvas.removeEventListener("pointerdown", onDown);
@@ -598,7 +582,7 @@ function ThreeCanvas({ obj, onContextLost, onContextRestored, ...props }: Object
       style={{
         background: "transparent",
         cursor: "grab",
-        touchAction: (props.designActive ?? false) ? "none" : "pan-y pinch-zoom",
+        touchAction: "none",
       }}
     >
       <Rig obj={obj} />

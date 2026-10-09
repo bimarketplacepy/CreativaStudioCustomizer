@@ -728,14 +728,11 @@ function ThermosMesh({
   useEffect(() => {
     const canvas = gl.domElement;
 
-    // Lock de intención táctil: el canvas usa touch-action pan-y, así que el
-    // navegador puede quedarse el gesto vertical (scroll de página). Hasta
-    // acumular ~10px no se decide nada; pasado el umbral, el eje dominante
-    // define: horizontal → rotar (recién ahí se captura el puntero), vertical
-    // → se suelta y el navegador scrollea (llega pointercancel). El umbral
-    // generoso evita que un drag diagonal se sienta errático.
-    const INTENT_SLOP = 10;
-    let pendingTouch: { x: number; y: number; id: number } | null = null;
+    // El canvas tiene touch-action: none: todo gesto sobre el producto es del
+    // visor (girar, inclinar para ver la base, mover el diseño). Antes el
+    // navegador se quedaba los verticales (scroll de página) y el giro recién
+    // arrancaba pasados 10 px: costaba girar y no se podía mirar la base. La
+    // página se scrollea tocando fuera del visor.
     // Toque = soltar cerca de donde se apoyó y rápido. Sirve para seleccionar
     // el diseño (o terminar la edición tocando fuera de él).
     let down: { x: number; y: number; t: number; id: number } | null = null;
@@ -753,8 +750,11 @@ function ThermosMesh({
       lastTime.current = performance.now();
       dragMode.current = mode;
       designMoving = false;
+      // El dedo recorre menos pantalla que el mouse: más giro por píxel.
+      rotGain = e.pointerType === "mouse" ? 0.008 : 0.013;
       canvas.setPointerCapture(e.pointerId);
     };
+    let rotGain = 0.008;
 
     const onDown = (e: PointerEvent) => {
       down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
@@ -764,25 +764,9 @@ function ThermosMesh({
       // Envolvente 360° while typing: manual rotation is locked (the piece is
       // auto-spinning); ignore the gesture entirely until the input blurs.
       if (mode === "rotate" && d.rotationLocked) return;
-      // El drag de diseño es bidireccional (touch-action none en ese modo) y
-      // el mouse no scrollea con drag: ambos arrancan de inmediato.
-      if (mode === "rotate" && e.pointerType !== "mouse") {
-        pendingTouch = { x: e.clientX, y: e.clientY, id: e.pointerId };
-        return;
-      }
       startDrag(e, mode);
     };
     const onMove = (e: PointerEvent) => {
-      if (pendingTouch && e.pointerId === pendingTouch.id && !isDragging.current) {
-        const px = e.clientX - pendingTouch.x;
-        const py = e.clientY - pendingTouch.y;
-        if (Math.hypot(px, py) < INTENT_SLOP) return;
-        const horizontal = Math.abs(px) > Math.abs(py);
-        pendingTouch = null;
-        if (!horizontal) return; // vertical: el scroll es del navegador
-        startDrag(e, "rotate");
-        return;
-      }
       if (!isDragging.current) return;
       if (dragMode.current === "design" && !designMoving) {
         if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) < DESIGN_SLOP) return;
@@ -816,9 +800,9 @@ function ThermosMesh({
       velYaw.current   = dx / dt * 16;
       velPitch.current = dy / dt * 16;
       if (groupRef.current) {
-        groupRef.current.rotation.y += dx * 0.008;
+        groupRef.current.rotation.y += dx * rotGain;
         // Clamp pitch so it doesn't flip upside-down
-        const newPitch = groupRef.current.rotation.x + dy * 0.008;
+        const newPitch = groupRef.current.rotation.x + dy * rotGain;
         groupRef.current.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, newPitch));
       }
       invalidate();
@@ -847,7 +831,6 @@ function ThermosMesh({
       const tap = !!down && e.type === "pointerup" && e.pointerId === down.id
         && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8
         && performance.now() - down.t < 500;
-      pendingTouch = null;
       down = null;
       isDragging.current = false;
       dragMode.current = "rotate";
@@ -860,7 +843,7 @@ function ThermosMesh({
     canvas.addEventListener("pointermove", onMove);
     canvas.addEventListener("pointerup", onUp);
     canvas.addEventListener("pointerleave", onUp);
-    // pan-y: cuando el navegador toma el scroll emite pointercancel.
+    // pointercancel: el sistema cortó el gesto (llamada, notificación…).
     canvas.addEventListener("pointercancel", onUp);
     return () => {
       canvas.removeEventListener("pointerdown", onDown);
@@ -1346,33 +1329,16 @@ function FallbackCanvas({
     return () => cancelAnimationFrame(rafRef.current);
   }, []);
 
-  // Mismo lock de intención táctil que el canvas WebGL (ver ThermosMesh):
-  // vertical scrollea la página (pan-y), horizontal rota.
-  const pendingTouch = useRef<{ x: number; y: number; id: number } | null>(null);
+  // Igual que el canvas WebGL (ver ThermosMesh): todo gesto sobre el producto
+  // gira o inclina la pieza (touch-action: none).
   const startDrag = (e: React.PointerEvent) => {
     isDragging.current = true;
     velRef.current = 0; velXRef.current = 0;
     lastX.current = e.clientX; lastY.current = e.clientY;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
-  const onPDown = (e: React.PointerEvent) => {
-    if (e.pointerType !== "mouse") {
-      pendingTouch.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
-      return;
-    }
-    startDrag(e);
-  };
+  const onPDown = (e: React.PointerEvent) => startDrag(e);
   const onPMove = (e: React.PointerEvent) => {
-    const p = pendingTouch.current;
-    if (p && e.pointerId === p.id && !isDragging.current) {
-      const px = e.clientX - p.x;
-      const py = e.clientY - p.y;
-      if (Math.hypot(px, py) < 10) return;
-      pendingTouch.current = null;
-      if (Math.abs(px) <= Math.abs(py)) return; // vertical: scroll del navegador
-      startDrag(e);
-      return;
-    }
     if (!isDragging.current) return;
     const dx = e.clientX - lastX.current;
     const dy = e.clientY - lastY.current;
@@ -1383,11 +1349,11 @@ function FallbackCanvas({
     angleXRef.current = Math.max(-1.1, Math.min(1.1, np));
     lastX.current = e.clientX; lastY.current = e.clientY;
   };
-  const onPUp = () => { pendingTouch.current = null; isDragging.current = false; };
+  const onPUp = () => { isDragging.current = false; };
 
   return (
     <canvas ref={canvasRef} width={280} height={480}
-      style={{ width:"100%", height:"100%", cursor:"grab", touchAction:"pan-y pinch-zoom" }}
+      style={{ width:"100%", height:"100%", cursor:"grab", touchAction:"none" }}
       onPointerDown={onPDown} onPointerMove={onPMove} onPointerUp={onPUp} onPointerLeave={onPUp} onPointerCancel={onPUp}
     />
   );
@@ -1418,18 +1384,10 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
         canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); onContextLost?.(); }, false);
         canvas.addEventListener("webglcontextrestored", () => { onContextRestored?.(); invalidate(); }, false);
       }}
-      // pan-y + pinch-zoom: el swipe vertical sobre el producto scrollea la
-      // página y el pinch de accesibilidad sigue funcionando; el drag
-      // horizontal rota (lock de intención en los handlers del mesh). En modo
-      // diseño el arrastre es bidireccional, ahí sí se bloquea todo (none).
-      style={{
-        background: "transparent",
-        cursor: "grab",
-        touchAction:
-          (props.designActive ?? false) && (props.editSingleFace ?? props.singleFace ?? false)
-            ? "none"
-            : "pan-y pinch-zoom",
-      }}
+      // none: todo gesto sobre el producto es del visor (girar en cualquier
+      // dirección, inclinar para ver la base, mover el diseño). La página se
+      // scrollea tocando fuera del visor.
+      style={{ background: "transparent", cursor: "grab", touchAction: "none" }}
     >
       <Rig sil={sil} />
       {/* 0.5: con las luces direccionales de abajo, más reflejo lava los colores
@@ -1469,16 +1427,18 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           rotationLocked={props.rotationLocked ?? false}
         />
 
-        {/* Single, stable ground shadow. Re-renders every frame so it tracks the
-            spin, and stays anchored to the floor plane — no real-time shadow map,
-            so no self-shadow acne / flicker on the rotating body. */}
+        {/* Single, stable ground shadow, anchored to the floor plane — no
+            real-time shadow map, so no self-shadow acne. On desktop it follows
+            the spin every frame; on phones it is baked once per product/size
+            (a full extra render per frame made dragging stutter). */}
         <ContactShadows
+          key={LOW_PERF ? `${product.id}-${sil.scale}` : "live"}
           position={[0, shadowY, 0]}
           opacity={0.5}
           scale={Math.max(5, sil.maxR * 7)}
           blur={2.6}
           resolution={1024}
-          frames={Infinity}
+          frames={LOW_PERF ? 1 : Infinity}
           far={4}
           color="#000000"
         />
