@@ -81,7 +81,8 @@ function drawPlaced(
   halfW: number,
   halfH: number,
   render: () => void,
-  singleFace = false
+  singleFace = false,
+  bounds?: Rect[],
 ) {
   const rot = p.orientation === "vertical" ? -Math.PI / 2 : 0;
   const boundHalfH = (rot ? halfW : halfH) * m.aspect;
@@ -117,14 +118,52 @@ function drawPlaced(
     ctx.rotate(rot);
     render();
     ctx.restore();
+    bounds?.push({ x: cx + dx - boundHalfW, y: cy - boundHalfH, w: 2 * boundHalfW, h: 2 * boundHalfH });
   }
 }
 
-function newCanvas(): [HTMLCanvasElement, CanvasRenderingContext2D] {
+/** A rectangle in full-size texture pixels. */
+interface Rect { x: number; y: number; w: number; h: number }
+
+/**
+ * The union of what was painted, grown by `pad` and clipped to the texture —
+ * the only area the blur passes need to touch. Null when nothing landed on it.
+ */
+function paintedArea(rects: Rect[], pad: number): Rect | null {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const r of rects) {
+    const ax = Math.max(0, r.x - pad), ay = Math.max(0, r.y - pad);
+    const bx = Math.min(TEXTURE_W, r.x + r.w + pad), by = Math.min(TEXTURE_H, r.y + r.h + pad);
+    if (bx <= ax || by <= ay) continue;
+    x0 = Math.min(x0, ax); y0 = Math.min(y0, ay); x1 = Math.max(x1, bx); y1 = Math.max(y1, by);
+  }
+  if (x1 <= x0 || y1 <= y0) return null;
+  x0 = Math.floor(x0); y0 = Math.floor(y0);
+  return { x: x0, y: y0, w: Math.ceil(x1) - x0, h: Math.ceil(y1) - y0 };
+}
+
+/** Draw only `r` of a same-size layer (so a filter on the context costs that area only). */
+function drawLayerArea(ctx: CanvasRenderingContext2D, layer: HTMLCanvasElement, r: Rect) {
+  ctx.drawImage(layer, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+}
+
+/**
+ * A texture-sized canvas. `s` < 1 allocates fewer pixels but keeps the drawing
+ * coordinates in full-size texture space (the context is pre-scaled), so every
+ * layout/clamp computed at TEXTURE_W × TEXTURE_H stays valid for drafts.
+ */
+function newCanvas(s = 1): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const canvas = document.createElement("canvas");
-  canvas.width = TEXTURE_W;
-  canvas.height = TEXTURE_H;
-  return [canvas, canvas.getContext("2d")!];
+  canvas.width = Math.round(TEXTURE_W * s);
+  canvas.height = Math.round(TEXTURE_H * s);
+  const ctx = canvas.getContext("2d")!;
+  if (s !== 1) ctx.setTransform(s, 0, 0, s, 0, 0);
+  return [canvas, ctx];
+}
+
+/** Composite a same-scale layer over the full texture area. */
+function drawLayer(ctx: CanvasRenderingContext2D, layer: HTMLCanvasElement) {
+  ctx.drawImage(layer, 0, 0, TEXTURE_W, TEXTURE_H);
 }
 
 /** A linear-space grey, for the data maps that three samples without decoding. */
@@ -142,13 +181,14 @@ function release(canvas: HTMLCanvasElement) {
 /** `paint` restricted to wherever the mask has coverage. */
 function maskedFill(
   mask: HTMLCanvasElement,
-  paint: (ctx: CanvasRenderingContext2D) => string | CanvasGradient
+  paint: (ctx: CanvasRenderingContext2D) => string | CanvasGradient,
+  s = 1,
 ): HTMLCanvasElement {
-  const [canvas, ctx] = newCanvas();
+  const [canvas, ctx] = newCanvas(s);
   ctx.fillStyle = paint(ctx);
   ctx.fillRect(0, 0, TEXTURE_W, TEXTURE_H);
   ctx.globalCompositeOperation = "destination-in";
-  ctx.drawImage(mask, 0, 0);
+  drawLayer(ctx, mask);
   return canvas;
 }
 
@@ -157,13 +197,13 @@ function maskedFill(
  * chips away and the groove wall catches no light. Blur the mask, then punch
  * the sharp mask back out of it, and only the rim survives.
  */
-function grooveHalo(mask: HTMLCanvasElement): HTMLCanvasElement {
+function grooveHalo(mask: HTMLCanvasElement, area: Rect): HTMLCanvasElement {
   const [canvas, ctx] = newCanvas();
   ctx.filter = `blur(${GROOVE_BEVEL}px)`;
-  ctx.drawImage(mask, 0, 0);
+  drawLayerArea(ctx, mask, area);
   ctx.filter = "none";
   ctx.globalCompositeOperation = "destination-out";
-  ctx.drawImage(mask, 0, 0);
+  drawLayerArea(ctx, mask, area);
   ctx.globalCompositeOperation = "source-in";
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, TEXTURE_W, TEXTURE_H);
@@ -209,6 +249,12 @@ export interface EngravingInput {
    * instead of the full 360° band. See `face-area.ts`.
    */
   singleFace?: boolean;
+  /**
+   * "draft": a quarter of the pixels and no blur passes (no groove halo or
+   * bevel) — what the viewer shows while the customer types or drags, so each
+   * keystroke stays cheap. "full" (default) once the input settles.
+   */
+  quality?: "draft" | "full";
 }
 
 /** Printed text/brand ink when the piece is colour-printed rather than engraved. */
@@ -376,12 +422,15 @@ export function makeBodyMaps({
   artImage = null,
   engraveStyle = "steel",
   singleFace = false,
+  quality = "full",
 }: EngravingInput): BodyMaps {
   const W = TEXTURE_W, H = TEXTURE_H;
   const m = bandMetrics(product, W, H);
+  const draft = quality === "draft";
+  const s = draft ? 0.5 : 1;
 
   // ── Albedo base (shared by both the engraved and the printed piece) ────────
-  const [base, ctx] = newCanvas();
+  const [base, ctx] = newCanvas(s);
   ctx.fillStyle = colorHex;
   ctx.fillRect(0, 0, W, H);
 
@@ -466,13 +515,14 @@ export function makeBodyMaps({
     }
 
     // Print sits flush on the coating: keep the base finish, no groove.
-    const [rough, rctx] = newCanvas();
+    // Flat data maps: a 1×1-texel look is identical, so keep them tiny.
+    const [rough, rctx] = newCanvas(1 / 64);
     rctx.fillStyle = grey(finish.roughness);
     rctx.fillRect(0, 0, W, H);
-    const [metal, mtctx] = newCanvas();
+    const [metal, mtctx] = newCanvas(1 / 64);
     mtctx.fillStyle = grey(finish.metalness);
     mtctx.fillRect(0, 0, W, H);
-    const [groove, gctx] = newCanvas();
+    const [groove, gctx] = newCanvas(1 / 64);
     gctx.fillStyle = "#ffffff";
     gctx.fillRect(0, 0, W, H);
 
@@ -489,16 +539,23 @@ export function makeBodyMaps({
   }
 
   // ── Coverage mask for the laser burn ───────────────────────────────────────
-  const [mark, mk] = newCanvas();
-  drawEngravingMark(mk, m, W, { product, text, textPlacement, fontFamily, artMask, imageSize, artPlacement, singleFace });
+  const [mark, mk] = newCanvas(s);
+  const painted: Rect[] = [];
+  drawEngravingMark(mk, m, W, { product, text, textPlacement, fontFamily, artMask, imageSize, artPlacement, singleFace }, painted);
+  // Blur passes only where the mark is (plus room for script swashes and the
+  // blur itself): a name covers a few % of the texture, not all 2 megapixels.
+  const area = paintedArea(painted, 24 + GROOVE_BEVEL * 3);
 
   // The chipped/charred rim first, then the mark the beam laid bare on top of it.
+  // (Drafts skip the rim: it is a blur, the costliest pass.)
   const app = ENGRAVE_APPEARANCE[engraveStyle];
-  const halo = grooveHalo(mark);
-  ctx.globalAlpha = app.haloAlpha;
-  ctx.drawImage(halo, 0, 0);
-  ctx.globalAlpha = 1;
-  release(halo);
+  if (!draft && area) {
+    const halo = grooveHalo(mark, area);
+    ctx.globalAlpha = app.haloAlpha;
+    drawLayer(ctx, halo);
+    ctx.globalAlpha = 1;
+    release(halo);
+  }
 
   // Steel reveals a frosted sheen; leather/wood char to a flat dark burn.
   const markFill = maskedFill(mark, (c) => {
@@ -512,34 +569,41 @@ export function makeBodyMaps({
       return sheen;
     }
     return app.burn;
-  });
-  ctx.drawImage(markFill, 0, 0);
+  }, s);
+  drawLayer(ctx, markFill);
   release(markFill);
 
   // ── Data maps ──────────────────────────────────────────────────────────────
-  const [rough, rctx] = newCanvas();
+  // Roughness and metalness only change the sheen inside the mark: half the
+  // resolution of the colour/relief is invisible and uploads ¼ of the pixels.
+  const ds = s * 0.5;
+  const [rough, rctx] = newCanvas(ds);
   rctx.fillStyle = grey(finish.roughness);
   rctx.fillRect(0, 0, W, H);
-  const roughMark = maskedFill(mark, () => grey(app.roughness));
-  rctx.drawImage(roughMark, 0, 0);
+  const roughMark = maskedFill(mark, () => grey(app.roughness), ds);
+  drawLayer(rctx, roughMark);
   release(roughMark);
 
-  const [metal, mtctx] = newCanvas();
+  const [metal, mtctx] = newCanvas(ds);
   mtctx.fillStyle = grey(finish.metalness);
   mtctx.fillRect(0, 0, W, H);
-  const metalMark = maskedFill(mark, () => grey(app.metalness));
-  mtctx.drawImage(metalMark, 0, 0);
+  const metalMark = maskedFill(mark, () => grey(app.metalness), ds);
+  drawLayer(mtctx, metalMark);
   release(metalMark);
 
   // White is the untouched coating; black is the floor of the groove. The blur
   // bevels the walls so the bump derivative reads as a cut edge, not a cliff.
-  const [groove, gctx] = newCanvas();
+  const [groove, gctx] = newCanvas(s);
   gctx.fillStyle = "#ffffff";
   gctx.fillRect(0, 0, W, H);
-  gctx.filter = `blur(${GROOVE_BEVEL}px)`;
-  const grooveMark = maskedFill(mark, () => "#000000");
-  gctx.drawImage(grooveMark, 0, 0);
-  gctx.filter = "none";
+  const grooveMark = maskedFill(mark, () => "#000000", s);
+  if (!draft && area) {
+    gctx.filter = `blur(${GROOVE_BEVEL}px)`;
+    drawLayerArea(gctx, grooveMark, area);
+    gctx.filter = "none";
+  } else {
+    drawLayer(gctx, grooveMark);
+  }
   release(grooveMark);
   release(mark);
 
@@ -643,6 +707,7 @@ function drawEngravingMark(
     artPlacement?: Placement;
     singleFace?: boolean;
   },
+  bounds?: Rect[],
 ) {
   const {
     product, text, textPlacement, fontFamily,
@@ -656,7 +721,7 @@ function drawEngravingMark(
     const dh = artMask.height * ratio;
     drawPlaced(mk, m, W, artPlacement, dw / 2, dh / 2, () => {
       mk.drawImage(artMask, -dw / 2, -dh / 2, dw, dh);
-    }, singleFace);
+    }, singleFace, bounds);
   }
 
   if (text) {
@@ -671,7 +736,7 @@ function drawEngravingMark(
       mk.textBaseline = "middle";
       mk.fillStyle = "#ffffff";
       fillLinesAligned(mk, L.lines, L.lineHeight, L.blockW, L.align);
-    }, singleFace);
+    }, singleFace, bounds);
   }
 }
 

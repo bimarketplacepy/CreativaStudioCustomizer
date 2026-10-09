@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useMemo, useState, useDeferredValue, Suspense, Component, ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Environment, ContactShadows, PerspectiveCamera, RoundedBox } from "@react-three/drei";
+import { ContactShadows, PerspectiveCamera, RoundedBox } from "@react-three/drei";
+import { StudioLighting } from "./studio-lighting";
 import * as THREE from "three";
 import { getObject, type ObjectDef } from "@/lib/objects";
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "@/lib/placement";
@@ -602,7 +603,7 @@ function ThreeCanvas({ obj, onContextLost, onContextRestored, ...props }: Object
     >
       <Rig obj={obj} />
       <Suspense fallback={null}>
-        <Environment preset="studio" environmentIntensity={0.9} />
+        <StudioLighting intensity={0.9} />
         <ObjectMesh
           obj={obj}
           baseColor={obj.colorable && props.colorHex ? props.colorHex : obj.baseColor}

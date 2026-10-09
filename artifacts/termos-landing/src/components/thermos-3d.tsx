@@ -1,9 +1,10 @@
 import React, { useRef, useEffect, useMemo, useState, useDeferredValue, Suspense, Component, ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Environment, ContactShadows, PerspectiveCamera, useGLTF } from "@react-three/drei";
+import { ContactShadows, PerspectiveCamera, useGLTF } from "@react-three/drei";
+import { StudioLighting } from "./studio-lighting";
 import * as THREE from "three";
 import { getProduct, getSize, resampledProfile, type ProductDef } from "@/lib/products";
-import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, vForY, type Placement } from "@/lib/placement";
+import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, bandRange, vForY, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
 import { makeBodyMaps, makeGlassEngraving, type EngraveStyle } from "@/lib/engraving-maps";
 import { FRONT_FACE, frontAreaBounds } from "@/lib/face-area";
@@ -59,8 +60,16 @@ interface Thermos3DProps {
    * to placement). When false, a drag rotates as usual.
    */
   designActive?: boolean;
-  /** Drag delta as a fraction of the canvas (dx/width, dy/height) while moving a design. */
-  onDesignMove?: (dxFrac: number, dyFrac: number) => void;
+  /**
+   * Arrastre del diseño seleccionado, ya convertido 1:1 a coordenadas de
+   * placement: du = fracción de la vuelta, dv = fracción de la banda grabable.
+   */
+  onDesignMove?: (du: number, dv: number) => void;
+  /**
+   * Toque (sin arrastre) sobre el visor: el punto del cuerpo tocado, en
+   * coordenadas de placement (u, v de la banda), o null si no se tocó el cuerpo.
+   */
+  onTap?: (hit: { u: number; v: number } | null) => void;
   /** A design drag started (used to flash the front-face guides). */
   onDesignDragStart?: () => void;
   /** A design drag ended. */
@@ -139,6 +148,18 @@ function buildSilhouette(product: ProductDef, scale: number): Silhouette {
 }
 
 const FOV = 30;
+
+/** Pausa sin cambios tras la cual las texturas de borrador pasan a calidad completa. */
+const SETTLE_MS = 280;
+
+/** Cuánto gira solo el producto al aparecer, antes de quedarse quieto. */
+const IDLE_SPIN_MS = 8000;
+
+/** Celulares: menos píxeles y vidrio sin refracción real (ver lowPerf). */
+const LOW_PERF = (() => {
+  try { return typeof matchMedia !== "undefined" && matchMedia("(max-width: 768px)").matches; }
+  catch { return false; }
+})();
 const HALF_FOV_TAN = Math.tan((FOV / 2) * (Math.PI / 180));
 /** Conservative worst-case aspect (w/h) of the preview canvas. */
 const CANVAS_ASPECT = 0.7;
@@ -256,6 +277,9 @@ function ChoperaTop({ sil }: { sil: Silhouette }) {
   );
 }
 
+/** Marca el cuerpo grabable: el toque sobre el visor se resuelve contra esta malla. */
+const ENGRAVE_BODY = { engraveBody: true };
+
 /** Decoder Draco servido localmente (public/draco), no desde el CDN de Google. */
 const DRACO_PATH = "/draco/";
 
@@ -327,7 +351,7 @@ function ModelPieces({
   return (
     <>
       {parts.body && (
-        <mesh geometry={parts.body.geometry} castShadow receiveShadow>
+        <mesh geometry={parts.body.geometry} castShadow receiveShadow userData={ENGRAVE_BODY}>
           {bodyMaterial}
         </mesh>
       )}
@@ -426,7 +450,7 @@ function FrontFaceGuide({ sil, product }: { sil: Silhouette; product: ProductDef
 function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
   textPlacement, artPlacement, colorPrint, textColor, engraveStyle, singleFace, editSingleFace, showGuides, frontFaceU, glass,
-  designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, snapToURef,
+  designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, snapToURef,
   autoSpin = false, rotationLocked = false,
 }: {
   colorHex: string; finish: string; text: string;
@@ -436,9 +460,10 @@ function ThermosMesh({
   engraveStyle: EngraveStyle;
   singleFace: boolean; editSingleFace: boolean; showGuides: boolean; frontFaceU: number; glass: boolean;
   designActive: boolean;
-  onDesignMove?: (dxFrac: number, dyFrac: number) => void;
+  onDesignMove?: (du: number, dv: number) => void;
   onDesignDragStart?: () => void;
   onDesignDragEnd?: () => void;
+  onTap?: (hit: { u: number; v: number } | null) => void;
   snapToURef?: React.MutableRefObject<((u: number) => void) | null>;
   autoSpin?: boolean; rotationLocked?: boolean;
 }) {
@@ -452,11 +477,13 @@ function ThermosMesh({
   // "rotate" spins the piece; "design" drags the active mark across the face.
   const dragMode = useRef<"rotate" | "design">("rotate");
   const { gl } = useThree();
+  const get = useThree(s => s.get);
+  const invalidate = useThree(s => s.invalidate);
 
   // Latest design-drag inputs, read inside the (stable) pointer listeners so we
   // don't re-attach them every render when the callbacks change identity.
-  const designRef = useRef({ designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd });
-  designRef.current = { designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd };
+  const designRef = useRef({ designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, sil, product });
+  designRef.current = { designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, sil, product };
 
   const bodyGeo = useMemo(() => {
     const geo = new THREE.LatheGeometry(sil.points, 128);
@@ -633,6 +660,18 @@ function ThermosMesh({
   const dTextPlacement = useDeferredValue(textPlacement);
   const dArtPlacement = useDeferredValue(artPlacement);
 
+  // Mientras el cliente escribe, arrastra o prueba colores, las texturas se
+  // arman en borrador (¼ de los píxeles, sin desenfoques); la versión completa
+  // se arma una sola vez, cuando deja de tocar (~280 ms).
+  const [settled, setSettled] = useState(true);
+  const editStarted = useRef(false);
+  useEffect(() => {
+    if (!editStarted.current) { editStarted.current = true; return; }
+    setSettled(false);
+    const t = setTimeout(() => setSettled(true), SETTLE_MS);
+    return () => clearTimeout(t);
+  }, [dText, dTextPlacement, dArtPlacement, artMask, imageSize, colorHex]);
+
   // Steel/leather/wood body maps — skipped entirely for glass, which paints no
   // colour/roughness/metalness maps onto the clear body.
   const maps = useMemo(
@@ -640,10 +679,11 @@ function ThermosMesh({
       product, colorHex, finish: matProps, isGradientFinish: finish === "gradient",
       text: dText, textPlacement: dTextPlacement, fontFamily, artMask, imageSize, artPlacement: dArtPlacement,
       anisotropy: maxAnisotropy, colorPrint, textColor, artImage: customImageEl, engraveStyle, singleFace,
+      quality: settled ? "full" : "draft",
     }),
     // fontReady triggers re-creation once the font is actually loaded
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [glass, product, colorHex, matProps, finish, dText, dTextPlacement, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, textColor, customImageEl, engraveStyle, singleFace]
+    [glass, product, colorHex, matProps, finish, dText, dTextPlacement, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, textColor, customImageEl, engraveStyle, singleFace, settled]
   );
 
   // Four textures per rebuild, now coalesced to the settled input via useDeferredValue.
@@ -663,12 +703,18 @@ function ThermosMesh({
 
   // transmission (real refraction) is heavy; on phones fall back to a cheaper
   // transparent+reflection glass so the preview stays smooth.
-  const lowPerf = useMemo(() => {
-    try { return typeof matchMedia !== "undefined" && matchMedia("(max-width: 768px)").matches; }
-    catch { return false; }
-  }, []);
+  const lowPerf = LOW_PERF;
 
-  // Pointer drag handlers — both axes
+  // Giro automático de "vidriera": solo unos segundos al entrar o cambiar de
+  // producto. Con frameloop="demand", un giro eterno es render continuo.
+  const spinUntil = useRef(0);
+  useEffect(() => {
+    spinUntil.current = performance.now() + IDLE_SPIN_MS;
+    invalidate();
+  }, [product.id, invalidate]);
+  useEffect(() => { if (autoSpin) invalidate(); }, [autoSpin, invalidate]);
+
+  // Pointer handlers: girar, mover el diseño seleccionado y detectar toques.
   useEffect(() => {
     const canvas = gl.domElement;
 
@@ -680,6 +726,13 @@ function ThermosMesh({
     // generoso evita que un drag diagonal se sienta errático.
     const INTENT_SLOP = 10;
     let pendingTouch: { x: number; y: number; id: number } | null = null;
+    // Toque = soltar cerca de donde se apoyó y rápido. Sirve para seleccionar
+    // el diseño (o terminar la edición tocando fuera de él).
+    let down: { x: number; y: number; t: number; id: number } | null = null;
+    // El diseño no arranca a moverse hasta pasar este umbral: así un toque
+    // para seleccionar o deseleccionar no lo corre de lugar.
+    const DESIGN_SLOP = 5;
+    let designMoving = false;
 
     const startDrag = (e: PointerEvent, mode: "design" | "rotate") => {
       isDragging.current = true;
@@ -689,13 +742,13 @@ function ThermosMesh({
       lastY.current = e.clientY;
       lastTime.current = performance.now();
       dragMode.current = mode;
-      if (mode === "design") designRef.current.onDesignDragStart?.();
+      designMoving = false;
       canvas.setPointerCapture(e.pointerId);
     };
 
     const onDown = (e: PointerEvent) => {
-      // With a design active in single-face mode, this gesture repositions the
-      // mark on the frozen front face instead of rotating the piece.
+      down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
+      // Con un diseño seleccionado (en una cara), el gesto lo mueve; si no, gira.
       const d = designRef.current;
       const mode = d.designActive && d.editSingleFace ? "design" : "rotate";
       // Envolvente 360° while typing: manual rotation is locked (the piece is
@@ -721,6 +774,14 @@ function ThermosMesh({
         return;
       }
       if (!isDragging.current) return;
+      if (dragMode.current === "design" && !designMoving) {
+        if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) < DESIGN_SLOP) return;
+        designMoving = true;
+        lastX.current = e.clientX;
+        lastY.current = e.clientY;
+        designRef.current.onDesignDragStart?.();
+        return;
+      }
       const now = performance.now();
       const dt = Math.max(1, now - lastTime.current);
       const dx = e.clientX - lastX.current;
@@ -729,10 +790,17 @@ function ThermosMesh({
       lastY.current = e.clientY;
       lastTime.current = now;
       if (dragMode.current === "design") {
-        // Move the mark: screen delta as a fraction of the canvas. The parent
-        // maps it into the front-face rectangle and clamps.
+        // 1:1 con el dedo: píxeles de pantalla → metros sobre la cara frontal
+        // (a la distancia de la cámara) → fracción de la vuelta (u) y de la
+        // banda grabable (v).
+        const { sil: sl } = designRef.current;
+        const cam = get().camera as THREE.PerspectiveCamera;
         const rect = canvas.getBoundingClientRect();
-        designRef.current.onDesignMove?.(dx / rect.width, dy / rect.height);
+        const dist = Math.max(0.1, cam.position.z - sl.maxR);
+        const worldPerPx = (2 * dist * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2)) / Math.max(1, rect.height);
+        const du = (dx * worldPerPx) / (2 * Math.PI * sl.maxR);
+        const dv = (dy * worldPerPx) / Math.max(1e-6, sl.band[1] - sl.band[0]);
+        designRef.current.onDesignMove?.(du, dv);
         return;
       }
       velYaw.current   = dx / dt * 16;
@@ -743,12 +811,39 @@ function ThermosMesh({
         const newPitch = groupRef.current.rotation.x + dy * 0.008;
         groupRef.current.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, newPitch));
       }
+      invalidate();
     };
-    const onUp = () => {
+
+    /** Qué hay bajo el dedo: un punto del cuerpo (u, v de la banda) o nada. */
+    const pick = (e: PointerEvent): { u: number; v: number } | null => {
+      const group = groupRef.current;
+      if (!group) return null;
+      const { camera, raycaster } = get();
+      const rect = canvas.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(ndc, camera);
+      const hit = raycaster.intersectObject(group, true).find(h => (h.object as THREE.Mesh).isMesh && h.object.visible);
+      if (!hit || !hit.object.userData.engraveBody || !hit.uv) return null;
+      const [vBot, vTop] = bandRange(designRef.current.product);
+      return { u: hit.uv.x, v: (vTop - hit.uv.y) / Math.max(1e-6, vTop - vBot) };
+    };
+
+    const onUp = (e: PointerEvent) => {
+      const wasDesign = isDragging.current && dragMode.current === "design" && designMoving;
+      if (wasDesign) designRef.current.onDesignDragEnd?.();
+      const tap = !!down && e.type === "pointerup" && e.pointerId === down.id
+        && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8
+        && performance.now() - down.t < 500;
       pendingTouch = null;
-      if (isDragging.current && dragMode.current === "design") designRef.current.onDesignDragEnd?.();
+      down = null;
       isDragging.current = false;
       dragMode.current = "rotate";
+      designMoving = false;
+      if (tap) designRef.current.onTap?.(pick(e));
+      invalidate(); // la inercia sigue en useFrame
     };
 
     canvas.addEventListener("pointerdown", onDown);
@@ -764,7 +859,7 @@ function ThermosMesh({
       canvas.removeEventListener("pointerleave", onUp);
       canvas.removeEventListener("pointercancel", onUp);
     };
-  }, [gl]);
+  }, [gl, get, invalidate]);
 
   // "Edición en una cara": swing the front face to the camera when the mode is
   // entered (and if the configured front angle changes), so the customer looks
@@ -775,7 +870,8 @@ function ThermosMesh({
     groupRef.current.rotation.x = 0;
     velYaw.current = 0;
     velPitch.current = 0;
-  }, [editSingleFace, frontFaceU]);
+    invalidate();
+  }, [editSingleFace, frontFaceU, invalidate]);
 
   // Expose the same "swing u to camera" move imperatively, so the parent can
   // face the personalized area right before capturing the summary snapshot.
@@ -787,13 +883,17 @@ function ThermosMesh({
       groupRef.current.rotation.x = 0;
       velYaw.current = 0;
       velPitch.current = 0;
+      invalidate();
     };
     return () => { snapToURef.current = null; };
-  }, [snapToURef]);
+  }, [snapToURef, invalidate]);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
     if (isDragging.current) return;
+    // Con frameloop="demand" cada cuadro pide el siguiente solo mientras algo
+    // se mueve (giro, inercia o vuelta a la vertical).
+    let animating = false;
 
     // Envolvente 360° while typing: slow continuous spin so the customer sees
     // the text wrap the piece live. Overrides inertia/idle behaviour.
@@ -802,12 +902,14 @@ function ThermosMesh({
       groupRef.current.rotation.x *= 0.95; // ease back upright
       velYaw.current = 0;
       velPitch.current = 0;
+      invalidate();
       return;
     }
 
-    // Idle auto-spin only while the piece is blank; freeze once the customer is
-    // placing text/icon/image so they can position it calmly (still draggable).
-    // Single-face mode also freezes, keeping the front face pointed at the camera.
+    // Idle auto-spin only while the piece is blank (and only for a few seconds);
+    // freeze once the customer is placing text/icon/image so they can position
+    // it calmly (still draggable). Single-face mode also freezes, keeping the
+    // front face pointed at the camera.
     const hasContent = editSingleFace || !!text || (!!customImageUrl && imageSize !== "none");
     const hasYawInertia   = Math.abs(velYaw.current) > 0.001;
     const hasPitchInertia = Math.abs(velPitch.current) > 0.001;
@@ -815,20 +917,29 @@ function ThermosMesh({
     if (hasYawInertia) {
       groupRef.current.rotation.y += velYaw.current * delta;
       velYaw.current *= 0.90;
+      animating = true;
     } else {
       velYaw.current = 0;
-      if (!hasContent) groupRef.current.rotation.y += delta * 0.55;
+      if (!hasContent && performance.now() < spinUntil.current) {
+        groupRef.current.rotation.y += delta * 0.55;
+        animating = true;
+      }
     }
 
     if (hasPitchInertia) {
       const newPitch = groupRef.current.rotation.x + velPitch.current * delta;
       groupRef.current.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, newPitch));
       velPitch.current *= 0.90;
+      animating = true;
     } else {
       velPitch.current = 0;
       // Gently return to upright
       groupRef.current.rotation.x *= 0.97;
+      if (Math.abs(groupRef.current.rotation.x) > 0.0005) animating = true;
+      else groupRef.current.rotation.x = 0;
     }
+
+    if (animating) invalidate();
   });
 
   // Keyed on finish: three only recompiles a shader when material.version
@@ -860,7 +971,7 @@ function ThermosMesh({
         <>
           {/* Clear glass body — real refraction via transmission (lite fallback
               on phones uses plain transparency + reflections instead). */}
-          <mesh geometry={bodyGeo} castShadow receiveShadow>
+          <mesh geometry={bodyGeo} castShadow receiveShadow userData={ENGRAVE_BODY}>
             <meshPhysicalMaterial
               key={lowPerf ? "glass-lite" : "glass"}
               color="#ffffff"
@@ -883,7 +994,7 @@ function ThermosMesh({
               out to sit on the glass surface without z-fighting; FrontSide so the
               back-face mark doesn't muddy the read when the glass is rotated. */}
           {glassFrost && (
-            <mesh geometry={bodyGeo} scale={1.004}>
+            <mesh geometry={bodyGeo} scale={1.004} userData={ENGRAVE_BODY}>
               <meshPhysicalMaterial
                 color="#ffffff"
                 map={glassFrost.frostMap}
@@ -906,7 +1017,7 @@ function ThermosMesh({
         product.model ? (
           <ModelPieces product={product} sil={sil} colorHex={colorHex} finish={finish} bodyMaterial={bodyMaterial} />
         ) : (
-          <mesh geometry={bodyGeo} castShadow receiveShadow>
+          <mesh geometry={bodyGeo} castShadow receiveShadow userData={ENGRAVE_BODY}>
             {bodyMaterial}
           </mesh>
         )
@@ -1267,7 +1378,10 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
       // Cap the pixel ratio so high-DPI phones don't render 3–4× the pixels of a
       // transmission/glass scene (keeps it smooth and eases GPU memory pressure).
       // Piso 1 (no 1.5): en gama baja el dpr nativo es la resolución justa.
-      dpr={[1, 2]}
+      dpr={[1, LOW_PERF ? 1.5 : 2]}
+      // Solo se dibuja cuando algo cambia (giro, arrastre, diseño): quieto, el
+      // visor no gasta batería ni CPU. ThermosMesh pide cuadros mientras anima.
+      frameloop="demand"
       // preserveDrawingBuffer keeps the last frame readable so we can capture a
       // PNG of the finished piece (canvas.toDataURL) for the WhatsApp summary.
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
@@ -1293,9 +1407,9 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
       }}
     >
       <Rig sil={sil} />
+      <StudioLighting intensity={0.9} />
 
       <Suspense fallback={null}>
-        <Environment preset="studio" environmentIntensity={0.9} />
 
         <ThermosMesh
           colorHex={props.colorHex}
@@ -1320,6 +1434,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           onDesignMove={props.onDesignMove}
           onDesignDragStart={props.onDesignDragStart}
           onDesignDragEnd={props.onDesignDragEnd}
+          onTap={props.onTap}
           snapToURef={props.snapToURef}
           autoSpin={props.autoSpin ?? false}
           rotationLocked={props.rotationLocked ?? false}

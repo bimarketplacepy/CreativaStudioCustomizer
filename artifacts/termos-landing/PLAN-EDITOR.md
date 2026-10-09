@@ -1,7 +1,7 @@
 # PLAN — Editor del personalizador: simple, rápido y listo para Odoo
 
 **Fecha:** 2026-10-09 · Complementa `Mejoras.md` §4 (diagnóstico de la creación de diseños) y §6 (hoja de ruta).
-**Estado:** propuesta, pendiente de aprobación del dueño.
+**Estado:** etapas 1 y 2 implementadas (2026-10-09, ver §5); etapas 3 y 4 pendientes.
 
 ---
 
@@ -103,3 +103,34 @@ Cada etapa se mide con los eventos que ya existen (`customizer_view` → `order_
 1. ¿"Acero inoxidable" pasa a ser un color o queda como material aparte?
 2. Otros materiales (cuero, madera, cristal, plástico, bolígrafos): ¿siguen en el editor bajo "Otros productos" o van directo a WhatsApp?
 3. ¿Arrancamos por la etapa 1 + 2 (rendimiento + "Listo"), que es lo que más se nota?
+
+---
+
+## 5. Implementado — etapas 1 y 2 (2026-10-09)
+
+### Etapa 1 · Rendimiento
+- **Iluminación local** (`studio-lighting.tsx`): `RoomEnvironment` de three.js generado en el navegador. Sale el HDR de GitHub (1,64 MB) en el termo y en los objetos planos.
+- **Render a demanda** (`frameloop="demand"`): el visor dibuja solo mientras algo se mueve (giro, inercia, arrastre). Quieto: **0 dibujos** (antes, 60 por segundo). El giro de vidriera dura 8 s al entrar o cambiar de producto.
+- **Resolución tope 1,5×** en celulares.
+- **Texturas del grabado en dos calidades** (`engraving-maps.ts`): mientras se escribe, arrastra o cambia el color, un borrador con ¼ de los píxeles y sin desenfoques; la versión completa se arma una vez, 280 ms después de la última tecla. En la versión completa, los desenfoques se limitan a la zona del diseño y los mapas de rugosidad y metal van a la mitad de resolución.
+- **Tipografías a demanda**: el carrusel aplica cada fuente recién cuando el chip entra en pantalla.
+- **Captura del 3D** (PNG para el resumen) en un momento ocioso, 1,2 s después del último cambio, y no cada 500 ms.
+
+### Etapa 2 · Mirar / editar
+- **Arrastrar siempre gira la pieza**, salvo que haya un diseño seleccionado.
+- **Se selecciona** al crearlo (primera letra, ícono elegido, imagen subida), al **tocarlo sobre el producto** o con **"Mover o editar diseño"**. La pieza gira para mostrarlo de frente.
+- **Barra de edición** debajo del visor (no lo tapa): **− / + / Centrar / Deshacer / Borrar / ✓ Listo**. Tocar fuera del diseño también termina.
+- **Movimiento 1:1 con el dedo** (el visor convierte píxeles a la vuelta y la altura reales del cuerpo).
+- **Deshacer** (hasta 30 pasos: arrastres, tamaño, centrar, borrar) y **"Deshacer borrado"** durante 6 s.
+- Sale la cruz de flechas. Al pasar al resumen o enviar, la edición se termina sola (sin guías en la foto).
+- Eventos nuevos: `design_select` (`kind`, `source`: create / tap / button), `design_done`, `design_undo`, `design_delete`.
+
+### Medido (celular simulado: 390 px, CPU ×4, GPU por software)
+| | Antes | Después |
+|---|---|---|
+| Transferido al abrir el personalizador | 3,6 MB | **1,3 MB** |
+| Dibujos del 3D con todo quieto | continuo | **0** |
+| Bloqueo por tecla al escribir un nombre | hasta 8 s | **50–250 ms** (borrador) |
+| Pasada de calidad completa al dejar de escribir | en cada tecla | **una vez** |
+
+**Pendiente de verificar en un celular real:** en el entorno de prueba (GPU emulada por software) la pasada de calidad completa todavía bloquea 1–6 s; la traza muestra que es espera de la GPU emulada, no JavaScript. En un celular con GPU real debería ser mucho menor: medirlo en uno de gama media antes de la etapa 3.

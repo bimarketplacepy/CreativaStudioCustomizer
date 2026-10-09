@@ -15,6 +15,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
   WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
   ChevronUp, Crosshair, CirclePlay, Orbit, Link2, MessageCircle, MapPin, HandCoins,
+  Undo2, Trash2,
 } from "lucide-react";
 import Thermos3D from "./thermos-3d";
 import Object3D from "./object-3d";
@@ -395,55 +396,74 @@ function TechniqueSelector({ value, onChange }: { value: TechniqueId; onChange: 
 const PAD_BASE = 0.15; // element half-size as a fraction of the pad, at scale 1
 
 /**
- * Compact, semi-transparent position pad that floats over the 3D visor. Appears
- * only while a design is active. Four arrows nudge the active mark, the centre
- * button recentres it, and the whole thing collapses to a single grip button so
- * it never gets in the way of the product.
+ * Barra de edición sobre el visor mientras hay un diseño seleccionado: tamaño,
+ * centrar, deshacer, borrar y un "Listo" bien visible para terminar y volver a
+ * girar la pieza. Reemplaza a la cruz de flechas: el diseño se mueve
+ * arrastrándolo directamente sobre el producto.
  */
-function DesignNudgeControl({ side, onNudge, onCenter }: {
-  side: "left" | "right";
-  onNudge: (dx: number, dy: number) => void;
+function DesignEditBar({ kindLabel, onSmaller, onBigger, onCenter, onUndo, onDelete, onDone }: {
+  kindLabel: string;
+  onSmaller: () => void;
+  onBigger: () => void;
   onCenter: () => void;
+  onUndo: (() => void) | null;
+  onDelete: () => void;
+  onDone: () => void;
 }) {
-  const [open, setOpen] = useState(true);
-  const pos = side === "left" ? "left-2.5" : "right-2.5";
-  // 36px + gap 6px: targets tocables sin que el pad (≈132×154px) desborde el
-  // visor móvil (mínimo 210px de alto, ancho ≈328px en un viewport de 360).
-  const btn = "w-9 h-9 grid place-items-center rounded-md text-foreground/75 hover:text-primary hover:bg-white active:scale-90 transition";
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label="Mostrar controles de posición"
-        className={`absolute bottom-2.5 ${pos} z-20 w-9 h-9 grid place-items-center rounded-full bg-white/70 backdrop-blur-sm border border-border shadow-sm text-primary`}
-      >
-        <Move className="w-4 h-4" />
-      </button>
-    );
-  }
-
+  const btn = "w-10 h-10 grid place-items-center rounded-lg text-foreground/80 hover:text-primary hover:bg-white active:scale-90 transition disabled:opacity-35 disabled:pointer-events-none";
   return (
-    <div className={`absolute bottom-2.5 ${pos} z-20 rounded-xl bg-white/70 backdrop-blur-sm border border-border shadow-md p-1.5 select-none touch-none`}>
-      <div className="flex items-center justify-between gap-3 px-1 pb-1">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Posición</span>
-        {/* p-2 -m-1: agranda el target táctil (~30px) sin mover el layout. */}
-        <button type="button" onClick={() => setOpen(false)} aria-label="Ocultar controles" className="p-2 -m-1 text-muted-foreground hover:text-foreground active:text-foreground">
-          <ChevronDown className="w-4 h-4" />
+    <div className="relative z-20 flex flex-col items-center gap-1 select-none px-2">
+      <span className="text-xs text-muted-foreground">
+        Editando {kindLabel} · arrastralo sobre el producto
+      </span>
+      <div className="flex items-center gap-1 rounded-xl bg-white border border-border shadow-sm p-1">
+        <button type="button" aria-label="Achicar" title="Achicar" className={btn} onClick={onSmaller}><Minus className="w-4 h-4" /></button>
+        <button type="button" aria-label="Agrandar" title="Agrandar" className={btn} onClick={onBigger}><Plus className="w-4 h-4" /></button>
+        <button type="button" aria-label="Centrar" title="Centrar" className={btn} onClick={onCenter}><Crosshair className="w-4 h-4" /></button>
+        <button type="button" aria-label="Deshacer" title="Deshacer" className={btn} onClick={onUndo ?? undefined} disabled={!onUndo}><Undo2 className="w-4 h-4" /></button>
+        <button type="button" aria-label="Borrar" title="Borrar" className={btn} onClick={onDelete}><Trash2 className="w-4 h-4" /></button>
+        <button
+          type="button"
+          onClick={onDone}
+          className="ml-1 h-10 px-4 inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold shadow-sm active:scale-95 transition"
+        >
+          <Check className="w-4 h-4" /> Listo
         </button>
       </div>
-      <div className="grid grid-cols-3 gap-1.5">
-        <span />
-        <button type="button" aria-label="Subir" className={btn} onClick={() => onNudge(0, -1)}><ChevronUp className="w-4 h-4" /></button>
-        <span />
-        <button type="button" aria-label="Mover a la izquierda" className={btn} onClick={() => onNudge(-1, 0)}><ChevronLeft className="w-4 h-4" /></button>
-        <button type="button" aria-label="Centrar" className={btn} onClick={onCenter}><Crosshair className="w-4 h-4" /></button>
-        <button type="button" aria-label="Mover a la derecha" className={btn} onClick={() => onNudge(1, 0)}><ChevronRight className="w-4 h-4" /></button>
-        <span />
-        <button type="button" aria-label="Bajar" className={btn} onClick={() => onNudge(0, 1)}><ChevronDown className="w-4 h-4" /></button>
-        <span />
-      </div>
+    </div>
+  );
+}
+
+/**
+ * Con un diseño puesto pero sin editar: el visor gira libremente y este botón
+ * (o tocar el diseño sobre el producto) entra a editarlo. Tras borrar algo,
+ * ofrece deshacerlo unos segundos.
+ */
+function DesignIdleActions({ onEdit, onUndoDelete }: {
+  onEdit: (() => void) | null;
+  onUndoDelete: (() => void) | null;
+}) {
+  if (!onEdit && !onUndoDelete) return null;
+  return (
+    <div className="relative z-20 flex flex-wrap justify-center gap-2 px-2">
+      {onUndoDelete && (
+        <button
+          type="button"
+          onClick={onUndoDelete}
+          className="h-10 px-4 inline-flex items-center gap-1.5 rounded-full bg-foreground text-background text-sm font-medium shadow-sm active:scale-95 transition"
+        >
+          <Undo2 className="w-4 h-4" /> Deshacer borrado
+        </button>
+      )}
+      {onEdit && (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="h-10 px-4 inline-flex items-center gap-1.5 rounded-full bg-white text-foreground text-sm font-medium border border-border shadow-sm active:scale-95 transition"
+        >
+          <Move className="w-4 h-4 text-primary" /> Mover o editar diseño
+        </button>
+      )}
     </div>
   );
 }
@@ -500,7 +520,7 @@ function PlacementControls({
   hideOrientation?: boolean;
 }) {
   // Position now lives on the 3D visor (drag + floating pad), so this component
-  // only carries size and orientation. See DesignNudgeControl / moveActivePlacement.
+  // only carries size and orientation. See DesignEditBar / onDesignMoveUV.
   const clampScale = (n: number) => Math.max(0.3, Math.min(1.5, n));
   const set = (patch: Partial<Placement>) => onChange({ ...value, ...patch });
 
@@ -700,26 +720,62 @@ function FontCarousel({ fonts, value, onChange, sampleText }: {
   onChange: (id: string) => void;
   sampleText: string;
 }) {
+  const stripRef = useRef<HTMLDivElement>(null);
   return (
-    <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 snap-x [scrollbar-width:thin]">
-      {fonts.map((f, i) => {
-        const on = f.id === value;
-        return (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => onChange(f.id)}
-            title={f.name}
-            className={`snap-start shrink-0 w-[104px] px-3 py-2.5 border rounded-xl text-center transition-all ${on ? activeCard : idleCard}`}
-          >
-            <span className={`block text-lg leading-tight truncate ${on ? "text-primary" : "text-foreground"}`} style={f.style}>
-              {sampleText || f.name}
-            </span>
-            <span className="block text-[11px] text-muted-foreground mt-0.5 truncate">{i + 1}. {f.name}</span>
-          </button>
-        );
-      })}
+    <div ref={stripRef} className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 snap-x [scrollbar-width:thin]">
+      {fonts.map((f, i) => (
+        <FontChip
+          key={f.id}
+          font={f}
+          index={i}
+          on={f.id === value}
+          onPick={() => onChange(f.id)}
+          sampleText={sampleText}
+          stripRef={stripRef}
+        />
+      ))}
     </div>
+  );
+}
+
+/**
+ * Una tipografía del carrusel. Recién aplica su fuente cuando el chip entra en
+ * pantalla (o está elegida): así el navegador baja solo las 3–4 visibles y no
+ * las ~20 (≈750 KB) apenas se abre el paso de diseño.
+ */
+function FontChip({ font: f, index, on, onPick, sampleText, stripRef }: {
+  font: (typeof FONTS)[number];
+  index: number;
+  on: boolean;
+  onPick: () => void;
+  sampleText: string;
+  stripRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    if (seen || !ref.current) return;
+    if (typeof IntersectionObserver === "undefined") { setSeen(true); return; }
+    const io = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) setSeen(true); },
+      { root: stripRef.current, rootMargin: "0px 120px" },
+    );
+    io.observe(ref.current);
+    return () => io.disconnect();
+  }, [seen, stripRef]);
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onPick}
+      title={f.name}
+      className={`snap-start shrink-0 w-[104px] px-3 py-2.5 border rounded-xl text-center transition-all ${on ? activeCard : idleCard}`}
+    >
+      <span className={`block text-lg leading-tight truncate ${on ? "text-primary" : "text-foreground"}`} style={seen || on ? f.style : undefined}>
+        {sampleText || f.name}
+      </span>
+      <span className="block text-[11px] text-muted-foreground mt-0.5 truncate">{index + 1}. {f.name}</span>
+    </button>
   );
 }
 
@@ -1446,12 +1502,17 @@ export default function Customizer() {
   // ── Design drag / nudge (posicionamiento sobre el 3D) ───────────────────────
   // Which mark a drag-on-3D gesture or the floating d-pad moves: follow the open
   // editor tab, then fall back to whatever design actually exists.
+  // Dos modos bien separados: MIRAR (arrastrar gira la pieza) y EDITAR un
+  // elemento seleccionado (arrastrar lo mueve, con "Listo" para terminar). Se
+  // entra a editar al crear algo, al tocarlo sobre el producto o con el botón
+  // "Mover o editar diseño".
   const hasText = !!text;
   const hasArt = !!artUrl && artImageSize !== "none";
+  const [selected, setSelected] = useState<"text" | "art" | null>(null);
   const activeDesignKind: "text" | "art" | null =
-    drinkTab === "text" ? (hasText ? "text" : hasArt ? "art" : null)
-    : (drinkTab === "icons" || drinkTab === "media") ? (hasArt ? "art" : hasText ? "text" : null)
-    : hasText ? "text" : hasArt ? "art" : null;
+    selected === "text" && hasText ? "text"
+    : selected === "art" && hasArt ? "art"
+    : null;
   const designActive = activeDesignKind !== null;
 
   // Modo de edición vigente sobre el visor 3D. La "edición libre" del
@@ -1472,6 +1533,7 @@ export default function Customizer() {
   const beginDesignDrag = React.useCallback(() => {
     if (guidesTimer.current) { clearTimeout(guidesTimer.current); guidesTimer.current = null; }
     setGuidesActive(true);
+    setHistory(h => [...h.slice(-29), snapshotRef.current]);
   }, []);
   const endDesignDrag = React.useCallback(() => { flashGuides(); }, [flashGuides]);
 
@@ -1520,13 +1582,58 @@ export default function Customizer() {
     flashGuides();
   }, [is3DObject, product, activeDesignKind, clampTextP, clampArtP, flashGuides]);
 
-  // Drag delta (fraction of the canvas) → pad delta. The front face fills roughly
-  // the middle half of the canvas, so a gain just under 2 tracks the finger.
+  // Objetos planos (billetera, tabla…): delta del arrastre como fracción del
+  // canvas → delta del pad. La cara ocupa más o menos la mitad del visor.
   const onDesignMove = React.useCallback((dxFrac: number, dyFrac: number) => {
     moveActivePlacement(dxFrac * 1.7, dyFrac * 1.5);
   }, [moveActivePlacement]);
 
-  const NUDGE_STEP = 0.06;
+  // Drinkware: el visor ya convierte el arrastre 1:1 a u (vuelta) y v (banda),
+  // así el diseño queda pegado al dedo. En una cara se re-encuadra en el área.
+  const onDesignMoveUV = React.useCallback((du: number, dv: number) => {
+    const apply = (p: Placement, clampFn: (q: Placement) => Placement, sf: boolean): Placement => {
+      if (sf) return clampFn({ ...p, u: p.u + du, v: p.v + dv });
+      let u = p.u + du; u -= Math.floor(u);
+      return { ...p, u, v: Math.max(0, Math.min(1, p.v + dv)) };
+    };
+    if (activeDesignKind === "text") setTextPlacement(p => apply(p, clampTextP, singleFace));
+    else if (activeDesignKind === "art") setArtPlacement(p => apply(p, clampArtP, true));
+  }, [activeDesignKind, clampTextP, clampArtP, singleFace]);
+
+  // ── Deshacer ────────────────────────────────────────────────────────────────
+  // Una foto del diseño antes de cada acción (arrastre, tamaño, centrar,
+  // borrar). "Deshacer" vuelve a la anterior.
+  type DesignSnapshot = {
+    text: string; textPlacement: Placement; artPlacement: Placement;
+    iconId: string | null; customImage: ProcessedImage | null;
+  };
+  const [history, setHistory] = useState<DesignSnapshot[]>([]);
+  const historyRef = useRef(history);
+  historyRef.current = history;
+  const snapshotRef = useRef<DesignSnapshot>({ text, textPlacement, artPlacement, iconId, customImage });
+  snapshotRef.current = { text, textPlacement, artPlacement, iconId, customImage };
+  const pushHistory = React.useCallback(() => {
+    setHistory(h => [...h.slice(-29), snapshotRef.current]);
+  }, []);
+  const undo = React.useCallback(() => {
+    const h = historyRef.current;
+    const last = h[h.length - 1];
+    if (!last) return;
+    setText(last.text);
+    setTextPlacement(last.textPlacement);
+    setArtPlacement(last.artPlacement);
+    setIconId(last.iconId);
+    setCustomImage(last.customImage);
+    setHistory(h.slice(0, -1));
+    track("design_undo");
+  }, []);
+  // Tras borrar, el elemento (y su barra) desaparece: ofrecemos deshacer unos segundos.
+  const [undoDeleteUntil, setUndoDeleteUntil] = useState(0);
+  React.useEffect(() => {
+    if (!undoDeleteUntil) return;
+    const t = setTimeout(() => setUndoDeleteUntil(0), Math.max(0, undoDeleteUntil - Date.now()));
+    return () => clearTimeout(t);
+  }, [undoDeleteUntil]);
 
   // ── Snap-to-design para la captura ──────────────────────────────────────────
   // El visor grande registra acá una función que gira la pieza para que un u de
@@ -1541,6 +1648,80 @@ export default function Customizer() {
     ? FRONT_FACE.uCenter
     : activeDesignKind === "text" ? textPlacement.u
     : FRONT_FACE.uCenter;
+
+  // ── Seleccionar / terminar ──────────────────────────────────────────────────
+  const selectDesign = React.useCallback((kind: "text" | "art", source: string) => {
+    setSelected(kind);
+    setUndoDeleteUntil(0);
+    // La pieza gira para mostrar de frente lo que se va a editar.
+    thermosSnapRef.current?.(kind === "text" && !singleFace ? textPlacement.u : FRONT_FACE.uCenter);
+    flashGuides();
+    track("design_select", { kind, source });
+  }, [singleFace, textPlacement.u, flashGuides]);
+
+  const finishEditing = React.useCallback(() => {
+    setSelected(null);
+    if (guidesTimer.current) { clearTimeout(guidesTimer.current); guidesTimer.current = null; }
+    setGuidesActive(false);
+    track("design_done");
+  }, []);
+
+  // Recién creado (primer letra, ícono elegido, imagen subida): ya queda
+  // seleccionado para acomodarlo, con "Listo" a mano.
+  const prevHasText = useRef(hasText);
+  React.useEffect(() => {
+    if (hasText && !prevHasText.current) selectDesign("text", "create");
+    prevHasText.current = hasText;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasText]);
+  const prevArtUrl = useRef(artUrl);
+  React.useEffect(() => {
+    if (artUrl && artUrl !== prevArtUrl.current && hasArt) selectDesign("art", "create");
+    prevArtUrl.current = artUrl;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [artUrl]);
+
+  // Toque sobre el visor: sobre un diseño lo selecciona; en cualquier otro
+  // lado, si se estaba editando, termina (igual que "Listo").
+  const handleViewerTap = React.useCallback((hit: { u: number; v: number } | null) => {
+    const over = (p: Placement, ext: MarkHalfExtents) => {
+      if (!hit) return false;
+      const du = hit.u - p.u - Math.round(hit.u - p.u); // distancia en la vuelta, con costura
+      // Margen generoso (≈ un dedo): tocar cerca del diseño también lo toma.
+      return Math.abs(du) <= ext.halfU + 0.05 && Math.abs(hit.v - p.v) <= ext.halfV + 0.1;
+    };
+    if (hasText && over(textPlacement, textExtents)) { if (activeDesignKind !== "text") selectDesign("text", "tap"); return; }
+    if (hasArt && over(artPlacement, artExtents)) { if (activeDesignKind !== "art") selectDesign("art", "tap"); return; }
+    if (activeDesignKind) finishEditing();
+  }, [hasText, hasArt, textPlacement, artPlacement, textExtents, artExtents, activeDesignKind, selectDesign, finishEditing]);
+
+  // Acciones de la barra de edición.
+  const resizeActive = (delta: number) => {
+    pushHistory();
+    if (activeDesignKind === "text") {
+      const max = Math.min(TEXT_SCALE_MAX, wrapMaxScale);
+      const scale = Math.max(TEXT_SCALE_MIN, Math.min(max, Math.round((textPlacement.scale + delta) * 100) / 100));
+      applyTextPlacement({ ...textPlacement, scale });
+    } else if (activeDesignKind === "art") {
+      const scale = Math.max(0.3, Math.min(1.5, Math.round((artPlacement.scale + delta) * 100) / 100));
+      applyArtPlacement({ ...artPlacement, scale });
+    }
+    flashGuides();
+  };
+  const deleteActive = () => {
+    pushHistory();
+    if (activeDesignKind === "text") setText("");
+    else if (activeDesignKind === "art") { if (iconId) setIconId(null); else setCustomImage(null); }
+    setSelected(null);
+    setUndoDeleteUntil(Date.now() + 6000);
+    track("design_delete", { kind: activeDesignKind ?? "" });
+  };
+  const centerWithHistory = () => { pushHistory(); centerActivePlacement(); };
+  const editLabel = activeDesignKind === "text" ? "el texto" : iconId ? "el ícono" : "la imagen";
+  // Sin editar: el botón entra al elemento de la pestaña abierta (o al que haya).
+  const idleEditKind: "text" | "art" | null =
+    (drinkTab === "icons" || drinkTab === "media") ? (hasArt ? "art" : hasText ? "text" : null)
+    : hasText ? "text" : hasArt ? "art" : null;
 
   // ── Preview capture ─────────────────────────────────────────────────────────
   // Grab a PNG of the live 3D canvas (preserveDrawingBuffer keeps the last frame
@@ -1580,12 +1761,23 @@ export default function Customizer() {
   // Refresh the stored snapshot ~500ms after the design settles, while the canvas
   // is still on screen (design step / desktop). On mobile the canvas unmounts at
   // Step 4, so this keeps the last good frame captured during Step 3.
+  // Codificar el PNG cuesta: se hace con el diseño quieto un rato y en un
+  // momento ocioso del navegador, nunca entre tecla y tecla. (Al pasar al
+  // resumen y al enviar se vuelve a capturar igual, con el diseño de frente.)
   React.useEffect(() => {
+    let idle: number | null = null;
     const t = setTimeout(() => {
-      const img = capturePreview();
-      if (img) { setPreviewImg(img); previewImgRef.current = img; }
-    }, 500);
-    return () => clearTimeout(t);
+      const run = () => {
+        const img = capturePreview();
+        if (img) { setPreviewImg(img); previewImgRef.current = img; }
+      };
+      if (typeof window.requestIdleCallback === "function") idle = window.requestIdleCallback(run, { timeout: 2000 });
+      else run();
+    }, 1200);
+    return () => {
+      clearTimeout(t);
+      if (idle !== null && typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(idle);
+    };
   }, [
     capturePreview, isDrinkware, is3DObject, productId, viewSize, activeColorHex,
     finish, text, font, iconId, artUrl, textColor, effectiveTechnique, isGlass,
@@ -1861,6 +2053,7 @@ export default function Customizer() {
     try {
       // Girar el área personalizada de frente y esperar el repintado, para que
       // la captura muestre el diseño completo.
+      if (activeDesignKind) finishEditing();
       thermosSnapRef.current?.(designFaceU);
       await new Promise(resolve => setTimeout(resolve, 150));
 
@@ -2671,34 +2864,42 @@ export default function Customizer() {
                       frontFaceU={FRONT_FACE.uCenter}
                       glass={isGlass}
                       designActive={designActive}
-                      onDesignMove={onDesignMove}
+                      onDesignMove={onDesignMoveUV}
                       onDesignDragStart={beginDesignDrag}
                       onDesignDragEnd={endDesignDrag}
+                      onTap={handleViewerTap}
                       snapToURef={thermosSnapRef}
                       autoSpin={wrapSpin}
                       rotationLocked={wrapSpin}
                     />
-                    {/* Floating position control — over the visor, on the side that
-                        least covers the piece (left for the termo, whose D-grip is on
-                        the right). Only while a design is active. */}
-                    {designActive && (
-                      <DesignNudgeControl
-                        side={product.handle === "body-d" || product.handle === "body-square" ? "left" : "right"}
-                        onNudge={(dx, dy) => { moveActivePlacement(dx * NUDGE_STEP, dy * NUDGE_STEP); flashGuides(); }}
-                        onCenter={centerActivePlacement}
-                      />
-                    )}
-                    {!designActive && !wrapSpin && <RotateHintChip />}
+                    {!designActive && !idleEditKind && !undoDeleteUntil && !wrapSpin && <RotateHintChip />}
                   </div>
 
-                  <div className="flex items-center gap-3 -mt-1 mb-1">
-                    <p className="text-xs text-muted-foreground">
-                      {wrapSpin
-                        ? "Girando para mostrar el texto envolvente…"
-                        : designActive
-                        ? (editSingleFace ? "Arrastrá el diseño sobre el producto" : "Arrastrá para girar")
-                        : "Arrastrá para girar"}
-                    </p>
+                  {/* Debajo del visor (no encima): la barra nunca tapa la pieza. */}
+                  <div className="-mt-1 mb-2 min-h-6 flex flex-col items-center gap-1.5">
+                    {wrapSpin ? (
+                      <p className="text-xs text-muted-foreground">Girando para mostrar el texto envolvente…</p>
+                    ) : designActive ? (
+                      <DesignEditBar
+                        kindLabel={editLabel}
+                        onSmaller={() => resizeActive(-0.1)}
+                        onBigger={() => resizeActive(0.1)}
+                        onCenter={centerWithHistory}
+                        onUndo={history.length ? undo : null}
+                        onDelete={deleteActive}
+                        onDone={finishEditing}
+                      />
+                    ) : (
+                      <>
+                        <p className="text-xs text-muted-foreground">
+                          {idleEditKind ? "Arrastrá para girar · tocá tu diseño para moverlo" : "Arrastrá para girar"}
+                        </p>
+                        <DesignIdleActions
+                          onEdit={idleEditKind ? () => selectDesign(idleEditKind, "button") : null}
+                          onUndoDelete={undoDeleteUntil ? () => { setUndoDeleteUntil(0); undo(); } : null}
+                        />
+                      </>
+                    )}
                   </div>
 
                   {/* Summary badges — hidden on mobile to keep the sticky preview compact. */}
@@ -2741,19 +2942,30 @@ export default function Customizer() {
                       onDesignDragStart={beginDesignDrag}
                       onDesignDragEnd={endDesignDrag}
                     />
-                    {designActive && (
-                      <DesignNudgeControl
-                        side="right"
-                        onNudge={(dx, dy) => { moveActivePlacement(dx * NUDGE_STEP, dy * NUDGE_STEP); flashGuides(); }}
-                        onCenter={centerActivePlacement}
-                      />
-                    )}
-                    {!designActive && <RotateHintChip />}
+                    {!designActive && !idleEditKind && !undoDeleteUntil && <RotateHintChip />}
                   </div>
 
-                  <p className="text-xs text-muted-foreground -mt-1 mb-1">
-                    {designActive ? "Arrastrá el diseño sobre el producto" : "Arrastrá para girar"}
-                  </p>
+                  <div className="-mt-1 mb-2 min-h-6 flex flex-col items-center gap-1.5">
+                    {designActive ? (
+                      <DesignEditBar
+                        kindLabel={editLabel}
+                        onSmaller={() => resizeActive(-0.1)}
+                        onBigger={() => resizeActive(0.1)}
+                        onCenter={centerWithHistory}
+                        onUndo={history.length ? undo : null}
+                        onDelete={deleteActive}
+                        onDone={finishEditing}
+                      />
+                    ) : (
+                      <>
+                        <p className="text-xs text-muted-foreground">Arrastrá para girar</p>
+                        <DesignIdleActions
+                          onEdit={idleEditKind ? () => selectDesign(idleEditKind, "button") : null}
+                          onUndoDelete={undoDeleteUntil ? () => { setUndoDeleteUntil(0); undo(); } : null}
+                        />
+                      </>
+                    )}
+                  </div>
 
                   <div className="flex flex-wrap gap-2 justify-center px-4 pb-4">
                     <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground">
@@ -3315,6 +3527,8 @@ export default function Customizer() {
               // the Step 4 image always shows the design completely, no matter
               // how the user left the piece rotated.
               if (mobileStep === designStepIndex) {
+                // Terminar la edición: sin guías ni selección en la foto.
+                if (activeDesignKind) finishEditing();
                 thermosSnapRef.current?.(designFaceU);
                 setTimeout(() => {
                   const img = capturePreview();
