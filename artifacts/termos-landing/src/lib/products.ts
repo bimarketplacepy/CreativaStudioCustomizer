@@ -315,9 +315,10 @@ export const PRODUCTS: ProductDef[] = [
     name: "Vasos con manija",
     singular: "Vaso con manija",
     // Hydrate "Vaso con Pico y Agarre" 887 ml — primera forma con modelo real
-    // (artifacts/3D/forma-vaso-manija.glb). Perfil = radio del cuerpo medido
+    // (artifacts/3D/forma-vaso-manijaV4.glb). Perfil = radio del cuerpo medido
     // sobre el .glb (m × 12, centrado en 0,1015 m). Cuerpo cónico abajo, escalón
-    // a ~45% de la altura y parte superior casi recta, donde va la manija.
+    // a ~45% de la altura y parte superior casi recta, donde va la manija. La V4
+    // suma el logo Hydrate, que en el .glb ya está atrás (−Z): sin giro extra.
     desc: "Vaso térmico de 887 ml con manija lateral y tapa transparente.",
     cap: "none",
     handle: "none",
@@ -333,7 +334,7 @@ export const PRODUCTS: ProductDef[] = [
     // el área no baja al escalón del cuerpo ni toca la manija.
     frontFace: { uHalfWidth: 0.16, vCenter: 0.27, vHeightFrac: 0.46 },
     model: {
-      url: "/models/forma-vaso-manija.glb?v=3",
+      url: "/models/forma-vaso-manija.glb?v=4",
       exactFor: ["Vaso con Pico y Agarre"],
       unitsPerMeter: 12,
       centerYm: 0.1015,
@@ -383,9 +384,10 @@ export const PRODUCTS: ProductDef[] = [
     id: "vaso-sunbeam",
     name: "Vasos Sunbeam",
     singular: "Vaso Sunbeam",
-    // Hydrate Sunbeam con funda de silicona, tapa gris y pajita (artifacts/3D/
-    // vaso-hydrate-petroleo.glb). Funda y boquilla van del color elegido. El
-    // modelo no trae la manija del producto real. Logo atrás (yawDeg 180).
+    // Hydrate Sunbeam con funda de silicona, tapa gris, pajita y manija
+    // (artifacts/3D/vaso-hydrate-petroleo-manija.glb). Funda, boquilla y manija
+    // van del color elegido. Logo atrás (yawDeg 180); con ese giro la manija
+    // (−X en el .glb) queda en u 0.75, como la del vaso con pico.
     desc: "Vaso térmico con funda de silicona, tapa y pajita.",
     cap: "none",
     handle: "none",
@@ -395,13 +397,15 @@ export const PRODUCTS: ProductDef[] = [
       [0.586, 0.173], [0.592, 0.412], [0.596, 0.650],
     ],
     band: [-1.10, 0.55],
-    frontFace: { uHalfWidth: 0.2, vCenter: 0.26, vHeightFrac: 0.48 },
+    // Cara frontal a 90° de la manija: mismo ancho que el vaso con pico, para
+    // que el diseño no llegue hasta la manija.
+    frontFace: { uHalfWidth: 0.16, vCenter: 0.26, vHeightFrac: 0.48 },
     model: {
-      url: "/models/vaso-sunbeam.glb?v=1",
+      url: "/models/vaso-sunbeam.glb?v=2",
       unitsPerMeter: 12,
       centerYm: 0.13,
       heightM: 0.2605,
-      reachM: 0.054,
+      reachM: 0.0842,
       exactFor: ["Vaso Sunbeam"],
       yawDeg: 180,
       paint: ["boot", "straw_tip"],
