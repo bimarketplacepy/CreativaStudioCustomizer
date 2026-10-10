@@ -40,6 +40,8 @@ export const MATERIALS: MaterialDef[] = [
     desc: "Drinkware de acero con recubrimiento de pintura electroestática de alta durabilidad: termos, vasos, hoppies, guampas y choperas.",
     products: [
       { id: "termo",   name: "Termo",   drinkwareProductId: "termo" },
+      { id: "termo-mate", name: "Termo Mate", desc: "Termo para mate con manija de correa y tapa cebadora.", drinkwareProductId: "termo-mate" },
+      { id: "termo-mate-forge", name: "Termo Mate Forge", desc: "Termo para mate de 1200 ml con manija lateral.", drinkwareProductId: "termo-mate-forge" },
       { id: "vaso",    name: "Vaso",    drinkwareProductId: "vaso" },
       { id: "vaso-hydrate", name: "Vaso Hydrate", desc: "Vaso térmico con tapa transparente deslizable.", drinkwareProductId: "vaso-hydrate" },
       { id: "vaso-sunbeam", name: "Vaso Sunbeam", desc: "Vaso térmico con funda de silicona, tapa y pajita.", drinkwareProductId: "vaso-sunbeam" },

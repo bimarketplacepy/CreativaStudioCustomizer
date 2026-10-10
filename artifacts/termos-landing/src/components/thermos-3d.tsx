@@ -409,12 +409,13 @@ function ModelPieces({
         .map(([name, part]) => {
           const m = product.model!;
           const light = m.paintLight?.includes(name);
-          if (m.paint?.includes(name) || light) {
+          const dark = m.paintDark?.includes(name);
+          if (m.paint?.includes(name) || light || dark) {
             const src = part.material as THREE.MeshStandardMaterial;
             return (
               <mesh key={name} geometry={part.geometry}>
                 <meshStandardMaterial
-                  color={light ? lighten(colorHex, 0.22) : colorHex}
+                  color={light ? lighten(colorHex, 0.22) : dark ? darken(colorHex, 0.35) : colorHex}
                   roughness={src.roughness ?? 0.8}
                   metalness={0}
                   side={src.side}
@@ -435,6 +436,12 @@ const BUILT_IN_PARTS = new Set(["body", "steel", "interior", "handle"]);
 function lighten(hex: string, t: number): string {
   const c = new THREE.Color(hex);
   return "#" + c.lerp(new THREE.Color("#ffffff"), t).getHexString();
+}
+
+/** Mezcla un hex con negro (0..1). */
+function darken(hex: string, t: number): string {
+  const c = new THREE.Color(hex);
+  return "#" + c.lerp(new THREE.Color("#000000"), t).getHexString();
 }
 
 /**
@@ -692,7 +699,7 @@ function ThermosMesh({
     const base = { roughness: 0.35, metalness: 0.15, clearcoat: 0.8, clearcoatRoughness: 0.15 };
     if (finish === "matte") {
       // Hoppie, chopera y vaso con manija llevan powder-coat real: mate con cuerpo, no tiza.
-      if (product.id === "hoppie" || product.id === "botella-ancha" || product.id === "chopera" || product.id === "vaso-manija" || product.id === "vaso-hydrate" || product.id === "vaso-sunbeam")
+      if (product.id === "hoppie" || product.id === "botella-ancha" || product.id === "chopera" || product.id === "vaso-manija" || product.id === "vaso-hydrate" || product.id === "vaso-sunbeam" || product.id === "termo-mate" || product.id === "termo-mate-forge")
         return { ...base, roughness: 0.6, metalness: 0.1, clearcoat: 0.06, clearcoatRoughness: 0.7 };
       return { ...base, roughness: 0.88, metalness: 0.0, clearcoat: 0.0, clearcoatRoughness: 0.8 };
     }

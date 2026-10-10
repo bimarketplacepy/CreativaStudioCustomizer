@@ -1,4 +1,4 @@
-export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam";
+export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -69,6 +69,8 @@ export interface ProductModel {
   paint?: string[];
   /** Piezas pintadas con el color elegido, un poco más claro (texto en relieve). */
   paintLight?: string[];
+  /** Piezas pintadas con el color elegido, más oscuro (ranuras, huecos). */
+  paintDark?: string[];
 }
 
 export const PRODUCTS: ProductDef[] = [
@@ -121,6 +123,75 @@ export const PRODUCTS: ProductDef[] = [
       { id: "termo-20", name: "20oz", label: "Estándar", scale: 0.88 },
       { id: "termo-32", name: "32oz", label: "Grande",   scale: 1.00 },
       { id: "termo-40", name: "40oz", label: "XL",       scale: 1.14 },
+    ],
+  },
+  {
+    id: "termo-mate",
+    name: "Termos Mate",
+    singular: "Termo Mate",
+    // Hydrate Termo Mate (artifacts/3D/termo-hydrate-amarillo-landing.glb):
+    // cuerpo recto, tapa del color del cuerpo y manija de correa con remaches y
+    // etiqueta. Perfil = radio del cuerpo medido sobre el .glb (m × 9, centrado
+    // en 0,1675 m). El .glb es el de 1200 ml; los otros tamaños se escalan por
+    // volumen. Logo atrás (yawDeg 180); con ese giro la manija (−X en el .glb)
+    // queda en u 0.75.
+    desc: "Termo para mate con manija de correa y tapa cebadora.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.387, -1.372], [0.387, 0.432], [0.384, 0.482],
+      [0.374, 0.534], [0.357, 0.559], [0.354, 0.661],
+    ],
+    band: [-1.27, 0.38],
+    // Cara frontal a 90° de la manija, sin llegar a ella.
+    frontFace: { uHalfWidth: 0.16 },
+    model: {
+      url: "/models/termo-mate.glb?v=1",
+      exactFor: ["Termo Mate"],
+      unitsPerMeter: 9,
+      centerYm: 0.1675,
+      heightM: 0.335,
+      reachM: 0.0605,
+      yawDeg: 180,
+      paint: ["lid", "lid_relieve", "label_text"],
+      paintLight: ["label"],
+      paintDark: ["handle_slot", "handle_hole"],
+    },
+    sizes: [
+      { id: "termo-mate-800",  name: "800ml",  label: "Chico",   scale: 0.87 },
+      { id: "termo-mate-915",  name: "915ml",  label: "Mediano", scale: 0.91 },
+      { id: "termo-mate-1200", name: "1200ml", label: "Grande",  scale: 1.00 },
+    ],
+  },
+  {
+    id: "termo-mate-forge",
+    name: "Termos Mate Forge",
+    singular: "Termo Mate Forge",
+    // Hydrate Termo Mate Forge 1200 ml (artifacts/3D/termo-hydrate-azul-landing.glb):
+    // más ancho que el Termo Mate, tapa del color del cuerpo y manija rígida.
+    // Perfil = radio del cuerpo medido sobre el .glb (m × 9, centrado en 0,16 m).
+    // Logo atrás (yawDeg 180); con ese giro la manija (+X en el .glb) queda en u 0.25.
+    desc: "Termo para mate de 1200 ml con manija lateral.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.450, -1.162], [0.450, 0.393], [0.443, 0.439],
+      [0.365, 0.619], [0.364, 0.642],
+    ],
+    band: [-1.06, 0.34],
+    frontFace: { uHalfWidth: 0.16 },
+    model: {
+      url: "/models/termo-mate-forge.glb?v=1",
+      exactFor: ["Termo Mate Forge"],
+      unitsPerMeter: 9,
+      centerYm: 0.16,
+      heightM: 0.32,
+      reachM: 0.0965,
+      yawDeg: 180,
+      paint: ["lid"],
+    },
+    sizes: [
+      { id: "termo-mate-forge-1200", name: "1200ml", label: "Clásico", scale: 1.00 },
     ],
   },
   {

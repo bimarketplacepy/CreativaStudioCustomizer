@@ -56,6 +56,7 @@ const TYPE_LABEL: Record<string, string> = {
   guampa: "Guampa", hoppie: "Hoppie", chopera: "Chopera", jug: "Jug",
   copa: "Copa", vaso: "Vaso", termo: "Termo", botella: "Botella",
   "vaso-manija": "Vaso", "botella-ancha": "Botella", "vaso-hydrate": "Vaso", "vaso-sunbeam": "Vaso",
+  "termo-mate": "Termo", "termo-mate-forge": "Termo",
 };
 
 /**
@@ -74,6 +75,7 @@ const EXACT_MODEL: Record<string, { name: string; fallback: string }> = {
  */
 const NAMED_MODEL: Record<string, Record<string, string>> = {
   vaso: { "vaso": "vaso-hydrate", "vaso sunbeam": "vaso-sunbeam" },
+  termo: { "termo mate": "termo-mate", "termo mate forge": "termo-mate-forge" },
 };
 
 const LEATHER = /\bcuero\b|\bforrad[oa]\b/;
