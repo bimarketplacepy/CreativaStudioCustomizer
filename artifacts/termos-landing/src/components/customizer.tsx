@@ -106,6 +106,10 @@ function TextSizeSlider({ scale, onScale, maxScale }: { scale: number; onScale: 
   );
 }
 
+/** El diseñador arranca siempre con el Vaso Sunbeam en negro. */
+const START_PRODUCT_ID = "vaso-sunbeam";
+const START_COLOR_NAME = "Negro";
+
 const COLORS = [
   { id: "c1", hex: "#C1121F", name: "Rojo Marketplace" },
   { id: "c2", hex: "#1E3A5F", name: "Azul Marino" },
@@ -1346,7 +1350,9 @@ export default function Customizer() {
   // STEP 1 — material, STEP 2 — product within the material
   const [materialId, setMaterialId] = useState<MaterialId>(DEFAULT_MATERIAL_ID);
   const material = getMaterial(materialId);
-  const [materialProductId, setMaterialProductId] = useState<string>(material.products[0]?.id ?? "");
+  const [materialProductId, setMaterialProductId] = useState<string>(
+    material.products.find(p => p.id === START_PRODUCT_ID)?.id ?? material.products[0]?.id ?? "",
+  );
   const activeMProduct = material.products.find(p => p.id === materialProductId) ?? material.products[0];
   const isDrinkware = !!activeMProduct?.drinkwareProductId;
   // Cristal (glass) pieces render as transparent glass and have no product colour.
@@ -1367,7 +1373,10 @@ export default function Customizer() {
   // Drinkware base product (drives the 3D preview, sizes, band)
   const productId = activeMProduct?.drinkwareProductId ?? DEFAULT_PRODUCT_ID;
   const product = getProduct(productId);
-  const [size, setSize] = useState(getProduct(DEFAULT_PRODUCT_ID).sizes[1].id);
+  const [size, setSize] = useState(() => {
+    const sizes = getProduct(productId).sizes;
+    return (sizes[1] ?? sizes[0]).id;
+  });
 
   // ── Catálogo real de Odoo ───────────────────────────────────────────────────
   // Si Odoo tiene productos para este material + producto, los colores, tamaños,
@@ -1392,9 +1401,17 @@ export default function Customizer() {
   const odooAllOut = !!odooProduct && odooProduct.variants.every(v => !v.inStock);
   // Al cambiar de producto (o al llegar el catálogo), si la combinación elegida
   // no existe en ese producto, arrancar en su primera variante con stock.
+  // La primera vez arranca en negro (START_COLOR_NAME) si el producto lo tiene.
+  const startColorPending = useRef(true);
   React.useEffect(() => {
     if (!odooProduct || findVariant(odooProduct, odooColor, odooSize)) return;
-    const v = defaultVariant(odooProduct);
+    const wantStart = startColorPending.current;
+    startColorPending.current = false;
+    const start = wantStart
+      ? odooProduct.variants.find(x => x.colorName === START_COLOR_NAME && x.inStock)
+        ?? odooProduct.variants.find(x => x.colorName === START_COLOR_NAME)
+      : undefined;
+    const v = start ?? defaultVariant(odooProduct);
     if (v) { setOdooColor(v.colorName ?? null); setOdooSize(v.size ?? null); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [odooProduct]);
@@ -1445,6 +1462,7 @@ export default function Customizer() {
   const pickShopItem = (it: ShopItem) => {
     const mp = material.products.find(x => x.drinkwareProductId === it.type);
     if (!mp) return;
+    startColorPending.current = false;
     if (mp.id !== materialProductId) handleSelectMaterialProduct(mp.id);
     setGenericPick(it.odooId === null);
     setOdooTemplateId(it.odooId);
@@ -1466,7 +1484,7 @@ export default function Customizer() {
   const viewSize = odooMode ? viewSizeId(product, odooSizes, odooSize) : size;
   const activeSize = getSize(product, viewSize);
 
-  const [color, setColor] = useState(COLORS[0].id);
+  const [color, setColor] = useState(COLORS.find(c => c.name.startsWith(START_COLOR_NAME))?.id ?? COLORS[0].id);
   const [customHex, setCustomHex] = useState<string | null>(null);
   // Ink colour for UV-printed text (only used when the technique is impresión UV).
   const [textColor, setTextColor] = useState("#161616");
@@ -1553,6 +1571,7 @@ export default function Customizer() {
   React.useEffect(() => {
     const d = readSharedDesign();
     if (!d) return;
+    startColorPending.current = false;
     const isHex = (v: unknown): v is string => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
     const m = MATERIALS.find(x => x.id === d.materialId);
     if (m) {
@@ -2068,6 +2087,7 @@ export default function Customizer() {
   const handleSelectMaterial = (id: MaterialId) => {
     setMaterialId(id);
     setOdooTemplateId(null);
+    startColorPending.current = false;
     setGenericPick(false);
     track("customizer_material_select", { material: id });
     // La captura anterior pertenece a otro producto: nunca ofrecer descargarla.
@@ -2105,6 +2125,7 @@ export default function Customizer() {
   const handleSelectMaterialProduct = (id: string) => {
     setMaterialProductId(id);
     setOdooTemplateId(null);
+    startColorPending.current = false;
     track("customizer_product_select", { material: materialId, product: id });
     // Ídem: la captura del producto anterior deja de ser válida.
     setPreviewImg(null);
