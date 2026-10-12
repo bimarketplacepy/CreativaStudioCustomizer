@@ -11,6 +11,7 @@ import {
   loadOrderImage,
 } from "../lib/order-images";
 import { buildProductionSvg } from "../lib/production-svg";
+import { stickerFileName, stickerProductionPng } from "../lib/production-sticker";
 import { checkInternalKey, checkOrderImageToken, orderImageToken } from "../lib/internal-key";
 import { logger } from "../lib/logger";
 
@@ -43,6 +44,15 @@ async function generateProductionFile(
 ): Promise<string | null> {
   try {
     const ds = (order.designState ?? {}) as Record<string, unknown>;
+    // Stickers (sección Stickers de la landing): PNG transparente a tamaño
+    // real, el formato que se carga en la app de la eufyMake E1.
+    if (ds.kind === "sticker") {
+      const png = stickerProductionPng(customImageDataUrl, ds.productionDpi);
+      if (!png) return null;
+      const name = `orders/${order.orderNumber}-produccion.png`;
+      await storeOrderFile(name, png, "image/png");
+      return name;
+    }
     const svg = await buildProductionSvg({
       orderNumber: order.orderNumber,
       product: order.product,
@@ -196,7 +206,8 @@ router.get("/orders/:orderNumber", async (req, res) => {
   }
 });
 
-// GET /api/orders/:orderNumber/production-file — SVG vectorial de producción.
+// GET /api/orders/:orderNumber/production-file — archivo de producción: SVG
+// vectorial (láser/UV/plotter) o PNG del sticker (eufyMake E1).
 // USO INTERNO: requiere la clave (header x-internal-key o ?key=). El cliente
 // jamás recibe esta URL; sin clave responde 401 sin revelar si el pedido existe.
 router.get("/orders/:orderNumber/production-file", async (req, res) => {
@@ -212,7 +223,7 @@ router.get("/orders/:orderNumber/production-file", async (req, res) => {
   try {
     const order = await db.query.ordersTable.findFirst({
       where: eq(ordersTable.orderNumber, orderNumber),
-      columns: { productionFilePath: true },
+      columns: { productionFilePath: true, designState: true },
     });
     if (!order?.productionFilePath) {
       res.status(404).json({ message: "Archivo de producción no disponible" });
@@ -223,11 +234,13 @@ router.get("/orders/:orderNumber/production-file", async (req, res) => {
       res.status(404).json({ message: "Archivo de producción no disponible" });
       return;
     }
-    res.setHeader("Content-Type", "image/svg+xml");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${orderNumber}-produccion.svg"`,
-    );
+    // Stickers: PNG para la eufyMake E1; el resto, SVG vectorial.
+    const isPng = order.productionFilePath.endsWith(".png");
+    const fileName = isPng
+      ? stickerFileName(orderNumber, (order.designState ?? {}) as Record<string, unknown>)
+      : `${orderNumber}-produccion.svg`;
+    res.setHeader("Content-Type", isPng ? "image/png" : "image/svg+xml");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.end(entry.buf);
   } catch (err) {

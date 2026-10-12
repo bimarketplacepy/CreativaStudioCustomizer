@@ -49,6 +49,7 @@ export default function Hero() {
             {[
               { label: "Inicio", id: "inicio" },
               { label: "Personalizar", id: "customizer" },
+              { label: "Stickers", id: "stickers" },
               { label: "Precios", id: "precios" },
               { label: "Contacto", id: "contacto" },
             ].map(item => (

@@ -56,6 +56,7 @@ router.get("/api/admin/orders", async (req, res) => {
           imageToken: r.previewImagePath ? orderImageToken(r.orderNumber) : null,
           hasPreview: !!r.previewImagePath,
           hasProduction: !!r.productionFilePath,
+          productionKind: r.productionFilePath?.endsWith(".png") ? "png" : "svg",
           previewImagePath: undefined,
           productionFilePath: undefined,
         };
@@ -242,11 +243,12 @@ const ADMIN_HTML = `<!DOCTYPE html>
       if (o.customText) extra.push('Texto: “' + esc(o.customText) + '”' + (o.font ? " (" + esc(o.font) + ")" : ""));
       if (o.iconName) extra.push("Ícono: " + esc(o.iconName));
       if (o.hasUploadedImage) extra.push("Logo/foto adjunta");
-      if (o.estimate) extra.push("Grabado estimado: " + esc(o.estimate));
+      if (o.estimate) extra.push("Precio estimado: " + esc(o.estimate));
       var svgBtn = o.hasProduction
         ? '<a class="btn primary" href="/api/orders/' + esc(o.orderNumber) + '/production-file?key=' +
-          encodeURIComponent(key()) + '" download>SVG producción</a>'
-        : '<span class="btn" aria-disabled="true">SVG no generado</span>';
+          encodeURIComponent(key()) + '" download>' +
+          (o.productionKind === "png" ? "PNG para eufyMake" : "SVG producción") + '</a>'
+        : '<span class="btn" aria-disabled="true">Archivo no generado</span>';
       var imgBtn = o.hasPreview
         ? '<a class="btn" href="' + imgUrl + '" download="' +
           esc(o.orderNumber) + '-preview.jpg">Imagen preview</a>'

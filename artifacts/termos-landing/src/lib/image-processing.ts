@@ -290,10 +290,13 @@ function canvasToSvgDataUrl(canvas: HTMLCanvasElement): string {
  * there is a flat background to cut. A photograph, a gradient backdrop or a
  * fill that swallows the subject all fall back to the untouched image, because
  * a bad cut-out engraves worse than no cut-out at all.
+ *
+ * `maxDim` caps the longest side: the engraving preview needs little, while a
+ * printed sticker needs enough pixels for its real size (see stickers.tsx).
  */
-export async function fileToProcessedSvg(file: Blob): Promise<ProcessedImage> {
+export async function fileToProcessedSvg(file: Blob, maxDim = MAX_DIM): Promise<ProcessedImage> {
   const img = await loadImage(file);
-  const canvas = drawScaled(img, img.naturalWidth, img.naturalHeight, MAX_DIM);
+  const canvas = drawScaled(img, img.naturalWidth, img.naturalHeight, maxDim);
   const { width, height } = canvas;
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
 

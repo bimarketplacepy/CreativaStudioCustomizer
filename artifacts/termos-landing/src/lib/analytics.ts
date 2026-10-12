@@ -14,6 +14,8 @@
  *   order_submit              { product, material, technique, has_text, has_icon, has_image }
  *   order_created             { order_number, product }
  *   order_fallback            { product }               backend caído/lento: salió solo por WhatsApp
+ *   sticker_upload            { background_removed }    diseño subido en la sección Stickers
+ *   sticker_order_submit      { size_mm, quantity, finish, cut, has_image }
  */
 type Params = Record<string, string | number | boolean | null | undefined>;
 
