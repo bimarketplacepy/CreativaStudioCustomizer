@@ -134,9 +134,9 @@ export function engravingPrice(catalog: Catalog | undefined, plan: EngravingPlan
 /** Secciones del catálogo de la tienda en el personalizador, en este orden. */
 const CATALOG_SECTIONS: { title: string; types: string[] }[] = [
   { title: "Termos", types: ["termo-mate", "termo-mate-forge", "termo"] },
-  { title: "Botellas", types: ["hoppie", "botella-ancha"] },
-  { title: "Vasos", types: ["vaso-hydrate", "vaso-sunbeam", "vaso-manija", "vaso", "chopera"] },
-  { title: "Guampas y copas", types: ["guampa"] },
+  { title: "Botellas", types: ["hoppie-hydrate", "hoppie", "termo-kids", "botella-ancha"] },
+  { title: "Vasos", types: ["vaso-hydrate", "vaso-sunbeam", "vaso-espresso", "vaso-manija", "vaso", "chopera"] },
+  { title: "Guampas y copas", types: ["guampa", "copa-hydrate"] },
 ];
 
 /** Marca de las formas propias de la landing (sin producto de Odoo detrás). */

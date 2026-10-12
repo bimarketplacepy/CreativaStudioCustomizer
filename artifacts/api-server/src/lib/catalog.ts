@@ -56,14 +56,15 @@ const TYPE_LABEL: Record<string, string> = {
   guampa: "Guampa", hoppie: "Hoppie", chopera: "Chopera", jug: "Jug",
   copa: "Copa", vaso: "Vaso", termo: "Termo", botella: "Botella",
   "vaso-manija": "Vaso", "botella-ancha": "Botella", "vaso-hydrate": "Vaso", "vaso-sunbeam": "Vaso",
-  "termo-mate": "Termo", "termo-mate-forge": "Termo",
+  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso",
 };
 
 /**
  * Perfiles con modelo 3D real de UN producto concreto: los demás modelos del
  * mismo tipo pasan a la forma genérica. Hoy: forma-botella.glb (tapa con asa)
- * es el "Hoppie V2 Pro Series"; Hoppie, Termo, Hoppie Kids y Termo Kids
- * tienen otra tapa y usan la botella de boca ancha genérica.
+ * es el "Hoppie V2 Pro Series"; los demás hoppies caen a la botella de boca
+ * ancha genérica, salvo los que tienen modelo propio en NAMED_MODEL (Hoppie,
+ * Termo Kids).
  */
 const EXACT_MODEL: Record<string, { name: string; fallback: string }> = {
   hoppie: { name: "Hoppie V2 Pro Series", fallback: "botella-ancha" },
@@ -74,8 +75,13 @@ const EXACT_MODEL: Record<string, { name: string; fallback: string }> = {
  * su perfil; los demás del tipo siguen con la forma genérica.
  */
 const NAMED_MODEL: Record<string, Record<string, string>> = {
-  vaso: { "vaso": "vaso-hydrate", "vaso sunbeam": "vaso-sunbeam" },
+  vaso: { "vaso": "vaso-hydrate", "vaso sunbeam": "vaso-sunbeam", "vaso taza espresso": "vaso-espresso" },
   termo: { "termo mate": "termo-mate", "termo mate forge": "termo-mate-forge" },
+  "botella-ancha": { "hoppie": "hoppie-hydrate", "termo kids": "termo-kids" },
+  // La "Copa" de Hydrate (vaso de vino sin tallo) puede clasificarse como copa o
+  // como guampa (Odoo la tiene en "ACCESORIOS DE TERMOS / GUAMPAS").
+  copa: { "copa": "copa-hydrate" },
+  guampa: { "copa": "copa-hydrate" },
 };
 
 const LEATHER = /\bcuero\b|\bforrad[oa]\b/;

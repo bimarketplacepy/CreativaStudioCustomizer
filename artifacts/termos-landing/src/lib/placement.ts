@@ -23,6 +23,12 @@ export type LineHeightPreset = keyof typeof LINE_HEIGHT_PRESETS;
 /** Default row spacing — matches engraving-text's LINE_HEIGHT for continuity. */
 export const DEFAULT_LINE_HEIGHT = LINE_HEIGHT_PRESETS.normal;
 
+/**
+ * Cara del cuerpo donde va la marca en "edición en una cara" (ver FACES en
+ * face-area.ts). Sin `face` es el frente: los diseños viejos siguen igual.
+ */
+export type FaceId = "front" | "left" | "back" | "right";
+
 /** Where a piece of art or text sits on the engravable band of a product. */
 export interface Placement {
   /** 0–1 around the body. 0.5 is the front face. */
@@ -42,6 +48,8 @@ export interface Placement {
   layout?: TextLayout;
   /** Row spacing as a multiple of the font size. Ignored for art. Defaults to DEFAULT_LINE_HEIGHT. */
   lineHeight?: number;
+  /** Cara grabada (solo texto; el arte va siempre al frente). Default: "front". */
+  face?: FaceId;
 }
 
 // Text starts small (~45%): a full-size name overflows the little mobile preview,

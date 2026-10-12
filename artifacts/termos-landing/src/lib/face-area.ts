@@ -1,4 +1,4 @@
-import type { Placement } from "./placement";
+import type { FaceId, Placement } from "./placement";
 import type { ProductDef } from "./products";
 
 /**
@@ -57,6 +57,36 @@ export function faceConfigFor(product?: Pick<ProductDef, "frontFace">): FaceConf
   return { ...FRONT_FACE, ...product?.frontFace };
 }
 
+/**
+ * Caras grabables alrededor del cuerpo. Todas usan el mismo rectángulo que la
+ * frontal (ancho, alto y centro vertical), girado `offset` de vuelta en u.
+ * Con el frente mirando a cámara, u crece hacia la izquierda de la pantalla:
+ * u 0.75 se ve a la izquierda de la pantalla y u 0.25 a la derecha.
+ */
+export const FACES: Record<FaceId, { label: string; offset: number }> = {
+  front: { label: "Frente",       offset: 0 },
+  left:  { label: "Costado izq.", offset: 0.25 },
+  back:  { label: "Dorso",        offset: 0.5 },
+  right: { label: "Costado der.", offset: -0.25 },
+};
+
+const ALL_FACES: FaceId[] = ["front", "left", "back", "right"];
+
+/** Caras que ofrece el producto (sin manija ni logo encima), en orden de la vuelta. */
+export function engraveFacesFor(product?: Pick<ProductDef, "engraveFaces">): FaceId[] {
+  return product?.engraveFaces ?? ALL_FACES;
+}
+
+/** u del centro de una cara. El dorso queda en 1.0 (no en 0) para no partir su área en la costura. */
+export function faceCenterU(product?: Pick<ProductDef, "frontFace">, face: FaceId = "front"): number {
+  return faceConfigFor(product).uCenter + FACES[face].offset;
+}
+
+/** El mismo punto de la vuelta (u ± vueltas enteras), llevado lo más cerca posible de `center`. */
+export function nearU(u: number, center: number): number {
+  return u - Math.round(u - center);
+}
+
 /** Rectangle bounds in placement space: u fraction of circumference, v fraction of the band. */
 export interface FrontAreaBounds {
   uMin: number;
@@ -66,11 +96,12 @@ export interface FrontAreaBounds {
   vMax: number;
 }
 
-export function frontAreaBounds(product?: Pick<ProductDef, "frontFace">): FrontAreaBounds {
+export function frontAreaBounds(product?: Pick<ProductDef, "frontFace">, face: FaceId = "front"): FrontAreaBounds {
   const f = faceConfigFor(product);
+  const c = faceCenterU(product, face);
   return {
-    uMin: f.uCenter - f.uHalfWidth,
-    uMax: f.uCenter + f.uHalfWidth,
+    uMin: c - f.uHalfWidth,
+    uMax: c + f.uHalfWidth,
     vMin: f.vCenter - f.vHeightFrac / 2,
     vMax: f.vCenter + f.vHeightFrac / 2,
   };
@@ -105,10 +136,11 @@ export function clampPlacementToFrontArea(
   half: MarkHalfExtents,
   product?: Pick<ProductDef, "frontFace">,
 ): Placement {
-  const b = frontAreaBounds(product);
+  const face = p.face ?? "front";
+  const b = frontAreaBounds(product, face);
   return {
     ...p,
-    u: collapseClamp(p.u, b.uMin + half.halfU, b.uMax - half.halfU),
+    u: collapseClamp(nearU(p.u, faceCenterU(product, face)), b.uMin + half.halfU, b.uMax - half.halfU),
     v: collapseClamp(p.v, b.vMin + half.halfV, b.vMax - half.halfV),
   };
 }
@@ -118,8 +150,9 @@ export function padToPlacement(
   padX: number,
   padY: number,
   product?: Pick<ProductDef, "frontFace">,
+  face: FaceId = "front",
 ): { u: number; v: number } {
-  const b = frontAreaBounds(product);
+  const b = frontAreaBounds(product, face);
   return {
     u: b.uMin + padX * (b.uMax - b.uMin),
     v: b.vMin + padY * (b.vMax - b.vMin),
@@ -131,10 +164,11 @@ export function placementToPad(
   u: number,
   v: number,
   product?: Pick<ProductDef, "frontFace">,
+  face: FaceId = "front",
 ): { padX: number; padY: number } {
-  const b = frontAreaBounds(product);
+  const b = frontAreaBounds(product, face);
   return {
-    padX: (u - b.uMin) / (b.uMax - b.uMin),
+    padX: (nearU(u, faceCenterU(product, face)) - b.uMin) / (b.uMax - b.uMin),
     padY: (v - b.vMin) / (b.vMax - b.vMin),
   };
 }

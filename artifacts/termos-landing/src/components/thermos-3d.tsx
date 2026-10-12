@@ -4,7 +4,7 @@ import { ContactShadows, PerspectiveCamera, useGLTF } from "@react-three/drei";
 import { StudioLighting } from "./studio-lighting";
 import * as THREE from "three";
 import { getProduct, getSize, resampledProfile, type ProductDef } from "@/lib/products";
-import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, bandRange, vForY, type Placement } from "@/lib/placement";
+import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, bandRange, vForY, type FaceId, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
 import { makeBodyMaps, makeGlassEngraving, type EngraveStyle } from "@/lib/engraving-maps";
 import { FRONT_FACE, frontAreaBounds } from "@/lib/face-area";
@@ -51,6 +51,8 @@ interface Thermos3DProps {
   showGuides?: boolean;
   /** Which u faces the camera when single-face is entered. Defaults to config. */
   frontFaceU?: number;
+  /** Cara sobre la que se dibuja la guía punteada (la del elemento en edición). */
+  guideFace?: FaceId;
   /** Render the body as transparent glass (cristal) with a sandblasted engraving. */
   glass?: boolean;
   /**
@@ -160,8 +162,8 @@ const FOV = 30;
 /** Pausa sin cambios tras la cual las texturas de borrador pasan a calidad completa. */
 const SETTLE_MS = 280;
 
-/** Cuánto gira solo el producto al aparecer, antes de quedarse quieto. */
-const IDLE_SPIN_MS = 8000;
+/** Velocidad del giro de "vidriera" al aparecer (rad/s). */
+const IDLE_SPIN_SPEED = 0.55;
 
 /** Celulares: menos píxeles y vidrio sin refracción real (ver lowPerf). */
 const LOW_PERF = (() => {
@@ -413,7 +415,7 @@ function ModelPieces({
           if (m.paint?.includes(name) || light || dark) {
             const src = part.material as THREE.MeshStandardMaterial;
             return (
-              <mesh key={name} geometry={part.geometry}>
+              <mesh key={`${name}:paint`} geometry={part.geometry}>
                 <meshStandardMaterial
                   color={light ? lighten(colorHex, 0.22) : dark ? darken(colorHex, 0.35) : colorHex}
                   roughness={src.roughness ?? 0.8}
@@ -450,9 +452,9 @@ function darken(hex: string, t: number): string {
  * customer sees exactly the box their design is trapped inside. Built straight
  * from the same `FRONT_FACE` config the clamp uses, so guide and limit agree.
  */
-function FrontFaceGuide({ sil, product }: { sil: Silhouette; product: ProductDef }) {
+function FrontFaceGuide({ sil, product, face }: { sil: Silhouette; product: ProductDef; face: FaceId }) {
   const object = useMemo(() => {
-    const b = frontAreaBounds(product);
+    const b = frontAreaBounds(product, face);
     const bandTopY = sil.band[1]; // placement v = 0 (band top)
     const bandBotY = sil.band[0]; // placement v = 1 (band bottom)
     const yAtV = (v: number) => bandTopY + (bandBotY - bandTopY) * v;
@@ -499,7 +501,7 @@ function FrontFaceGuide({ sil, product }: { sil: Silhouette; product: ProductDef
     const line = new THREE.LineLoop(geo, mat);
     line.computeLineDistances();
     return line;
-  }, [sil, product]);
+  }, [sil, product, face]);
 
   useEffect(() => () => {
     object.geometry.dispose();
@@ -511,7 +513,7 @@ function FrontFaceGuide({ sil, product }: { sil: Silhouette; product: ProductDef
 
 function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
-  textPlacement, artPlacement, colorPrint, textColor, engraveStyle, singleFace, editSingleFace, showGuides, frontFaceU, glass,
+  textPlacement, artPlacement, colorPrint, textColor, engraveStyle, singleFace, editSingleFace, showGuides, frontFaceU, guideFace, glass,
   designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, snapToURef, renderNowRef, onReady,
   autoSpin = false, rotationLocked = false,
 }: {
@@ -520,7 +522,7 @@ function ThermosMesh({
   customImageUrl: string | null; imageSize: "none" | "small" | "large";
   textPlacement: Placement; artPlacement: Placement; colorPrint: boolean; textColor?: string;
   engraveStyle: EngraveStyle;
-  singleFace: boolean; editSingleFace: boolean; showGuides: boolean; frontFaceU: number; glass: boolean;
+  singleFace: boolean; editSingleFace: boolean; showGuides: boolean; frontFaceU: number; guideFace: FaceId; glass: boolean;
   designActive: boolean;
   onDesignMove?: (du: number, dv: number) => void;
   onDesignDragStart?: () => void;
@@ -699,7 +701,7 @@ function ThermosMesh({
     const base = { roughness: 0.35, metalness: 0.15, clearcoat: 0.8, clearcoatRoughness: 0.15 };
     if (finish === "matte") {
       // Hoppie, chopera y vaso con manija llevan powder-coat real: mate con cuerpo, no tiza.
-      if (product.id === "hoppie" || product.id === "botella-ancha" || product.id === "chopera" || product.id === "vaso-manija" || product.id === "vaso-hydrate" || product.id === "vaso-sunbeam" || product.id === "termo-mate" || product.id === "termo-mate-forge")
+      if (product.id === "hoppie" || product.id === "botella-ancha" || product.id === "chopera" || product.id === "vaso-manija" || product.id === "vaso-hydrate" || product.id === "vaso-sunbeam" || product.id === "termo-mate" || product.id === "termo-mate-forge" || product.id === "termo-kids" || product.id === "hoppie-hydrate" || product.id === "copa-hydrate" || product.id === "vaso-espresso")
         return { ...base, roughness: 0.6, metalness: 0.1, clearcoat: 0.06, clearcoatRoughness: 0.7 };
       return { ...base, roughness: 0.88, metalness: 0.0, clearcoat: 0.0, clearcoatRoughness: 0.8 };
     }
@@ -769,11 +771,15 @@ function ThermosMesh({
   // transparent+reflection glass so the preview stays smooth.
   const lowPerf = LOW_PERF;
 
-  // Giro automático de "vidriera": solo unos segundos al entrar o cambiar de
-  // producto. Con frameloop="demand", un giro eterno es render continuo.
-  const spinUntil = useRef(0);
+  // Giro automático de "vidriera" al entrar o cambiar de producto: arranca con
+  // el frente de la marca (el logo del modelo, en +Z del grupo = giro 0) mirando
+  // a la cámara y da una vuelta entera hasta volver a él. Con
+  // frameloop="demand", un giro eterno sería render continuo.
+  const spinLeft = useRef(0);
+  const spinFromLogo = useRef(false);
   useEffect(() => {
-    spinUntil.current = performance.now() + IDLE_SPIN_MS;
+    spinLeft.current = Math.PI * 2;
+    spinFromLogo.current = true;
     invalidate();
   }, [product.id, invalidate]);
   useEffect(() => { if (autoSpin) invalidate(); }, [autoSpin, invalidate]);
@@ -798,6 +804,7 @@ function ThermosMesh({
     const startDrag = (e: PointerEvent, mode: "design" | "rotate") => {
       isDragging.current = true;
       velYaw.current = 0;
+      spinLeft.current = 0;
       velPitch.current = 0;
       lastX.current = e.clientX;
       lastY.current = e.clientY;
@@ -976,14 +983,31 @@ function ThermosMesh({
     const hasYawInertia   = Math.abs(velYaw.current) > 0.001;
     const hasPitchInertia = Math.abs(velPitch.current) > 0.001;
 
+    // Al aparecer la pieza (sin diseño todavía) se ve el frente de la marca,
+    // aunque la edición en una cara la haya girado hacia la cara de grabado:
+    // al seleccionar el diseño, el customizer la vuelve a girar hacia ella.
+    if (spinFromLogo.current) {
+      spinFromLogo.current = false;
+      if (!text && !(customImageUrl && imageSize !== "none")) {
+        groupRef.current.rotation.y = 0;
+        groupRef.current.rotation.x = 0;
+        animating = true;
+      }
+    }
+    // Con diseño puesto no hay vidriera: la pieza queda donde la dejó el cliente.
+    if (hasContent) spinLeft.current = 0;
+
     if (hasYawInertia) {
       groupRef.current.rotation.y += velYaw.current * delta;
       velYaw.current *= 0.90;
+      spinLeft.current = 0;
       animating = true;
     } else {
       velYaw.current = 0;
-      if (!hasContent && performance.now() < spinUntil.current) {
-        groupRef.current.rotation.y += delta * 0.55;
+      if (spinLeft.current > 0) {
+        const step = Math.min(spinLeft.current, Math.min(delta, 0.05) * IDLE_SPIN_SPEED);
+        groupRef.current.rotation.y += step;
+        spinLeft.current -= step;
         animating = true;
       }
     }
@@ -1077,7 +1101,12 @@ function ThermosMesh({
            white keeps the exposed steel steel-coloured instead of tinting it.
            Con modelo .glb, el mismo material va sobre el cuerpo del modelo. */
         product.model ? (
-          <ModelPieces product={product} sil={sil} colorHex={colorHex} finish={finish} bodyMaterial={bodyMaterial} />
+          /* key: al cambiar de producto las piezas se montan de cero. Si React
+             reutiliza un <mesh> del modelo anterior con el mismo nombre ("lid"),
+             al pasar de `material={…}` a un material hijo R3F repone la prop
+             quitada con el default de THREE.Mesh: un MeshBasicMaterial blanco
+             (la tapa del Termo Mate salía blanca y sin luz). */
+          <ModelPieces key={product.id} product={product} sil={sil} colorHex={colorHex} finish={finish} bodyMaterial={bodyMaterial} />
         ) : (
           <mesh geometry={bodyGeo} castShadow receiveShadow userData={ENGRAVE_BODY}>
             {bodyMaterial}
@@ -1128,7 +1157,7 @@ function ThermosMesh({
       )}
 
       {/* Front-face editable area outline (edit mode una-cara, guides visible) */}
-      {editSingleFace && showGuides && <FrontFaceGuide sil={sil} product={product} />}
+      {editSingleFace && showGuides && <FrontFaceGuide sil={sil} product={product} face={guideFace} />}
     </group>
   );
 }
@@ -1468,6 +1497,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           editSingleFace={props.editSingleFace ?? props.singleFace ?? false}
           showGuides={props.showGuides ?? true}
           frontFaceU={props.frontFaceU ?? FRONT_FACE.uCenter}
+          guideFace={props.guideFace ?? "front"}
           glass={props.glass ?? false}
           designActive={props.designActive ?? false}
           onDesignMove={props.onDesignMove}

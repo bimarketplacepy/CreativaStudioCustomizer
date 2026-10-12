@@ -29,6 +29,14 @@ const DEFAULT_AREA_MM = { w: 80, h: 100 };
 // las Placement u/v del designState viven en este espacio.
 // MANTENER EN SINCRONÍA con termos-landing/src/lib/face-area.ts.
 const FRONT_FACE = { uMin: 0.28, uMax: 0.72, vMin: 0.08, vMax: 0.92 } as const;
+// Caras del customizer (FACES en face-area.ts): el mismo rectángulo girado
+// `offset` de vuelta en u. MANTENER EN SINCRONÍA con el landing.
+const FACES: Record<string, { label: string; offset: number }> = {
+  front: { label: "FRENTE", offset: 0 },
+  left: { label: "COSTADO IZQUIERDO", offset: 0.25 },
+  back: { label: "DORSO", offset: 0.5 },
+  right: { label: "COSTADO DERECHO", offset: -0.25 },
+};
 
 /** Margen interno del área (fracción), igual que textPadFrac del landing. */
 const AREA_PAD_FRAC = 0.05;
@@ -52,6 +60,8 @@ interface PlacementLike {
   layout?: string;
   lineHeight?: number;
   orientation?: string;
+  /** Cara del cuerpo (front/left/back/right); sin valor = frente. */
+  face?: string;
 }
 
 export interface ProductionInput {
@@ -67,6 +77,9 @@ export interface ProductionInput {
   customImageDataUrl?: string | null;
   textPlacement?: PlacementLike | null;
   artPlacement?: PlacementLike | null;
+  /** Grabado extra en tapa / base ("" = sí, texto a definir; null = no). */
+  extraLid?: string | null;
+  extraBase?: string | null;
 }
 
 /** Técnica del pedido → modo de color del archivo. */
@@ -295,7 +308,10 @@ function fitTextBlock(
 
 /** u/v del placement → posición relativa 0..1 dentro del área frontal. */
 function relPos(p: PlacementLike | null | undefined): { x: number; y: number } {
-  const u = typeof p?.u === "number" ? p.u : 0.5;
+  // En otra cara, u se lleva al rectángulo frontal (misma posición dentro del área).
+  const offset = FACES[p?.face ?? "front"]?.offset ?? 0;
+  const u0 = typeof p?.u === "number" ? p.u - offset : 0.5;
+  const u = u0 - Math.round(u0 - 0.5);
   const v = typeof p?.v === "number" ? p.v : 0.5;
   const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
   return {
@@ -358,6 +374,9 @@ export async function buildProductionSvg(input: ProductionInput): Promise<string
         );
         if ((p.layout ?? "auto") === "wrap360") {
           warnings.push("Texto envolvente 360°: en este archivo va como una sola línea; envolver alrededor del cuerpo.");
+        } else {
+          const face = FACES[p.face ?? "front"];
+          if (face && face.offset !== 0) warnings.push(`Texto en el ${face.label} (no en el frente).`);
         }
       }
     } else {
@@ -409,8 +428,19 @@ export async function buildProductionSvg(input: ProductionInput): Promise<string
     if (mode === "laser") warnings.push("Incluye logo/foto raster: vectorizar antes de grabar a láser.");
   }
 
+  // ── Grabado extra (tapa / base): no va en el área del cuerpo, se avisa ──
+  const extra = (label: string, v: string | null | undefined) => {
+    if (typeof v !== "string") return;
+    const t = v.trim();
+    warnings.push(t ? `Grabar también en la ${label}: "${t}"` : `Grabar también en la ${label} (texto a definir con el cliente).`);
+  };
+  extra("TAPA", input.extraLid);
+  extra("BASE", input.extraBase);
+
   // ── Capa de info NO imprimible (borrable de un click) ──
-  const totalH = area.h + INFO_STRIP_MM;
+  // La franja crece con los avisos para que ninguno quede fuera del archivo.
+  const infoStripMm = Math.max(INFO_STRIP_MM, 8 + (2 + warnings.length) * 3 * 1.35);
+  const totalH = area.h + infoStripMm;
   const dateStr = input.createdAt.toISOString().slice(0, 10);
   const infoLines = [
     `PEDIDO ${input.orderNumber} · ${input.product.toUpperCase()} · ${input.technique.toUpperCase()}`,

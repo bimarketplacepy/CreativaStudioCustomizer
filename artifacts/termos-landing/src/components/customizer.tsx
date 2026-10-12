@@ -27,14 +27,14 @@ import { DEFAULT_PRODUCT_ID, getProduct, getSize, type ProductDef } from "@/lib/
 import { getObject } from "@/lib/objects";
 import {
   DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, LINE_HEIGHT_PRESETS, DEFAULT_LINE_HEIGHT,
-  type Placement, type TextAlign, type TextLayout, type LineHeightPreset,
+  type FaceId, type Placement, type TextAlign, type TextLayout, type LineHeightPreset,
 } from "@/lib/placement";
 import {
   markHalfExtents, computeFaceTextLayout, bandMetrics, TEXTURE_W, TEXTURE_H,
   wrap360MaxScale, wrap360Fits, type MarkSpec,
 } from "@/lib/engraving-maps";
 import {
-  FRONT_FACE, padToPlacement, placementToPad,
+  FACES, padToPlacement, placementToPad, engraveFacesFor, faceCenterU,
   clampPlacementToFrontArea, type MarkHalfExtents,
 } from "@/lib/face-area";
 import {
@@ -1177,6 +1177,83 @@ function TextDispositionToolbar({ placement, onChange, wrapDisabledReason }: {
 }
 
 /** Orientation toggle (Horizontal / Vertical) — lives inside "Texto Personalizado". */
+/** Largo máximo del texto extra de tapa / base (son superficies chicas). */
+const EXTRA_TEXT_MAX = 30;
+
+/**
+ * Grabado adicional en tapa y/o base. No se dibuja en el 3D: viaja en el
+ * pedido (WhatsApp, resumen y archivo de producción). `null` = no pedido.
+ */
+function ExtraEngravingFields({ lid, base, onLid, onBase }: {
+  lid: string | null;
+  base: string | null;
+  onLid: (v: string | null) => void;
+  onBase: (v: string | null) => void;
+}) {
+  const row = (label: string, value: string | null, set: (v: string | null) => void, placeholder: string) => (
+    <div className="space-y-2">
+      <label className="flex items-center gap-2.5 text-sm text-foreground cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={value !== null}
+          onChange={(e) => set(e.target.checked ? "" : null)}
+          className="w-4 h-4 accent-[hsl(var(--primary))]"
+        />
+        {label}
+      </label>
+      {value !== null && (
+        <Input
+          value={value}
+          maxLength={EXTRA_TEXT_MAX}
+          onChange={(e) => set(e.target.value.slice(0, EXTRA_TEXT_MAX))}
+          placeholder={placeholder}
+          className="text-base"
+        />
+      )}
+    </div>
+  );
+  return (
+    <div className="rounded-xl border border-border bg-secondary/30 px-4 py-3 space-y-3">
+      <div>
+        <p className="text-sm font-medium text-foreground">También grabar en…</p>
+        <p className="text-xs text-muted-foreground">Sin costo extra. No se ve en la vista 3D: lo revisamos con vos por WhatsApp.</p>
+      </div>
+      {row("Tapa", lid, onLid, "Texto para la tapa (ej. iniciales)")}
+      {row("Base", base, onBase, "Texto para la base (ej. una fecha)")}
+    </div>
+  );
+}
+
+/** Cara del cuerpo donde va el texto (frente, dorso, costados): solo las que ofrece el producto. */
+function FaceSelector({ faces, value, onChange }: {
+  faces: FaceId[];
+  value: FaceId;
+  onChange: (f: FaceId) => void;
+}) {
+  return (
+    <div>
+      <Label className="text-xs text-muted-foreground mb-2 block">Ubicación del texto</Label>
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Ubicación del texto">
+        {faces.map(f => (
+          <button
+            key={f}
+            type="button"
+            aria-pressed={value === f}
+            onClick={() => onChange(f)}
+            className={`flex-1 min-w-[5.5rem] p-2.5 border rounded-lg text-sm font-medium transition-all active:scale-[0.97] ${
+              value === f
+                ? "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30"
+                : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
+            }`}
+          >
+            {FACES[f].label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function OrientationToggle({ value, onChange, verticalDisabledReason }: {
   value: Placement["orientation"];
   onChange: (o: "horizontal" | "vertical") => void;
@@ -1399,6 +1476,13 @@ export default function Customizer() {
   const odooSizes = useMemo(() => (odooProduct ? sizeOptions(odooProduct) : []), [odooProduct]);
   const odooVariant = odooProduct ? findVariant(odooProduct, odooColor, odooSize) : null;
   const odooAllOut = !!odooProduct && odooProduct.variants.every(v => !v.inStock);
+  /** ¿Hay stock de este color en el tamaño elegido? Si el color no viene en ese
+   *  tamaño, cuenta el stock en cualquier tamaño (al elegirlo cambia de tamaño). */
+  const odooColorInStock = (name: string) => {
+    if (!odooProduct) return true;
+    const v = findVariant(odooProduct, name, odooSize);
+    return v ? v.inStock : odooProduct.variants.some(x => x.colorName === name && x.inStock);
+  };
   // Al cambiar de producto (o al llegar el catálogo), si la combinación elegida
   // no existe en ese producto, arrancar en su primera variante con stock.
   // La primera vez arranca en negro (START_COLOR_NAME) si el producto lo tiene.
@@ -1418,8 +1502,10 @@ export default function Customizer() {
   /** Elegir color: mantiene el tamaño si existe con ese color; si no, el primero con stock. */
   const selectOdooColor = (name: string) => {
     if (!odooProduct) return;
-    const v = findVariant(odooProduct, name, odooSize)
+    const same = findVariant(odooProduct, name, odooSize);
+    const v = (same?.inStock ? same : null)
       ?? odooProduct.variants.find(x => x.colorName === name && x.inStock)
+      ?? same
       ?? odooProduct.variants.find(x => x.colorName === name);
     setOdooColor(name);
     setOdooSize(v?.size ?? null);
@@ -1428,8 +1514,10 @@ export default function Customizer() {
   /** Elegir tamaño: mantiene el color si existe en ese tamaño; si no, el primero con stock. */
   const selectOdooSize = (label: string) => {
     if (!odooProduct) return;
-    const v = findVariant(odooProduct, odooColor, label)
+    const same = findVariant(odooProduct, odooColor, label);
+    const v = (same?.inStock ? same : null)
       ?? odooProduct.variants.find(x => x.size === label && x.inStock)
+      ?? same
       ?? odooProduct.variants.find(x => x.size === label);
     setOdooSize(label);
     setOdooColor(v?.colorName ?? null);
@@ -1496,6 +1584,9 @@ export default function Customizer() {
   // "Traigo el mío": el cliente trae su termo/vaso/bolígrafo y solo paga el
   // grabado (el hero lo promete; antes solo existía para bolígrafos).
   const [ownProduct, setOwnProduct] = useState(false);
+  // Grabado extra en tapa / base (null = no lo pidió; "" = sí, texto a definir).
+  const [extraLid, setExtraLid] = useState<string | null>(null);
+  const [extraBase, setExtraBase] = useState<string | null>(null);
   // Pedido sin texto, ícono ni imagen: primer click muestra el aviso.
   const [emptyWarning, setEmptyWarning] = useState(false);
   // Link del diseño: "copiado" o, si el portapapeles falla, la URL a la vista.
@@ -1600,6 +1691,8 @@ export default function Customizer() {
     if (typeof d.odooSize === "string") setOdooSize(d.odooSize);
     if (d.textPlacement && typeof d.textPlacement === "object") setTextPlacement({ ...DEFAULT_TEXT_PLACEMENT, ...d.textPlacement });
     if (d.artPlacement && typeof d.artPlacement === "object") setArtPlacement({ ...DEFAULT_ART_PLACEMENT, ...d.artPlacement });
+    setExtraLid(typeof d.extraLid === "string" ? d.extraLid.slice(0, EXTRA_TEXT_MAX) : null);
+    setExtraBase(typeof d.extraBase === "string" ? d.extraBase.slice(0, EXTRA_TEXT_MAX) : null);
     setDrinkTab("text");
     clearSharedDesign();
     track("design_link_open");
@@ -1811,6 +1904,23 @@ export default function Customizer() {
   // la foto, aunque el texto siga envolviendo el producto.
   const editSingleFace = activeDesignKind === "art" ? true : singleFace;
 
+  // Cara del texto. Si el producto nuevo no la ofrece (ej. el dorso de un termo
+  // con logo atrás), vuelve al frente.
+  const textFaces = engraveFacesFor(product);
+  const textFace: FaceId = textFaces.includes(textPlacement.face ?? "front") ? textPlacement.face ?? "front" : "front";
+  React.useEffect(() => {
+    if ((textPlacement.face ?? "front") !== textFace) setTextPlacement(p => clampTextP({ ...p, face: textFace }));
+  }, [textPlacement.face, textFace, clampTextP]);
+  const selectTextFace = (face: FaceId) => {
+    if (face === textFace) return;
+    pushHistory();
+    // Mismo lugar dentro del rectángulo, en la otra cara.
+    const du = faceCenterU(product, face) - faceCenterU(product, textFace);
+    applyTextPlacement({ ...textPlacement, face, u: textPlacement.u + du });
+    flashGuides();
+    track("text_face_select", { product: productId, face });
+  };
+
   // Dashed front-face guides appear ONLY while the design is being moved — a drag
   // holds them on; a nudge/center tap flashes them briefly.
   const [guidesActive, setGuidesActive] = useState(false);
@@ -1845,11 +1955,12 @@ export default function Customizer() {
         return { ...p, u: clamp01(p.u + dPadX), v: clamp01(p.v + dPadY) };
       }
       if (sf) {
-        const pad = placementToPad(p.u, p.v, product);
+        const pad = placementToPad(p.u, p.v, product, p.face);
         const np = padToPlacement(
           Math.max(0, Math.min(1, pad.padX + dPadX)),
           Math.max(0, Math.min(1, pad.padY + dPadY)),
           product,
+          p.face,
         );
         return clampFn({ ...p, u: np.u, v: np.v });
       }
@@ -1867,10 +1978,12 @@ export default function Customizer() {
     const c = is3DObject ? { u: 0.5, v: 0.5 } : padToPlacement(0.5, 0.5, product);
     const clampT = is3DObject ? (p: Placement) => p : clampTextP;
     const clampA = is3DObject ? (p: Placement) => p : clampArtP;
-    if (activeDesignKind === "text") setTextPlacement(p => clampT({ ...p, u: c.u, v: c.v }));
+    // El texto se centra en su propia cara (frente, dorso o costado).
+    const ct = is3DObject ? c : padToPlacement(0.5, 0.5, product, textPlacement.face);
+    if (activeDesignKind === "text") setTextPlacement(p => clampT({ ...p, u: ct.u, v: ct.v }));
     else if (activeDesignKind === "art") setArtPlacement(p => clampA({ ...p, u: c.u, v: c.v }));
     flashGuides();
-  }, [is3DObject, product, activeDesignKind, clampTextP, clampArtP, flashGuides]);
+  }, [is3DObject, product, activeDesignKind, clampTextP, clampArtP, flashGuides, textPlacement.face]);
 
   // Objetos planos (billetera, tabla…): delta del arrastre como fracción del
   // canvas → delta del pad. La cara ocupa más o menos la mitad del visor.
@@ -1938,20 +2051,24 @@ export default function Customizer() {
   // u que debe quedar de frente: el centro de la cara frontal en "una cara", o
   // la posición real del texto cuando el modo de edición vigente es libre (el
   // arte se edita siempre en la cara frontal).
-  const designFaceU = editSingleFace
-    ? FRONT_FACE.uCenter
-    : activeDesignKind === "text" ? textPlacement.u
-    : FRONT_FACE.uCenter;
+  // El texto puede ir en otra cara (dorso, costado): sin nada seleccionado
+  // manda la cara del texto, así el visor y la captura muestran lo grabado.
+  const frontU = faceCenterU(product, "front");
+  const textFaceU = faceCenterU(product, textFace);
+  const designFaceU = activeDesignKind === "art"
+    ? frontU
+    : !singleFace ? (activeDesignKind === "text" ? textPlacement.u : frontU)
+    : hasText ? textFaceU : frontU;
 
   // ── Seleccionar / terminar ──────────────────────────────────────────────────
   const selectDesign = React.useCallback((kind: "text" | "art", source: string) => {
     setSelected(kind);
     setUndoDeleteUntil(0);
     // La pieza gira para mostrar de frente lo que se va a editar.
-    thermosSnapRef.current?.(kind === "text" && !singleFace ? textPlacement.u : FRONT_FACE.uCenter);
+    thermosSnapRef.current?.(kind === "text" ? (singleFace ? textFaceU : textPlacement.u) : frontU);
     flashGuides();
     track("design_select", { kind, source });
-  }, [singleFace, textPlacement.u, flashGuides]);
+  }, [singleFace, textPlacement.u, textFaceU, frontU, flashGuides]);
 
   const finishEditing = React.useCallback(() => {
     setSelected(null);
@@ -2186,6 +2303,8 @@ export default function Customizer() {
   // "Traigo el mío" aplica a drinkware y bolígrafos (lo que el hero promete).
   const canBringOwn = isDrinkware || !!material.pens;
   const isOwnProduct = canBringOwn && ownProduct;
+  /** La pieza elegida de la tienda está agotada: no se puede pedir (sí con "Traigo el mío"). */
+  const isSoldOut = odooMode && !isOwnProduct && (odooVariant ? !odooVariant.inStock : odooAllOut);
 
   /** Precio estimado según lo diseñado. Solo montos que la landing ya publica
    *  (Tarifas y bolígrafos); lo que no tiene precio fijo se dice explícito. */
@@ -2221,6 +2340,10 @@ export default function Customizer() {
   /** Campos del pedido — ÚNICA fuente de datos del "Resumen de tu
    *  personalización" (Paso 4) y del mensaje de WhatsApp. Campos sin dato se
    *  omiten por completo (nunca "Texto: —"). */
+  // Tapa / base: solo drinkware (el cristal no lleva). null = no pedido.
+  const extraEngraving = isDrinkware && !isGlass;
+  const extraLidText = extraEngraving && extraLid !== null ? extraLid.trim() : null;
+  const extraBaseText = extraEngraving && extraBase !== null ? extraBase.trim() : null;
   const orderFields = (): [string, string][] => {
     const rows: [string, string][] = [["Producto", isOwnProduct ? orderProductName : orderProductLabel]];
     if (isOwnProduct) rows.push(["Origen", "Lo trae el cliente"]);
@@ -2230,12 +2353,14 @@ export default function Customizer() {
     // (ej. termo de acero pintado vs. inoxidable vs. forrado en cuero).
     if (!material.pens) rows.push(["Material", material.name]);
     if (orderColorName) rows.push(["Color", orderColorName]);
-    if (!isOwnProduct && odooVariant && !odooVariant.inStock) rows.push(["Stock", "Sin stock en este momento"]);
     rows.push(["Técnica", orderTechniqueName]);
     const trimmedText = text.trim();
     if (trimmedText) rows.push(["Texto", `${trimmedText} (${activeFont.name})`]);
+    if (trimmedText && isDrinkware && !isWrap360 && textFaces.length > 1) rows.push(["Ubicación del texto", FACES[textFace].label]);
     if (selectedIcon) rows.push(["Ícono", selectedIcon.name]);
     else if (customImage) rows.push(["Logo/foto adjunta", "Sí"]);
+    if (extraLidText !== null) rows.push(["Grabado en tapa", extraLidText || "Sí (texto a definir)"]);
+    if (extraBaseText !== null) rows.push(["Grabado en base", extraBaseText || "Sí (texto a definir)"]);
     return rows;
   };
 
@@ -2273,6 +2398,10 @@ export default function Customizer() {
         simpleKind,
         textPlacement,
         artPlacement,
+        // Grabado extra (no está en el 3D): también va al archivo de producción.
+        extraEngraving: extraLidText !== null || extraBaseText !== null
+          ? { lid: extraLidText, base: extraBaseText }
+          : undefined,
         // Legibles para el panel /admin (designState admite campos extra).
         sizeLabel: orderSizeName,
         ownProduct: isOwnProduct,
@@ -2311,10 +2440,10 @@ export default function Customizer() {
    *  imagen) y abre WhatsApp con el número de pedido y la URL permanente del
    *  preview. Si el POST falla o tarda de más, fallback: mensaje solo con las
    *  especificaciones, más un aviso sutil y el botón "Descargar imagen". */
-  const isEmptyDesign = !text.trim() && !selectedIcon && !customImage;
+  const isEmptyDesign = !text.trim() && !selectedIcon && !customImage && !extraLidText && !extraBaseText;
 
   const handleOrder = async (force = false) => {
-    if (isOrdered || isPreparing) return;
+    if (isOrdered || isPreparing || isSoldOut) return;
     // Sin nada para grabar: avisar antes (puede ser a propósito, ej. "quiero
     // asesoramiento"), así que "Enviar igual" sigue disponible.
     if (isEmptyDesign && !force) {
@@ -2433,7 +2562,7 @@ export default function Customizer() {
               className={`min-h-12 px-2 py-2.5 border rounded-xl flex flex-col items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed ${active ? activeCard : idleCard}`}
             >
               <span className="font-semibold text-sm leading-tight">{label}</span>
-              {!sellable && <span className="text-xs text-muted-foreground leading-tight">Sin stock</span>}
+              {!sellable && <span className="text-xs font-semibold text-red-700 leading-tight">Agotado</span>}
             </button>
           );
         })}
@@ -2485,28 +2614,36 @@ export default function Customizer() {
       <Label className="text-sm font-medium text-foreground mb-1 block">Color</Label>
       <p className="text-xs text-muted-foreground mb-3">Colores disponibles de {odooProduct!.name}.</p>
       {/* Tamaño fijo: la cantidad de colores la define Odoo (pueden ser 2 o 15). */}
-      <div className="flex flex-wrap gap-3">
+      <div className={`flex flex-wrap gap-x-3 ${odooColors.some(c => !odooColorInStock(c.name)) ? "gap-y-6" : "gap-y-3"}`}>
         {odooColors.map(c => {
           const active = odooColor === c.name;
+          const inStock = odooColorInStock(c.name);
           return (
             <button
               key={c.name}
               type="button"
               onClick={() => selectOdooColor(c.name)}
-              disabled={!c.inStock}
-              title={c.inStock ? c.name : `${c.name} — sin stock`}
-              aria-label={c.inStock ? c.name : `${c.name}, sin stock`}
+              disabled={!inStock}
+              title={inStock ? c.name : `${c.name} — agotado`}
+              aria-label={inStock ? c.name : `${c.name}, agotado`}
               aria-pressed={active}
-              className={`relative w-11 h-11 shrink-0 rounded-full overflow-hidden border border-black/10 transition-all hover:scale-105 disabled:hover:scale-100 disabled:cursor-not-allowed ring-offset-2 ${active ? "ring-2 ring-primary" : ""}`}
+              className={`relative w-11 h-11 shrink-0 rounded-full border border-black/10 transition-all hover:scale-105 disabled:hover:scale-100 disabled:cursor-not-allowed ring-offset-2 ${active ? "ring-2 ring-primary" : ""}`}
             >
-              <span className={`absolute inset-0 ${c.inStock ? "" : "opacity-35"}`} style={{ backgroundColor: c.hex }} />
-              {!c.inStock && (
+              <span className="absolute inset-0 rounded-full overflow-hidden">
+              <span className={`absolute inset-0 ${inStock ? "" : "opacity-35"}`} style={{ backgroundColor: c.hex }} />
+              {!inStock && (
                 // Diagonal de "agotado".
                 <span className="absolute inset-0" style={{ background: "linear-gradient(to top right, transparent 46%, #6b6f74 46%, #6b6f74 54%, transparent 54%)" }} />
               )}
               {active && (
                 <span className="absolute inset-0 flex items-center justify-center bg-black/20">
                   <Check className="text-white w-5 h-5 drop-shadow" />
+                </span>
+              )}
+              </span>
+              {!inStock && (
+                <span className="absolute left-1/2 -translate-x-1/2 top-full mt-0.5 text-[10px] font-semibold leading-none text-red-700 whitespace-nowrap">
+                  Agotado
                 </span>
               )}
             </button>
@@ -2516,14 +2653,15 @@ export default function Customizer() {
       <p className="text-sm text-muted-foreground mt-3 flex items-center gap-2">
         <span className="w-3 h-3 rounded-full border border-black/10" style={{ backgroundColor: activeColorHex }} />
         {activeColorName}
+        {isSoldOut && <span className="text-xs font-semibold text-red-700">· Agotado</span>}
         {odooVariant && odooVariant.inStock && odooVariant.available !== null && odooVariant.available <= 3 && (
           <span className="text-xs text-primary">· {odooVariant.available === 1 ? "¡Queda 1!" : `Quedan ${odooVariant.available}`}</span>
         )}
       </p>
       {odooAllOut && (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
-          Este producto está sin stock en este momento. Podés diseñarlo igual y te avisamos por WhatsApp, o
-          elegir "Traigo el mío".
+          Este producto está agotado en este momento: no se puede pedir. Podés elegir otro producto o
+          "Traigo el mío" si ya lo tenés.
         </p>
       )}
     </div>
@@ -2676,6 +2814,7 @@ export default function Customizer() {
     odooTemplateId: odooProduct?.id ?? null, odooColor, odooSize,
     technique: effectiveTechnique, text, fontId: font, textColor, iconId, ownProduct,
     textPlacement, artPlacement,
+    extraLid: extraEngraving ? extraLid : null, extraBase: extraEngraving ? extraBase : null,
   });
 
   const handleCopyLink = async () => {
@@ -2800,7 +2939,7 @@ export default function Customizer() {
 
       <Button
         onClick={() => handleOrder()}
-        disabled={isOrdered || isPreparing}
+        disabled={isOrdered || isPreparing || isSoldOut}
         size="lg"
         className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
       >
@@ -2808,8 +2947,16 @@ export default function Customizer() {
           <><Loader2 className="w-4 h-4 animate-spin" /> Creando tu pedido...</>
         ) : isOrdered ? (
           lastOrderNumber ? `Pedido ${lastOrderNumber} creado ✓` : "Abriendo WhatsApp..."
-        ) : ctaLabel}
+        ) : isSoldOut ? "Agotado" : ctaLabel}
       </Button>
+
+      {isSoldOut && (
+        <p className="text-xs text-red-700 text-center leading-relaxed" role="status">
+          {odooAllOut
+            ? "Este producto está agotado y no se puede pedir por ahora."
+            : `${activeColorName}${odooSize ? ` en ${odooSize}` : ""} está agotado. Elegí otro color o tamaño para hacer el pedido.`}
+        </p>
+      )}
 
       {/* Aviso sutil cuando el backend no respondió: el pedido salió igual por
           WhatsApp, solo que sin número ni imagen. */}
@@ -2902,7 +3049,7 @@ export default function Customizer() {
               engraveStyle={drinkwareEngraveStyle}
               singleFace={singleFace}
               showGuides={false}
-              frontFaceU={FRONT_FACE.uCenter}
+              frontFaceU={designFaceU}
               glass={isGlass}
             />
           ) : is3DObject && activeObject ? (
@@ -3187,7 +3334,8 @@ export default function Customizer() {
                       singleFace={singleFace}
                       editSingleFace={editSingleFace}
                       showGuides={guidesActive}
-                      frontFaceU={FRONT_FACE.uCenter}
+                      frontFaceU={designFaceU}
+                      guideFace={activeDesignKind === "art" ? "front" : textFace}
                       glass={isGlass}
                       designActive={designActive}
                       onDesignMove={onDesignMoveUV}
@@ -3434,6 +3582,11 @@ export default function Customizer() {
                         onChange={(o) => applyTextPlacement({ ...textPlacement, orientation: o })}
                         verticalDisabledReason={isWrap360 ? "El texto envolvente 360° va en horizontal alrededor del cuerpo" : undefined}
                       />
+                      {/* Dónde va el texto: frente, dorso o costado (el Envolvente 360°
+                          ya rodea todo el cuerpo). */}
+                      {!isWrap360 && textFaces.length > 1 && (
+                        <FaceSelector faces={textFaces} value={textFace} onChange={selectTextFace} />
+                      )}
                     </div>
 
                     <div>
@@ -3463,6 +3616,10 @@ export default function Customizer() {
                         <TextDispositionToolbar placement={textPlacement} onChange={applyTextPlacement} />
                       </div>
                     </AdvancedOptions>
+
+                    {extraEngraving && (
+                      <ExtraEngravingFields lid={extraLid} base={extraBase} onLid={setExtraLid} onBase={setExtraBase} />
+                    )}
                   </TabsContent>
 
                   {/* ICONS TAB */}

@@ -30,6 +30,13 @@ function hasInternalKey(req: Request): boolean {
  * un fallo acá nunca voltea la creación del pedido — se loguea y el archivo
  * puede regenerarse después a mano.
  */
+/** Texto de tapa/base de designState.extraEngraving ("" = sí sin texto; null = no). */
+function extraText(extra: unknown, key: "lid" | "base"): string | null {
+  if (!extra || typeof extra !== "object") return null;
+  const v = (extra as Record<string, unknown>)[key];
+  return typeof v === "string" ? v.slice(0, 60) : null;
+}
+
 async function generateProductionFile(
   order: Order,
   customImageDataUrl: string | null,
@@ -48,6 +55,8 @@ async function generateProductionFile(
       customImageDataUrl,
       textPlacement: (ds.textPlacement ?? null) as never,
       artPlacement: (ds.artPlacement ?? null) as never,
+      extraLid: extraText(ds.extraEngraving, "lid"),
+      extraBase: extraText(ds.extraEngraving, "base"),
     });
     const name = `orders/${order.orderNumber}-produccion.svg`;
     await storeOrderFile(name, Buffer.from(svg, "utf8"), "image/svg+xml");

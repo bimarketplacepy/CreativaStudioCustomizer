@@ -7,7 +7,7 @@ import {
 import {
   layoutText, fillLinesAligned, measureLinesWidth, measureLinesBox, fitText,
 } from "./engraving-text";
-import { faceConfigFor, type MarkHalfExtents } from "./face-area";
+import { FACES, faceConfigFor, nearU, type MarkHalfExtents } from "./face-area";
 
 /** Text wraps once a row passes this fraction of the wrap-around circumference. */
 const TEXT_WRAP_FRAC = 0.5;
@@ -93,16 +93,19 @@ function drawPlaced(
   let cx = ((p.u % 1) + 1) % 1 * W;
   let cy = clamp(m.topPx + (m.botPx - m.topPx) * p.v, m.topPx + boundHalfH, m.botPx - boundHalfH);
 
-  // "Edición en una cara": trap the whole bounding box inside the front-face
-  // rectangle. This is the authority — the pad clamps for UX, but here the exact
-  // rendered extents guarantee nothing crosses the margin, even partially.
+  // "Edición en una cara": trap the whole bounding box inside the rectangle of
+  // the mark's face. This is the authority — the pad clamps for UX, but here the
+  // exact rendered extents guarantee nothing crosses the margin, even partially.
+  // El dorso (centro en u 1.0) cruza la costura: u se lleva junto a su centro y
+  // el dibujo repetido en ±W lo completa del otro lado.
   if (singleFace) {
     const bandH = m.botPx - m.topPx;
     const f = m.face;
+    const c = f.uCenter + FACES[p.face ?? "front"].offset;
     cx = clamp(
-      cx,
-      (f.uCenter - f.uHalfWidth) * W + boundHalfW,
-      (f.uCenter + f.uHalfWidth) * W - boundHalfW,
+      nearU(p.u, c) * W,
+      (c - f.uHalfWidth) * W + boundHalfW,
+      (c + f.uHalfWidth) * W - boundHalfW,
     );
     cy = clamp(
       cy,

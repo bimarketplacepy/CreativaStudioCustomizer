@@ -1,4 +1,6 @@
-export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge";
+import type { FaceId } from "./placement";
+
+export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -35,6 +37,13 @@ export interface ProductDef {
    * silhouette (e.g. the copa's bowl curving down into the stem).
    */
   frontFace?: { uHalfWidth?: number; vCenter?: number; vHeightFrac?: number };
+  /**
+   * Caras donde se puede grabar el texto (ver FACES en face-area.ts). Se sacan
+   * las que caen sobre la manija (u 0.75 = "left", u 0.25 = "right") o sobre el
+   * logo de la marca, que en los modelos .glb queda atrás ("back").
+   * Default: las cuatro.
+   */
+  engraveFaces?: FaceId[];
   sizes: ProductSize[];
   /**
    * Modelo 3D real (.glb, ver GUIA-MODELOS-3D.md) en lugar del lathe generado.
@@ -119,6 +128,8 @@ export const PRODUCTS: ProductDef[] = [
       [0.38,  1.12], [0.35,  1.15],
     ],
     band: [-1.10, 0.72],
+    // Caras de grabado: la manija del lathe está en +X = u 0.25 (derecha).
+    engraveFaces: ["front", "back", "left"],
     sizes: [
       { id: "termo-20", name: "20oz", label: "Estándar", scale: 0.88 },
       { id: "termo-32", name: "32oz", label: "Grande",   scale: 1.00 },
@@ -157,6 +168,8 @@ export const PRODUCTS: ProductDef[] = [
       paintLight: ["label"],
       paintDark: ["handle_slot", "handle_hole"],
     },
+    // Caras de grabado: manija a la izquierda (u 0.75) y logo atrás.
+    engraveFaces: ["front", "right"],
     sizes: [
       { id: "termo-mate-800",  name: "800ml",  label: "Chico",   scale: 0.87 },
       { id: "termo-mate-915",  name: "915ml",  label: "Mediano", scale: 0.91 },
@@ -190,8 +203,46 @@ export const PRODUCTS: ProductDef[] = [
       yawDeg: 180,
       paint: ["lid"],
     },
+    // Caras de grabado: manija a la derecha (u 0.25) y logo atrás.
+    engraveFaces: ["front", "left"],
     sizes: [
       { id: "termo-mate-forge-1200", name: "1200ml", label: "Clásico", scale: 1.00 },
+    ],
+  },
+  {
+    id: "termo-kids",
+    name: "Termos Kids",
+    singular: "Termo Kids",
+    // Hydrate Termo Kids 355 ml (artifacts/3D/botella-kids-hydrate-negra-landing.glb):
+    // cuerpo cilíndrico recto, aro de acero y tapa con pico rebatible y asa de
+    // correa. Perfil = radio del cuerpo medido sobre el .glb (m × 11, centrado
+    // en 0,1204 m). Logo atrás (yawDeg 180); el asa va sobre la tapa, así que
+    // el cuerpo no tiene manija.
+    desc: "Termo infantil de 355 ml con tapa de pico y asa.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.382, -1.324], [0.402, -1.269], [0.402, 0.161],
+      [0.398, 0.216], [0.381, 0.260],
+    ],
+    band: [-1.22, 0.12],
+    frontFace: { uHalfWidth: 0.15 },
+    model: {
+      url: "/models/termo-kids.glb?v=1",
+      exactFor: ["Termo Kids"],
+      unitsPerMeter: 11,
+      centerYm: 0.1204,
+      heightM: 0.2408,
+      reachM: 0.0417,
+      yawDeg: 180,
+      paint: ["lid", "strap"],
+      paintLight: ["strap_text"],
+      paintDark: ["lid_spout"],
+    },
+    // Caras de grabado: logo atrás.
+    engraveFaces: ["front", "left", "right"],
+    sizes: [
+      { id: "termo-kids-355", name: "355ml", label: "Kids", scale: 1.00 },
     ],
   },
   {
@@ -225,11 +276,48 @@ export const PRODUCTS: ProductDef[] = [
     ],
   },
   {
+    id: "hoppie-hydrate",
+    name: "Hoppies",
+    singular: "Hoppie",
+    // Hydrate Hoppie (artifacts/3D/hoppie-hydrate-amarilla-landing.glb): mismo
+    // cuerpo recto y tapa negra con pico y asa que el Termo Kids, más alto.
+    // Perfil = radio del cuerpo medido sobre el .glb (m × 10, centrado en
+    // 0,1364 m). El .glb es el de 620 ml (volumen interior ≈ 0,62 L); los otros
+    // tamaños se escalan por volumen. Logo atrás (yawDeg 180); el asa va sobre
+    // la tapa. Solo el cuerpo lleva el color elegido: tapa y asa son negras.
+    desc: "Botella térmica con tapa de pico y asa.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.347, -1.364], [0.365, -1.314], [0.365, 0.286],
+      [0.362, 0.336], [0.346, 0.396],
+    ],
+    band: [-1.25, 0.24],
+    frontFace: { uHalfWidth: 0.15 },
+    model: {
+      url: "/models/hoppie-hydrate.glb?v=1",
+      exactFor: ["Hoppie"],
+      unitsPerMeter: 10,
+      centerYm: 0.1364,
+      heightM: 0.2728,
+      reachM: 0.0417,
+      yawDeg: 180,
+    },
+    // Caras de grabado: logo atrás.
+    engraveFaces: ["front", "left", "right"],
+    sizes: [
+      { id: "hoppie-hydrate-530",  name: "530ml", label: "Chico",   scale: 0.95 },
+      { id: "hoppie-hydrate-620",  name: "620ml", label: "Mediano", scale: 1.00 },
+      { id: "hoppie-hydrate-710",  name: "710ml", label: "Clásico", scale: 1.05 },
+      { id: "hoppie-hydrate-1000", name: "1L",    label: "Grande",  scale: 1.17 },
+    ],
+  },
+  {
     id: "botella-ancha",
     name: "Botellas",
     singular: "Botella",
-    // Botella de boca ancha GENÉRICA (lathe): Hoppie, Termo, Hoppie Kids y
-    // Termo Kids de Odoo, sin modelo 3D propio (el .glb es del Hoppie V2 Pro).
+    // Botella de boca ancha GENÉRICA (lathe): Termo y Hoppie Kids de Odoo, sin
+    // modelo 3D propio.
     // Botella de boca ancha (h:d ≈ 2.6:1): fondo plano con fillet suave, cuerpo
     // cilíndrico perfecto con una junta horizontal muy sutil a ~12% de la altura
     // (unión del fondo aislante), hombro convexo tipo domo y cuello ANCHO
@@ -300,6 +388,43 @@ export const PRODUCTS: ProductDef[] = [
       { id: "guampa-sm", name: "Chica",   label: "300ml", scale: 0.84 },
       { id: "guampa-md", name: "Mediana", label: "500ml", scale: 1.00 },
       { id: "guampa-lg", name: "Grande",  label: "750ml", scale: 1.16 },
+    ],
+  },
+  {
+    id: "copa-hydrate",
+    name: "Copas Hydrate",
+    singular: "Copa",
+    // Hydrate "Copa" 267 ml (artifacts/3D/vaso-vino-hydrate-aqua-landing.glb):
+    // vaso de vino sin tallo, cuerpo tipo huevo, aro de acero y tapa
+    // transparente. Perfil = radio del cuerpo medido sobre el .glb (m × 20,
+    // centrado en 0,058 m). Logo atrás (yawDeg 180).
+    desc: "Copa térmica de vino sin tallo con tapa transparente.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.562, -1.16], [0.632, -1.06], [0.680, -0.96], [0.716, -0.86],
+      [0.752, -0.76], [0.782, -0.66], [0.800, -0.56], [0.832, -0.46],
+      [0.848, -0.36], [0.862, -0.26], [0.872, -0.16], [0.878, -0.06],
+      [0.880,  0.04], [0.880,  0.14], [0.874,  0.24], [0.870,  0.34],
+      [0.862,  0.44], [0.854,  0.54], [0.846,  0.64], [0.836,  0.746],
+    ],
+    band: [-0.70, 0.64],
+    // Cuerpo curvo: el área se queda en la panza (radio casi constante) y con
+    // un arco más corto para que los bordes no se vean torcidos.
+    frontFace: { uHalfWidth: 0.17, vCenter: 0.55, vHeightFrac: 0.7 },
+    model: {
+      url: "/models/copa-hydrate.glb?v=1",
+      exactFor: ["Copa"],
+      unitsPerMeter: 20,
+      centerYm: 0.058,
+      heightM: 0.116,
+      reachM: 0.0492,
+      yawDeg: 180,
+    },
+    // Caras de grabado: logo atrás.
+    engraveFaces: ["front", "left", "right"],
+    sizes: [
+      { id: "copa-hydrate-267", name: "267ml", label: "Clásica", scale: 1.00 },
     ],
   },
   {
@@ -377,6 +502,8 @@ export const PRODUCTS: ProductDef[] = [
     band: [-0.80, 0.52],
     // Cara frontal a 90° de la manija; ~55% del arco visible (12–75% de altura).
     frontFace: { uHalfWidth: 0.14 },
+    // Caras de grabado: la manija del lathe está en +X = u 0.25 (derecha).
+    engraveFaces: ["front", "back", "left"],
     sizes: [
       { id: "chopera-710", name: "710ml", label: "Clásica", scale: 1.00 },
     ],
@@ -412,6 +539,8 @@ export const PRODUCTS: ProductDef[] = [
       heightM: 0.203,
       reachM: 0.0842,
     },
+    // Caras de grabado: manija a la izquierda (u 0.75) y logo atrás.
+    engraveFaces: ["front", "right"],
     sizes: [
       { id: "vaso-manija-887",  name: "887ml",  label: "Clásico", scale: 1.00 },
       { id: "vaso-manija-1183", name: "1183ml", label: "Grande",  scale: 1.10 },
@@ -445,10 +574,49 @@ export const PRODUCTS: ProductDef[] = [
       exactFor: ["Vaso"],
       yawDeg: 180,
     },
+    // Caras de grabado: logo atrás.
+    engraveFaces: ["front", "left", "right"],
     sizes: [
       { id: "vaso-hydrate-470", name: "470ml", label: "Chico",   scale: 0.84 },
       { id: "vaso-hydrate-600", name: "600ml", label: "Mediano", scale: 0.91 },
       { id: "vaso-hydrate-900", name: "900ml", label: "Grande",  scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-espresso",
+    name: "Vasos Taza Espresso",
+    singular: "Vaso Taza Espresso",
+    // Hydrate Vaso Taza Espresso (artifacts/3D/vaso-espresso-hydrate-azul-landing.glb):
+    // taza cónica sin manija ni tapa, con aro de acero arriba. Perfil = radio
+    // del cuerpo medido sobre el .glb (m × 30, centrado en 0,0443 m). Se toma
+    // como el de 160 ml; el de 80 ml se escala por volumen. Logo atrás (yawDeg 180).
+    desc: "Taza térmica para espresso, sin tapa.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.618, -1.329], [0.696, -1.179], [0.756, -1.029], [0.780, -0.879],
+      [0.807, -0.729], [0.843, -0.579], [0.858, -0.429], [0.876, -0.279],
+      [0.900, -0.129], [0.918,  0.021], [0.945,  0.171], [0.963,  0.321],
+      [0.981,  0.471], [1.008,  0.621], [1.029,  0.771], [1.029,  0.831],
+    ],
+    band: [-0.95, 0.75],
+    // Cuerpo cónico: área un poco más alta que el centro (donde es más ancho)
+    // y con arco corto para que los bordes no se vean torcidos.
+    frontFace: { uHalfWidth: 0.18, vCenter: 0.55, vHeightFrac: 0.7 },
+    model: {
+      url: "/models/vaso-espresso.glb?v=1",
+      exactFor: ["Vaso Taza Espresso"],
+      unitsPerMeter: 30,
+      centerYm: 0.0443,
+      heightM: 0.0886,
+      reachM: 0.036,
+      yawDeg: 180,
+    },
+    // Caras de grabado: logo atrás.
+    engraveFaces: ["front", "left", "right"],
+    sizes: [
+      { id: "vaso-espresso-80",  name: "80ml",  label: "Chico",   scale: 0.79 },
+      { id: "vaso-espresso-160", name: "160ml", label: "Clásico", scale: 1.00 },
     ],
   },
   {
@@ -482,6 +650,8 @@ export const PRODUCTS: ProductDef[] = [
       paint: ["boot", "straw_tip"],
       paintLight: ["logo_funda"],
     },
+    // Caras de grabado: manija a la izquierda (u 0.75) y logo atrás.
+    engraveFaces: ["front", "right"],
     sizes: [
       { id: "vaso-sunbeam-887",  name: "887ml",  label: "Clásico", scale: 1.00 },
       { id: "vaso-sunbeam-1183", name: "1183ml", label: "Grande",  scale: 1.10 },

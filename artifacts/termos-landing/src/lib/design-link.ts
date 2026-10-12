@@ -26,6 +26,9 @@ export interface SharedDesign {
   odooTemplateId?: number | null;
   odooColor?: string | null;
   odooSize?: string | null;
+  /** Grabado extra en tapa / base (null = no pedido; links anteriores no lo traen). */
+  extraLid?: string | null;
+  extraBase?: string | null;
 }
 
 const PREFIX = "#diseno=";
