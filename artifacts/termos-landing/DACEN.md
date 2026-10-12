@@ -1,0 +1,390 @@
+# DACEN — Plan de integración de las máquinas (Dacen F5 + eufyMake E1 + láser)
+
+**Fecha:** 2026-10-12 · Complementa `Mejoras.md` y `PLAN-EDITOR.md`.
+**Estado:** planteamiento. Nada de esto está implementado salvo lo marcado ✅.
+**Precios:** se definen después. Este plan deja la **estructura** lista para que
+cargar un precio sea completar un número en un solo archivo, sin tocar
+componentes.
+
+---
+
+## 0. Objetivo
+
+Que cada pedido de la landing:
+
+1. sepa **en qué máquina se produce** (láser, Dacen F5 o eufyMake E1), sin que
+   el cliente tenga que elegir máquinas;
+2. llegue al taller con el **archivo exacto que esa máquina necesita**, listo
+   para cargar en su programa;
+3. muestre un **precio calculado** cuando el precio esté definido, o "se cotiza
+   por WhatsApp" mientras no lo esté;
+4. quede registrado con los datos de producción (máquina, medidas, cobertura,
+   cantidad) en el pedido y en `/admin`.
+
+---
+
+## 1. Las máquinas
+
+| | **Dacen F5** | **eufyMake E1** | **Láser** (modelo a confirmar) |
+|---|---|---|---|
+| Qué es | UV **cilíndrica industrial**: imprime directo sobre la pieza girándola | UV de escritorio con relieve (cama plana, rotativa o film) | Grabado (fibra / diodo / CO₂) |
+| Uso en el negocio | **Drinkware a color**: termos, vasos, botellas, copas | **Stickers** UV DTF ✅ · (a futuro) piezas planas a color | Grabado en todo lo demás |
+| Límites | Ø 45–125 mm · largo 30–270 mm · cónico 0–5° · ~20–30 s/pieza | Film hasta ~33 cm de ancho · plano hasta 33×42 cm, 10 cm de alto | Según modelo |
+| Tintas | CMYK + Blanco + Barniz | CMYK + Blanco + Gloss (relieve) | — |
+| Programa | **RIPrint** (PNG, TIFF, PDF, JPG, EPS, AI, PSD) | **eufyMake Studio** (PNG, JPG, WebP, SVG, PSD, AI, PDF) | LightBurn / EzCad / xTool (SVG, DXF) |
+| Archivo que le damos | **PNG desenrollado** (ancho = π × Ø), transparente, tamaño real | **PNG** transparente, tamaño real, 300 dpi ✅ | **SVG** vectorial ✅ (ya existe) |
+
+Fuentes (investigación del 2026-10-12):
+- Dacen F5: https://www.dacenprinter.com/cylinder-printer/dacen-f5-uv-cylinder-printer.html
+- eufyMake E1, especificaciones: https://www.eufy.com/sg-en/eufymake-spec
+- eufyMake E1, formatos de importación: https://service.eufymake.com/article-description/eufyMake-UV-Printer-E1-Supported-file-import-types-and-sizes
+
+---
+
+## 2. Cómo funciona hoy (punto de partida)
+
+- **Técnicas en el personalizador** (`customizer.tsx` → `TECHNIQUES`):
+  - `laser` = "Grabado láser".
+  - `eufy` = "Impresión UV".
+  - La técnica `eufy` en realidad corresponde a la **Dacen**: es impresión directa sobre el termo. El nombre quedó de una etapa anterior.
+- **Dónde se ofrece color:** `allowsColorPrint()` en `materials.ts`. Solo drinkware de acero, sin la guampa.
+- **Vista 3D a color:** `engraving-maps.ts` → `makeBodyMaps({ colorPrint: true })`.
+  - Pinta el diseño sobre un lienzo de `TEXTURE_W × TEXTURE_H` (1024 × 2048), que es **el cuerpo del termo desenrollado**.
+  - El ancho del lienzo es la vuelta completa (`u` de 0 a 1) y el alto es la banda imprimible (`product.band`).
+  - 👉 **Ese lienzo ya es, en formato, el archivo que necesita la Dacen.** Solo falta dibujarlo a tamaño real y sin el color del termo.
+- **Pedido:** `POST /api/orders`.
+  - Guarda `designState` (JSON libre) y la imagen de vista previa.
+  - Genera un archivo de producción: SVG para láser, o PNG para stickers ✅.
+- **Precio:**
+  - Láser: planes fijos (`engraving-plans.ts` / Odoo `GRAB-*`).
+  - UV: "se cotiza por WhatsApp".
+  - Stickers: `sticker-pricing.ts`, con valores provisorios.
+
+---
+
+## 3. Arquitectura propuesta
+
+### 3.1 Diagrama general
+
+```mermaid
+flowchart LR
+  subgraph Landing
+    C[Personalizador<br/>termos · vasos · objetos]
+    S[Sección Stickers]
+    R{{"machineFor()<br/>reparto automático"}}
+    P{{"quote()<br/>precio por máquina"}}
+    F{{"buildProductionFile()<br/>archivo por máquina"}}
+  end
+  C --> R
+  S --> R
+  R -->|drinkware a color| D[Dacen F5]
+  R -->|stickers / plano color| E[eufyMake E1]
+  R -->|grabado| L[Láser]
+  R --> P
+  R --> F
+  F -->|PNG desenrollado| D
+  F -->|PNG tamaño real| E
+  F -->|SVG vectorial| L
+  P --> W[Resumen + WhatsApp]
+  F --> API[(POST /api/orders<br/>pedido + archivo)]
+  API --> ADM[/admin<br/>descarga por máquina/]
+```
+
+### 3.2 Flujo de un pedido a color (Dacen)
+
+```mermaid
+sequenceDiagram
+  participant Cli as Cliente
+  participant Lan as Landing
+  participant Api as API
+  participant Tal as Taller (RIPrint)
+  Cli->>Lan: elige termo + "Impresión a color" + diseño
+  Lan->>Lan: machineFor() = dacen (Ø y conicidad dentro de rango)
+  Lan->>Lan: quote() → precio o "se cotiza"
+  Cli->>Lan: Pedir por WhatsApp
+  Lan->>Lan: renderUnwrapped() → PNG π×Ø × alto, 300 dpi
+  Lan->>Api: POST /api/orders (designState + preview + PNG)
+  Api->>Api: valida, graba dpi, guarda CS-xxxx-dacen-Ø70x180mm.png
+  Api-->>Lan: CS-xxxx + link de preview
+  Lan-->>Cli: abre WhatsApp con el resumen
+  Tal->>Api: /admin → "PNG para Dacen"
+  Tal->>Tal: carga en RIPrint (blanco + barniz) e imprime
+```
+
+### 3.3 Piezas nuevas (estructura de código)
+
+```
+termos-landing/src/lib/
+  machines.ts          ← NUEVO: registro de máquinas + machineFor()
+  print-specs.ts       ← NUEVO: medidas físicas reales por producto (Ø, alto, manija)
+  pricing.ts           ← NUEVO: precios de TODAS las técnicas (reemplaza sueltos)
+  production-dacen.ts  ← NUEVO: render del PNG desenrollado (reusa engraving-maps)
+  sticker-pricing.ts   ← ✅ existe; pasa a leer sus números de pricing.ts
+  sticker-shape.ts     ← ✅ existe
+  engraving-maps.ts    ← se extrae la capa de color a una función reutilizable
+
+api-server/src/lib/
+  production-sticker.ts ← ✅ existe; se generaliza a production-png.ts (PNG + dpi)
+  production-svg.ts     ← ✅ existe (láser); lee medidas de print-specs (compartido)
+```
+
+---
+
+## 4. Diseño de cada pieza
+
+### 4.1 `machines.ts` — registro de máquinas
+
+```ts
+export type MachineId = "laser" | "dacen" | "eufy";
+
+export interface MachineDef {
+  id: MachineId;
+  name: string;            // "Dacen F5", "eufyMake E1", "Láser"
+  customerLabel: string;   // lo que ve el cliente: "Impresión a color", "Grabado láser"
+  fileKind: "svg" | "png-unwrapped" | "png";
+  limits?: { minDiameterMm: number; maxDiameterMm: number; maxTaperDeg: number; maxLengthMm: number };
+}
+
+export const MACHINES: Record<MachineId, MachineDef> = {
+  laser: { id: "laser", name: "Láser", customerLabel: "Grabado láser", fileKind: "svg" },
+  dacen: {
+    id: "dacen", name: "Dacen F5", customerLabel: "Impresión a color", fileKind: "png-unwrapped",
+    limits: { minDiameterMm: 45, maxDiameterMm: 125, maxTaperDeg: 5, maxLengthMm: 270 },
+  },
+  eufy: { id: "eufy", name: "eufyMake E1", customerLabel: "Sticker / impresión a color", fileKind: "png" },
+};
+
+/** Reparto automático: el cliente elige técnica, esto elige máquina. */
+export function machineFor(opts: {
+  technique: "laser" | "color";
+  kind: "drinkware" | "object" | "sticker";
+  spec?: PrintSpec;          // de print-specs.ts
+}): MachineId {
+  if (opts.kind === "sticker") return "eufy";
+  if (opts.technique === "laser") return "laser";
+  if (opts.kind === "drinkware" && opts.spec && fitsDacen(opts.spec)) return "dacen";
+  return "eufy"; // plano a color, o pieza fuera de rango de la Dacen (→ sticker/cama plana)
+}
+```
+
+**Reglas:**
+- El cliente **nunca** ve el nombre de la máquina. Ve la técnica.
+- El nombre de la máquina va al pedido, al panel y al archivo.
+- Si una pieza con color no entra en la Dacen (diámetro fuera de rango, muy cónica, manija que estorba), la alternativa es la eufy: sticker o cama plana. Eso lo decide el negocio pieza por pieza en `print-specs.ts`.
+- **Renombrar `eufy` → `color`** en el personalizador:
+  - `TechniqueId = "laser" | "color"`.
+  - Para no romper links compartidos viejos, al leer un link se acepta también `"eufy"` (`customizer.tsx`, al aplicar el diseño compartido).
+
+### 4.2 `print-specs.ts` — medidas físicas reales
+
+Hoy las medidas en mm viven en `production-svg.ts` (`PRODUCT_AREAS_MM`, marcadas "AJUSTAR") y solo cubren el frente. Pasan a un único lugar, compartido por landing y API:
+
+```ts
+export interface PrintSpec {
+  /** Diámetro del cuerpo en la zona imprimible (mm). Cónico: arriba ≠ abajo. */
+  diameterTopMm: number;
+  diameterBottomMm: number;
+  /** Alto imprimible del cuerpo, sin tapa ni base (mm). */
+  printableHeightMm: number;
+  /** Zona de la manija en la vuelta (u 0..1) que no se imprime; null = sin manija. */
+  handleU?: [number, number] | null;
+  /** Se puede imprimir a color en la Dacen (lo confirma el taller). */
+  dacen: boolean;
+}
+
+// Clave: ProductId de products.ts + tamaño (sizeId), porque cada tamaño mide distinto.
+export const PRINT_SPECS: Record<string, PrintSpec> = {
+  // "termo-mate:termo-mate-1200": { diameterTopMm: ?, diameterBottomMm: ?, printableHeightMm: ?, handleU: null, dacen: true },
+  // ... se completa con medidas reales (calibre) — ver §8
+};
+```
+
+- **Conicidad:** `atan((Øtop − Øbottom) / 2 / alto)`. Si pasa de 5°, la pieza no va en la Dacen.
+- **Dónde vive:** como lo usan la landing y la API, conviene un paquete compartido en `lib/` del monorepo, por ejemplo `@workspace/print-specs`. Así se termina el "MANTENER EN SINCRONÍA" que hoy tiene `production-svg.ts`.
+
+### 4.3 Archivo desenrollado para la Dacen (`production-dacen.ts`)
+
+**Geometría:** la textura del 3D ya es el desenrollado, así que la conversión a mm es directa.
+
+```
+x_mm = u × π × Ø            (u: 0..1 alrededor del cuerpo, igual que en designState)
+y_mm = (v en la banda) × printableHeightMm
+ancho del PNG = π × Ø_mm × dpi/25,4      alto = printableHeightMm × dpi/25,4
+```
+
+**Cómo se arma:**
+1. Se extrae de `makeBodyMaps()` el bloque `colorPrint` a una función propia, `drawColorLayer(ctx, W, H, opts)`, que dibuja **solo el diseño**: sin color del termo, sin acabado, con fondo transparente.
+   - El 3D la sigue usando como ahora.
+   - La producción la llama con un lienzo grande.
+2. `renderUnwrapped(opts, spec, dpi)` crea un lienzo de tamaño real (por ejemplo Ø 70 mm × 180 mm a 300 dpi ≈ 2598 × 2126 px) y llama a `drawColorLayer`.
+3. El diseño se ubica en el mismo `u/v` que eligió el cliente. Un diseño en el frente queda centrado en `u = 0,5` (la mitad del archivo).
+   - **Verificar con el taller dónde arranca la vuelta en la Dacen** (§8): puede que haya que correr el arte para que el frente caiga donde corresponde respecto de la costura de la pieza.
+4. Mismo mecanismo que los stickers ✅:
+   - El PNG viaja en el pedido (`customImage`).
+   - El servidor valida y le graba los dpi (`pHYs`).
+   - Se guarda como `orders/CS-xxxx-produccion.png`.
+   - Se descarga como `CS-xxxx-dacen-Ø70x180mm.png`.
+5. **Tamaño:** se prueba a 300 dpi y se baja si no entra en el pedido. El JSON admite 6 MB: se usan 240 o 200 dpi, igual que en stickers. Si hiciera falta 600 dpi, se cambia a subir el archivo aparte (multipart o storage), no en el JSON.
+
+**Lo que hace RIPrint y no el archivo** (a confirmar, §8):
+- La capa de **blanco**: debajo del color, para que se vea sobre termos oscuros.
+- El **barniz**.
+- La compensación de la **conicidad**: para piezas de 0–5°, el RIP suele hacerla. Si no la hace, el archivo se manda deformado en arco (sector de corona) y eso se agrega en `renderUnwrapped`.
+
+**Piezas con manija:** con `handleU` se marca la franja que no se imprime.
+- En el editor, el área de diseño ya excluye la manija (`engraveFaces`).
+- En el archivo, esa franja queda transparente y se avisa en el panel.
+
+### 4.4 Diseño envolvente 360° (fase posterior)
+
+Es lo que diferencia a la Dacen: imprimir **alrededor de todo el termo**.
+
+- Hoy existe el texto "alrededor" (`layout: "wrap360"`) y las caras frente, costados y dorso.
+- **Propuesta:** en Diseño → Imagen, una opción "Cubrir todo el termo (360°)".
+  - La imagen o el patrón se estira al ancho completo (π × Ø).
+  - Si hace falta se repite en mosaico.
+  - Respeta la franja de la manija.
+- **Vista previa:** el 3D ya la muestra, porque pinta la textura completa.
+- **Precio:** escalón "360°" (§4.5).
+- **Aviso de calidad:** dpi efectivos = px de la imagen / (π × Ø / 25,4). Si dan menos de 150, se avisa igual que en stickers.
+
+### 4.5 `pricing.ts` — estructura de precios única (montos a definir)
+
+Un solo archivo con los precios de **todas** las técnicas. Mientras un precio no esté definido (`null`), la landing muestra "se cotiza por WhatsApp", que es el comportamiento actual. Cuando se carga el número, aparece el precio sin tocar componentes.
+
+```ts
+export const PRICING = {
+  laser: {
+    // Planes actuales (engraving-plans.ts / Odoo GRAB-*): se mantienen.
+  },
+  dacen: {
+    /** Escalones por cobertura del diseño. null = "se cotiza". */
+    tiers: {
+      small: null,   // logo chico o nombre (≤ X cm²)
+      front: null,   // frente completo
+      wrap: null,    // 360°
+    } as Record<"small" | "front" | "wrap", number | null>,
+    smallMaxCm2: 30,          // AJUSTAR: hasta acá es "small"
+    setupPerOrder: null,      // preparación fija por pedido (se reparte por cantidad)
+    qtyTiers: [],             // descuentos por cantidad (empresas), mismo formato que stickers
+  },
+  eufy: {
+    stickers: { /* lo que hoy está en sticker-pricing.ts */ },
+  },
+  /** Si es false, la landing no muestra montos de esta técnica aunque existan. */
+  enabled: { laser: true, dacen: false, stickers: false },
+} as const;
+
+export interface Quote {
+  /** null → "se cotiza por WhatsApp". */
+  total: number | null;
+  unit: number | null;
+  note: string;            // "Termo Gs. X + impresión a color (frente) Gs. Y"
+  breakdown: { label: string; amount: number }[];
+}
+
+export function quote(input: QuoteInput): Quote { /* … */ }
+```
+
+**Cómo se calcula la cobertura para elegir el escalón** (sin pedirle nada al cliente):
+- Se usa el área ocupada por el diseño en mm²: la caja de texto e imagen sobre el desenrollado, que `drawColorLayer` ya conoce.
+- Hasta `smallMaxCm2` cuenta como chico.
+- Si ocupa el área frontal o más, cuenta como frente.
+- Si se eligió "360°", cuenta como envolvente.
+
+**Stickers:** hoy muestran precios provisorios (`sticker-pricing.ts`). Hasta definirlos, se puede activar `enabled.stickers = false`:
+- la sección mantiene el flujo completo;
+- el bloque de precio dice "Te pasamos el precio por WhatsApp";
+- el mensaje sale sin monto.
+
+**Odoo (opcional, igual que el láser):** servicios con referencia interna (`UV-CHICO`, `UV-FRENTE`, `UV-360`, `STICKER-CM2`…). Si existen, pisan los números del archivo, así que el precio se cambia desde Odoo sin publicar.
+
+### 4.6 Datos del pedido
+
+Etapa 1, **sin migración**: todo en `designState`, como los stickers.
+
+```jsonc
+{
+  "machine": "dacen",               // laser | dacen | eufy
+  "technique": "color",             // lo que eligió el cliente
+  "print": {
+    "diameterMm": 70, "printableHeightMm": 180,
+    "coverage": "front",            // small | front | wrap
+    "areaCm2": 64.2,
+    "dpi": 300
+  },
+  "quantity": 1,
+  "quote": { "total": null, "unit": null, "note": "se cotiza" }
+}
+```
+
+Etapa 2, cuando haga falta filtrar o sumar en el panel: columnas `machine`, `quantity`, `quote_total` y `production_kind` en `orders` (`lib/db/src/schema/orders.ts`), con `drizzle push`.
+
+### 4.7 Panel `/admin`
+
+- Etiqueta de máquina en cada pedido (Láser / Dacen / eufy), con filtro por máquina para la **cola de trabajo de cada una**.
+- Botón de descarga según el archivo: "SVG láser", "PNG para Dacen" o "PNG para eufyMake" ✅.
+- Avisos de producción: manija, resolución baja, 360°, cantidad.
+- (Futuro) estado por máquina: "en cola Dacen" → "impreso".
+
+### 4.8 Lo que ve el cliente (cambios de diseño mínimos)
+
+- **Técnica:** "Grabado láser" / "Impresión a color". Ya existe; cambia solo el id interno.
+- Debajo de "Impresión a color":
+  - con precio definido: "Precio: Gs. X (frente)";
+  - sin precio: "Se cotiza según el diseño".
+- Opción "360°" en Imagen (fase 3), solo en piezas con `dacen: true`.
+- Si una pieza **no** admite color: el aviso actual ("este producto solo admite grabado láser").
+
+---
+
+## 5. Fases de implementación
+
+| Fase | Qué | Resultado | Depende de |
+|---|---|---|---|
+| **1** | `machines.ts` + `print-specs.ts` (con medidas reales) + renombrar `eufy` → `color` + `machine` en el pedido y en el panel | Cada pedido dice en qué máquina va | Medidas (§8 punto 4) |
+| **2** | `drawColorLayer` + `renderUnwrapped` + PNG desenrollado en el pedido + descarga "PNG para Dacen" | El taller imprime en la Dacen directo del pedido | Formato RIPrint (§8 puntos 1–3) |
+| **3** | `pricing.ts` único + `quote()`; stickers y Dacen leen de ahí; `enabled` por técnica | Precio automático en cuanto se carguen montos | — (montos después) |
+| **4** | Diseño 360° + aviso de dpi | Producto diferencial de la Dacen | Fase 2 |
+| **5** | Columnas en `orders`, filtros por máquina, servicios de Odoo para precios | Gestión y precios desde Odoo | Fases 1–3 |
+
+Las fases 1 y 3 se pueden hacer ya. La 2 necesita que el taller confirme el formato.
+
+---
+
+## 6. Archivos que se tocan (resumen)
+
+| Archivo | Cambio |
+|---|---|
+| `termos-landing/src/lib/machines.ts` | Nuevo (§4.1) |
+| `lib/print-specs` (paquete compartido) | Nuevo (§4.2) · reemplaza `PRODUCT_AREAS_MM` |
+| `termos-landing/src/lib/production-dacen.ts` | Nuevo (§4.3) |
+| `termos-landing/src/lib/engraving-maps.ts` | Extraer `drawColorLayer` del bloque `colorPrint` |
+| `termos-landing/src/lib/pricing.ts` | Nuevo (§4.5) · `sticker-pricing.ts` y `engraving-plans.ts` leen de acá |
+| `termos-landing/src/components/customizer.tsx` | `TechniqueId` `eufy` → `color` (acepta `eufy` en links viejos) · `machineFor` · `quote` · PNG en el pedido |
+| `termos-landing/src/lib/materials.ts` | `allowsColorPrint` usa `print-specs` (`dacen: true`) |
+| `api-server/src/lib/production-sticker.ts` | Generalizar a `production-png.ts` (PNG + dpi + nombre por máquina) |
+| `api-server/src/routes/orders.ts` | Elegir el archivo según `designState.machine` |
+| `api-server/src/routes/admin.ts` | Etiqueta y filtro de máquina, botón por tipo de archivo |
+| `lib/db/src/schema/orders.ts` | (Fase 5) columnas `machine`, `quantity`, `quote_total` |
+
+---
+
+## 7. Riesgos y decisiones
+
+- **Tamaño del archivo:** a 600 dpi un termo de Ø 100 × 250 mm pasa los 60 Mpx, y eso no entra en el JSON del pedido. Se arranca a 300 dpi, que suele alcanzar para UV a la distancia de uso. Si el taller pide más, se sube aparte.
+- **Costura de la vuelta:** si el arte cruza el punto donde la Dacen empieza y termina la vuelta, puede quedar una línea. El editor puede marcar esa costura (opuesta al frente) y evitar ubicar diseño ahí.
+- **Modelos 3D aproximados:** el 3D de algunas piezas es una forma genérica ("vista 3D aproximada"). El archivo se arma con las **medidas reales** de `print-specs`, no con las del modelo 3D, así que la producción es exacta aunque la vista sea aproximada.
+- **Colores:** la pantalla no es la tinta. Se mantiene "Revisamos el diseño final con vos por WhatsApp antes de producir".
+
+---
+
+## 8. Preguntas para el taller (antes de la fase 2)
+
+1. **RIPrint:** ¿qué formato cargan cómodo (PNG transparente, TIFF, PDF)? ¿El blanco y el barniz los genera el RIP o los mandamos como capa aparte? ¿A cuántos dpi trabajan (300 / 600)?
+2. **Conicidad:** en vasos cónicos, ¿el RIP compensa solo o hay que mandar la imagen curvada?
+3. **Arranque de la vuelta:** ¿dónde queda el "frente" de la pieza al cargarla en la Dacen (respecto de la manija, del logo Hydrate, de la costura)?
+4. **Medidas reales** (calibre) de cada producto y tamaño que se imprime: Ø arriba, Ø abajo, alto imprimible y zona de la manija.
+5. **Piezas con manija o correa:** ¿cuáles entran en la Dacen y cuánto ángulo queda libre?
+6. **Láser:** modelo y programa (LightBurn / EzCad / xTool), para ajustar el SVG de producción.
+7. **Precios** (después): escalones de la Dacen (chico / frente / 360°), stickers y descuentos por cantidad.

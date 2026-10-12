@@ -13,6 +13,13 @@
  *   con descuento por cantidad, redondeado a Gs. 100
  */
 
+/**
+ * Mostrar precios en la landing. En false (precios todavía sin definir) la
+ * sección funciona igual, pero dice "Te pasamos el precio por WhatsApp" y el
+ * pedido sale sin monto. Pasar a true cuando PRICE (abajo) tenga los valores reales.
+ */
+export const STICKER_PRICES_ENABLED = false;
+
 export type StickerFinishId = "brillo" | "relieve";
 export type StickerCutId = "silueta" | "rectangulo";
 

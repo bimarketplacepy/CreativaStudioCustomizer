@@ -2,6 +2,8 @@
 
 **Fecha:** 2026-10-08. Complementa `AUDITORIA*.md` / `RESULTADOS*.md` (performance y móvil, ya resueltos). Este documento cubre **conversión, flujo de creación de diseños, circuito del pedido** y el plan de **integración con el ecommerce de Hydrate**.
 
+> **Máquinas de producción (Dacen F5, eufyMake E1, láser), sección Stickers y estructura de precios:** ver `DACEN.md` (2026-10-12).
+
 ---
 
 ## 1. Cómo funciona hoy

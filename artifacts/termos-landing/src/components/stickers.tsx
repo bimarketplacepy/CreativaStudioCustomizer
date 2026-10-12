@@ -10,7 +10,7 @@ import { fileToProcessedSvg, type ProcessedImage } from "@/lib/image-processing"
 import { buildArtMask, computeStickerShape, type StickerShape } from "@/lib/sticker-shape";
 import {
   STICKER_BORDER_MM, STICKER_CUTS, STICKER_FINISHES, STICKER_MAX_CM, STICKER_MAX_QTY, STICKER_MIN_CM,
-  STICKER_QTY_PRESETS, STICKER_SIZE_PRESETS, stickerQuote, type StickerCutId, type StickerFinishId,
+  STICKER_PRICES_ENABLED, STICKER_QTY_PRESETS, STICKER_SIZE_PRESETS, stickerQuote, type StickerCutId, type StickerFinishId,
 } from "@/lib/sticker-pricing";
 import { formatGs } from "@/lib/odoo-catalog";
 import { ADDRESS, whatsappUrl } from "@/lib/contact";
@@ -228,7 +228,10 @@ export default function Stickers() {
   const lowRes = dpi !== null && dpi < MIN_DPI;
 
   const sizeText = `${cmLabel(widthMm)} × ${cmLabel(heightMm)} cm`;
-  const priceText = `${formatGs(quote.total)} (${formatGs(quote.unit)} c/u${quote.discount ? `, ${pct(quote.discount)} off por cantidad` : ""})`;
+  // Sin precios definidos (STICKER_PRICES_ENABLED = false): se cotiza por WhatsApp.
+  const priceText = STICKER_PRICES_ENABLED
+    ? `${formatGs(quote.total)} (${formatGs(quote.unit)} c/u${quote.discount ? `, ${pct(quote.discount)} off por cantidad` : ""})`
+    : "A cotizar";
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
@@ -275,7 +278,7 @@ export default function Stickers() {
       `Corte: ${cutDef.name}`,
       `Acabado: ${finishDef.name}`,
       `Cantidad: ${quantity}`,
-      `Precio estimado: ${priceText}`,
+      STICKER_PRICES_ENABLED ? `Precio estimado: ${priceText}` : "Precio: a cotizar",
     );
     if (imageUrl) parts.push(`Así quedó mi sticker:\n${imageUrl}`);
     else if (!art) parts.push("Te mando el diseño por acá.");
@@ -323,9 +326,9 @@ export default function Stickers() {
               backgroundRemoved: art.backgroundRemoved,
               dpi: dpi ? Math.round(dpi) : null,
               productionDpi: production?.dpi ?? null,
-              unitPrice: quote.unit,
-              total: quote.total,
-              discount: quote.discount,
+              unitPrice: STICKER_PRICES_ENABLED ? quote.unit : null,
+              total: STICKER_PRICES_ENABLED ? quote.total : null,
+              discount: STICKER_PRICES_ENABLED ? quote.discount : null,
               // Legibles para el panel /admin.
               sizeLabel: `${sizeText} · ${quantity} u. · ${finishDef.name} · ${cutDef.name}`,
               engravingEstimate: priceText,
@@ -563,7 +566,7 @@ export default function Stickers() {
                   </button>
                 ))}
               </div>
-              {quote.next && (
+              {STICKER_PRICES_ENABLED && quote.next && (
                 <p className="text-xs text-[#6f685d] mt-2">
                   Desde {quote.next.min} unidades pagás {formatGs(quote.next.unit)} c/u ({pct(quote.next.discount)} off).
                 </p>
@@ -573,14 +576,25 @@ export default function Stickers() {
             {/* Precio + pedido */}
             <div className="space-y-3">
               <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3">
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-sm text-muted-foreground">{art ? "Precio estimado" : "Precio estimado desde"}</span>
-                  <span className="font-serif text-xl text-foreground tabular-nums">{formatGs(quote.total)}</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
-                  {quantity} × {formatGs(quote.unit)}
-                  {quote.discount > 0 && <> · {pct(quote.discount)} off por cantidad (ahorrás {formatGs(quote.savings)})</>}
-                </p>
+                {STICKER_PRICES_ENABLED ? (
+                  <>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-sm text-muted-foreground">{art ? "Precio estimado" : "Precio estimado desde"}</span>
+                      <span className="font-serif text-xl text-foreground tabular-nums">{formatGs(quote.total)}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
+                      {quantity} × {formatGs(quote.unit)}
+                      {quote.discount > 0 && <> · {pct(quote.discount)} off por cantidad (ahorrás {formatGs(quote.savings)})</>}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sm text-muted-foreground">Precio</span>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Te pasamos el precio por WhatsApp según el tamaño, el acabado y la cantidad.
+                    </p>
+                  </>
+                )}
               </div>
 
               <Button
