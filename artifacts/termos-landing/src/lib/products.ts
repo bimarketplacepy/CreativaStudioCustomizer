@@ -1,6 +1,6 @@
 import type { FaceId } from "./placement";
 
-export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso";
+export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -372,18 +372,30 @@ export const PRODUCTS: ProductDef[] = [
     id: "guampa",
     name: "Guampas",
     singular: "Guampa",
-    // Stanley Mate Cup — short wide barrel, concave waist mid-body, slight rim flare, stepped lid
-    desc: "Guampa térmica ancha con cintura cóncava y borde levemente acampanado.",
-    cap: "lid",
+    // Guampa Hydrate (artifacts/3D/Guampa.glb): vaso bajo y ancho, base
+    // redondeada, paredes casi rectas que se abren apenas hacia arriba y tapa
+    // con pico. Perfil = radio del cuerpo medido sobre el .glb (m × 14,
+    // centrado en 0,0587 m). Logo atrás (yawDeg 180).
+    desc: "Guampa térmica baja y ancha, con tapa.",
+    cap: "none",
     handle: "none",
     profile: [
-      [0.00, -0.85], [0.08, -0.85],
-      [0.32, -0.78], [0.46, -0.60],
-      [0.54, -0.30], [0.52,  0.00],
-      [0.54,  0.30], [0.58,  0.58],
-      [0.62,  0.75], [0.64,  0.85],
+      [0.322, -0.822], [0.388, -0.808], [0.424, -0.778], [0.458, -0.735],
+      [0.487, -0.679], [0.510, -0.612], [0.525, -0.536], [0.535, -0.456],
+      [0.538, -0.353], [0.543, -0.206], [0.549, -0.059], [0.554,  0.088],
+      [0.559,  0.235], [0.564,  0.382], [0.570,  0.529], [0.571,  0.578],
     ],
-    band: [-0.58, 0.62],
+    band: [-0.45, 0.50],
+    model: {
+      url: "/models/guampa.glb?v=1",
+      unitsPerMeter: 14,
+      centerYm: 0.0587,
+      heightM: 0.1174,
+      reachM: 0.0595,
+      yawDeg: 180,
+    },
+    // Caras de grabado: logo atrás.
+    engraveFaces: ["front", "left", "right"],
     sizes: [
       { id: "guampa-sm", name: "Chica",   label: "300ml", scale: 0.84 },
       { id: "guampa-md", name: "Mediana", label: "500ml", scale: 1.00 },
@@ -512,33 +524,35 @@ export const PRODUCTS: ProductDef[] = [
     id: "vaso-manija",
     name: "Vasos con manija",
     singular: "Vaso con manija",
-    // Hydrate taza coral (artifacts/3D/taza-hydrate-coral-landing.glb): cuerpo
-    // cilíndrico recto Ø 88 mm con base redondeada, aro de acero arriba, tapa
-    // transparente y manija lateral. Perfil = radio del cuerpo medido sobre el
-    // .glb (m × 12, centrado en 0,095 m). Logo atrás (yawDeg 180); con ese giro
-    // la manija (+X en el .glb) queda en u 0.25.
-    // (Modelo anterior: forma-vaso-manijaV4.glb, sigue en public/models.)
+    // Hydrate "Vaso con Pico y Agarre" 887 ml — primera forma con modelo real
+    // (artifacts/3D/forma-vaso-manijaV4.glb). Perfil = radio del cuerpo medido
+    // sobre el .glb (m × 12, centrado en 0,1015 m). Cuerpo cónico abajo, escalón
+    // a ~45% de la altura y parte superior casi recta, donde va la manija. La V4
+    // suma el logo Hydrate, que en el .glb ya está atrás (−Z): sin giro extra.
     desc: "Vaso térmico de 887 ml con manija lateral y tapa transparente.",
     cap: "none",
     handle: "none",
     profile: [
-      [0.445, -1.140], [0.479, -1.116], [0.515, -1.080], [0.527, -1.044],
-      [0.528, -1.020], [0.528,  0.792],
+      [0.438, -0.994], [0.446, -0.871], [0.452, -0.748], [0.458, -0.625],
+      [0.466, -0.502], [0.473, -0.379], [0.481, -0.256], [0.532, -0.133],
+      [0.572, -0.010], [0.576,  0.113], [0.578,  0.236], [0.582,  0.359],
+      [0.586,  0.482], [0.588,  0.605], [0.590,  0.727], [0.594,  0.850],
+      [0.596,  0.973],
     ],
-    band: [-1.00, 0.77],
-    // Cara frontal a 90° de la manija (u 0.25): el área no toca la manija.
-    frontFace: { uHalfWidth: 0.16 },
+    band: [-0.92, 0.90],
+    // Cara frontal a 90° de la manija (u 0.75), en la parte superior recta:
+    // el área no baja al escalón del cuerpo ni toca la manija.
+    frontFace: { uHalfWidth: 0.16, vCenter: 0.27, vHeightFrac: 0.46 },
     model: {
-      url: "/models/taza-hydrate-coral.glb?v=1",
+      url: "/models/forma-vaso-manija.glb?v=4",
       exactFor: ["Vaso con Pico y Agarre"],
       unitsPerMeter: 12,
-      centerYm: 0.095,
-      heightM: 0.19,
-      reachM: 0.079,
-      yawDeg: 180,
+      centerYm: 0.1015,
+      heightM: 0.203,
+      reachM: 0.0842,
     },
-    // Caras de grabado: manija a la derecha (u 0.25) y logo atrás.
-    engraveFaces: ["front", "left"],
+    // Caras de grabado: manija a la izquierda (u 0.75) y logo atrás.
+    engraveFaces: ["front", "right"],
     sizes: [
       { id: "vaso-manija-887",  name: "887ml",  label: "Clásico", scale: 1.00 },
       { id: "vaso-manija-1183", name: "1183ml", label: "Grande",  scale: 1.10 },
@@ -615,6 +629,77 @@ export const PRODUCTS: ProductDef[] = [
     sizes: [
       { id: "vaso-espresso-80",  name: "80ml",  label: "Chico",   scale: 0.79 },
       { id: "vaso-espresso-160", name: "160ml", label: "Clásico", scale: 1.00 },
+    ],
+  },
+  {
+    id: "taza-manija",
+    name: "Vasos Manija",
+    singular: "Vaso Manija",
+    // Hydrate "Vaso Manija" (artifacts/3D/taza-hydrate-coral-landing.glb): jarro
+    // cilíndrico recto Ø 88 mm con base redondeada, aro de acero arriba, tapa
+    // transparente y manija lateral. Perfil = radio del cuerpo medido sobre el
+    // .glb (m × 12, centrado en 0,095 m). Logo atrás (yawDeg 180); con ese giro
+    // la manija (+X en el .glb) queda en u 0.25.
+    desc: "Jarro térmico con manija lateral y tapa transparente.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.445, -1.140], [0.479, -1.116], [0.515, -1.080], [0.527, -1.044],
+      [0.528, -1.020], [0.528,  0.792],
+    ],
+    band: [-1.00, 0.77],
+    // Cara frontal a 90° de la manija (u 0.25): el área no toca la manija.
+    frontFace: { uHalfWidth: 0.16 },
+    model: {
+      url: "/models/taza-hydrate-coral.glb?v=1",
+      exactFor: ["Vaso Manija"],
+      unitsPerMeter: 12,
+      centerYm: 0.095,
+      heightM: 0.19,
+      reachM: 0.079,
+      yawDeg: 180,
+    },
+    // Caras de grabado: manija a la derecha (u 0.25) y logo atrás.
+    engraveFaces: ["front", "left"],
+    sizes: [
+      { id: "taza-manija-unico", name: "Único", label: "Clásico", scale: 1.00 },
+    ],
+  },
+  {
+    id: "mini-coffee",
+    name: "Vasos Mini Coffee Mug",
+    singular: "Vaso Mini Coffee Mug",
+    // Hydrate "Vaso Mini Coffee Mug" (artifacts/3D/mini-coffee.glb): taza baja
+    // con cuerpo cónico abajo y recto arriba, aro de acero, tapa con deslizador
+    // y manija lateral. Perfil = radio del cuerpo medido sobre el .glb (m × 20,
+    // centrado en 0,0568 m). Logo atrás (yawDeg 180); con ese giro la manija
+    // (−X en el .glb) queda en u 0.75.
+    desc: "Taza térmica chica con manija lateral y tapa.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.540, -1.136], [0.612, -1.114], [0.654, -1.068], [0.686, -0.962],
+      [0.714, -0.818], [0.756, -0.676], [0.786, -0.536], [0.802, -0.434],
+      [0.840, -0.362], [0.856, -0.312], [0.866, -0.204], [0.876, -0.032],
+      [0.884,  0.126], [0.888,  0.268], [0.894,  0.450], [0.900,  0.644],
+    ],
+    band: [-0.95, 0.60],
+    // Cara frontal a 90° de la manija (u 0.75), en la parte superior recta:
+    // el área no baja a la zona cónica ni toca la manija.
+    frontFace: { uHalfWidth: 0.16, vCenter: 0.32, vHeightFrac: 0.55 },
+    model: {
+      url: "/models/mini-coffee.glb?v=1",
+      exactFor: ["Vaso Mini Coffee Mug"],
+      unitsPerMeter: 20,
+      centerYm: 0.0568,
+      heightM: 0.1136,
+      reachM: 0.0752,
+      yawDeg: 180,
+    },
+    // Caras de grabado: manija a la izquierda (u 0.75) y logo atrás.
+    engraveFaces: ["front", "right"],
+    sizes: [
+      { id: "mini-coffee-unico", name: "Único", label: "Clásico", scale: 1.00 },
     ],
   },
   {

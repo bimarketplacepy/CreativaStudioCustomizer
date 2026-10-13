@@ -1,4 +1,4 @@
-// Panel interno de pedidos (/admin) — USO DEL TALLER, nunca enlazado desde la
+// Panel interno de pedidos y productos (/admin) — USO DEL TALLER, nunca enlazado desde la
 // landing. La página en sí es un shell sin datos; todo dato sale de
 // /api/admin/orders, que exige la clave interna (401 sin ella). La clave que
 // tipea el operario queda en sessionStorage y viaja por header en cada fetch.
@@ -8,6 +8,8 @@ import { desc, eq } from "drizzle-orm";
 import { db, ordersTable } from "@workspace/db";
 import { checkInternalKey, orderImageToken } from "../lib/internal-key";
 import { logger } from "../lib/logger";
+import { getCatalog } from "../lib/catalog";
+import { getDisabledProducts, setProductEnabled } from "../lib/product-settings";
 
 const router: IRouter = Router();
 
@@ -99,6 +101,59 @@ router.patch("/api/admin/orders/:orderNumber", async (req, res) => {
   }
 });
 
+// GET /api/admin/products — catálogo completo (con los deshabilitados) para el
+// panel (interno). Los deshabilitados que ya no vienen de Odoo también se
+// listan, para poder volver a habilitarlos.
+router.get("/api/admin/products", async (req, res) => {
+  if (!hasKey(req)) {
+    res.status(401).json({ message: "No autorizado" });
+    return;
+  }
+  try {
+    const [catalog, disabled] = await Promise.all([getCatalog(), getDisabledProducts()]);
+    const products = catalog.products.map(p => ({
+      name: p.name,
+      brand: p.brand,
+      productType: p.productType,
+      imageUrl: p.imageUrl,
+      variants: p.variants.length,
+      inCatalog: true,
+      enabled: !disabled.has(p.name),
+    }));
+    const listed = new Set(products.map(p => p.name));
+    for (const name of disabled) {
+      if (!listed.has(name)) {
+        products.push({ name, brand: "", productType: "", imageUrl: null, variants: 0, inCatalog: false, enabled: false });
+      }
+    }
+    res.json({ source: catalog.source, stale: catalog.stale, updatedAt: catalog.updatedAt, products });
+  } catch (err) {
+    logger.error({ err }, "admin: products list failed");
+    res.status(500).json({ message: "No se pudo listar los productos" });
+  }
+});
+
+// PATCH /api/admin/products — habilita o deshabilita un producto en la tienda (interno).
+router.patch("/api/admin/products", async (req, res) => {
+  if (!hasKey(req)) {
+    res.status(401).json({ message: "No autorizado" });
+    return;
+  }
+  const body = (req.body ?? {}) as { name?: unknown; enabled?: unknown };
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!name || name.length > 200 || typeof body.enabled !== "boolean") {
+    res.status(400).json({ message: "Datos inválidos" });
+    return;
+  }
+  try {
+    await setProductEnabled(name, body.enabled);
+    res.json({ name, enabled: body.enabled });
+  } catch (err) {
+    logger.error({ err }, "admin: product toggle failed");
+    res.status(500).json({ message: "No se pudo actualizar el producto" });
+  }
+});
+
 // GET /api/admin (y /admin) — shell HTML autocontenido (sin datos hasta
 // autenticar). La ruta canónica es /api/admin: en el deployment de Replit el
 // edge sirve estáticamente todo lo que no empieza con /api/* (con fallback
@@ -119,7 +174,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Pedidos · Creativa Studio</title>
+<title>Panel · Creativa Studio</title>
 <style>
   :root { --brand:#8B1A2F; --ink:#1A1614; --muted:#69707c; --line:#e7e2d9; --bg:#faf7f2; }
   * { box-sizing:border-box; margin:0; }
@@ -160,6 +215,29 @@ const ADMIN_HTML = `<!DOCTYPE html>
   .text { font-size:13px; margin-top:4px; }
   .actions { display:flex; flex-direction:column; gap:8px; }
   .empty-state { text-align:center; color:var(--muted); padding:48px 0; }
+  /* Pestañas */
+  .tabs { display:flex; gap:6px; margin-bottom:18px; border-bottom:1px solid var(--line); }
+  .tab { min-height:40px; padding:8px 14px; border:0; border-bottom:2px solid transparent; background:none;
+         color:var(--muted); cursor:pointer; font-size:14px; margin-bottom:-1px; }
+  .tab[aria-selected="true"] { color:var(--brand); border-bottom-color:var(--brand); font-weight:600; }
+  /* Productos */
+  .card.product { grid-template-columns:56px 1fr auto; }
+  .card.product .thumb { width:56px; height:56px; object-fit:contain; }
+  .card.off { opacity:.6; }
+  .badge.off { border-color:var(--brand); color:var(--brand); }
+  .switch { display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; min-height:40px; user-select:none; }
+  .switch input { position:absolute; opacity:0; width:1px; height:1px; }
+  .switch .track { width:40px; height:22px; border-radius:999px; background:#d9d4cb; position:relative; transition:background .15s; flex:none; }
+  .switch .track::after { content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#fff; transition:transform .15s; }
+  .switch input:checked + .track { background:#2e7d4f; }
+  .switch input:checked + .track::after { transform:translateX(18px); }
+  .switch input:focus-visible + .track { outline:2px solid var(--brand); outline-offset:2px; }
+  .switch input:disabled + .track { opacity:.5; }
+  .note { color:var(--muted); font-size:13px; margin-bottom:14px; }
+  @media (max-width:640px) {
+    .card.product { grid-template-columns:48px 1fr; }
+    .card.product .thumb { width:48px; height:48px; }
+  }
   @media (max-width:640px) {
     .card { grid-template-columns:56px 1fr; }
     .thumb { width:56px; height:56px; }
@@ -182,7 +260,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
   <div id="panel">
     <header class="bar">
       <div>
-        <h1>Pedidos</h1>
+        <h1 id="title">Pedidos</h1>
         <div class="sub" id="count"></div>
       </div>
       <div style="display:flex;gap:8px">
@@ -190,10 +268,23 @@ const ADMIN_HTML = `<!DOCTYPE html>
         <button class="btn" id="logout">Salir</button>
       </div>
     </header>
-    <div class="tools">
-      <input id="search" type="search" placeholder="Buscar por número, producto, texto…">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tabOrders" aria-selected="true">Pedidos</button>
+      <button class="tab" role="tab" id="tabProducts" aria-selected="false">Productos</button>
     </div>
-    <div id="list"></div>
+    <div id="ordersView">
+      <div class="tools">
+        <input id="search" type="search" placeholder="Buscar por número, producto, texto…">
+      </div>
+      <div id="list"></div>
+    </div>
+    <div id="productsView" style="display:none">
+      <p class="note">Los productos deshabilitados no aparecen en el personalizador de la tienda. El cambio puede tardar hasta 2 minutos en verse.</p>
+      <div class="tools">
+        <input id="productSearch" type="search" placeholder="Buscar producto…">
+      </div>
+      <div id="productList"></div>
+    </div>
   </div>
 </div>
 <script>
@@ -306,7 +397,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
       orders = data;
       login.style.display = "none";
       panel.style.display = "block";
-      render(document.getElementById("search").value);
+      if (view === "orders") render(document.getElementById("search").value);
     });
   }
 
@@ -319,7 +410,10 @@ const ADMIN_HTML = `<!DOCTYPE html>
     });
   });
   document.getElementById("search").addEventListener("input", function (e) { render(e.target.value); });
-  document.getElementById("refresh").addEventListener("click", function () { load().catch(function () {}); });
+  document.getElementById("refresh").addEventListener("click", function () {
+    if (view === "products") loadProducts();
+    else load().catch(function () {});
+  });
   document.getElementById("logout").addEventListener("click", function () {
     sessionStorage.removeItem(KEY);
     panel.style.display = "none";
@@ -327,6 +421,95 @@ const ADMIN_HTML = `<!DOCTYPE html>
     document.getElementById("pw").value = "";
     document.getElementById("loginError").style.display = "none";
   });
+
+  // ── Productos: habilitar / deshabilitar ────────────────────────────────────
+  var productList = document.getElementById("productList");
+  var products = [];
+  var productsInfo = null;
+  var view = "orders";
+
+  function renderProducts(filter) {
+    var q = (filter || "").toLowerCase();
+    var rows = products.filter(function (p) {
+      return !q || [p.name, p.brand, p.productType].join(" ").toLowerCase().indexOf(q) >= 0;
+    });
+    var off = products.filter(function (p) { return !p.enabled; }).length;
+    document.getElementById("count").textContent =
+      products.length + " productos · " + off + " deshabilitado" + (off === 1 ? "" : "s") +
+      (productsInfo && productsInfo.stale ? " · catálogo desactualizado (Odoo no respondió)" : "");
+    if (!rows.length) {
+      productList.innerHTML = '<div class="empty-state">' +
+        (products.length ? "Sin productos que coincidan." : "No hay productos en el catálogo.") + "</div>";
+      return;
+    }
+    productList.innerHTML = rows.map(function (p) {
+      var img = p.imageUrl
+        ? '<img class="thumb" loading="lazy" alt="" src="' + esc(p.imageUrl) + '">'
+        : '<div class="thumb empty">sin foto</div>';
+      var meta = [p.brand, p.productType, p.variants ? p.variants + " variante" + (p.variants === 1 ? "" : "s") : ""]
+        .filter(Boolean).map(esc).join(" · ");
+      return '<div class="card product' + (p.enabled ? "" : " off") + '">' + img +
+        '<div><span class="num">' + esc(p.name) + "</span>" +
+        (p.enabled ? "" : '<span class="badge off">Deshabilitado</span>') +
+        (p.inCatalog ? "" : '<span class="tag">Ya no está en Odoo</span>') +
+        (meta ? '<div class="meta">' + meta + "</div>" : "") + "</div>" +
+        '<div class="actions"><label class="switch"><input type="checkbox" class="toggle" data-name="' + esc(p.name) + '"' +
+        (p.enabled ? " checked" : "") + '><span class="track"></span><span>' +
+        (p.enabled ? "Habilitado" : "Deshabilitado") + "</span></label></div>" +
+        "</div>";
+    }).join("");
+  }
+
+  function loadProducts() {
+    productList.innerHTML = '<div class="empty-state">Cargando productos…</div>';
+    return fetch("/api/admin/products", { headers: { "x-internal-key": key() } }).then(function (r) {
+      if (!r.ok) throw new Error("http " + r.status);
+      return r.json();
+    }).then(function (data) {
+      productsInfo = data;
+      products = data.products;
+      renderProducts(document.getElementById("productSearch").value);
+    }).catch(function () {
+      productList.innerHTML = '<div class="empty-state">No se pudo cargar el catálogo. Probá con Actualizar.</div>';
+    });
+  }
+
+  productList.addEventListener("change", function (e) {
+    var box = e.target;
+    if (!box.classList || !box.classList.contains("toggle")) return;
+    var name = box.getAttribute("data-name");
+    var p = products.filter(function (x) { return x.name === name; })[0];
+    var enabled = box.checked;
+    box.disabled = true;
+    fetch("/api/admin/products", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-internal-key": key() },
+      body: JSON.stringify({ name: name, enabled: enabled }),
+    }).then(function (r) {
+      if (!r.ok) throw new Error("http " + r.status);
+      if (p) p.enabled = enabled;
+      renderProducts(document.getElementById("productSearch").value);
+    }).catch(function () {
+      box.checked = !enabled;
+      box.disabled = false;
+      alert("No se pudo cambiar el producto. Probá de nuevo.");
+    });
+  });
+
+  function showView(v) {
+    view = v;
+    document.getElementById("tabOrders").setAttribute("aria-selected", String(v === "orders"));
+    document.getElementById("tabProducts").setAttribute("aria-selected", String(v === "products"));
+    document.getElementById("ordersView").style.display = v === "orders" ? "block" : "none";
+    document.getElementById("productsView").style.display = v === "products" ? "block" : "none";
+    document.getElementById("title").textContent = v === "orders" ? "Pedidos" : "Productos";
+    if (v === "orders") render(document.getElementById("search").value);
+    else if (productsInfo) renderProducts(document.getElementById("productSearch").value);
+    else loadProducts();
+  }
+  document.getElementById("tabOrders").addEventListener("click", function () { showView("orders"); });
+  document.getElementById("tabProducts").addEventListener("click", function () { showView("products"); });
+  document.getElementById("productSearch").addEventListener("input", function (e) { renderProducts(e.target.value); });
 
   // Sesión previa en esta pestaña: entrar directo.
   if (key()) load().catch(function () { sessionStorage.removeItem(KEY); });

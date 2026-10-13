@@ -56,7 +56,7 @@ const TYPE_LABEL: Record<string, string> = {
   guampa: "Guampa", hoppie: "Hoppie", chopera: "Chopera", jug: "Jug",
   copa: "Copa", vaso: "Vaso", termo: "Termo", botella: "Botella",
   "vaso-manija": "Vaso", "botella-ancha": "Botella", "vaso-hydrate": "Vaso", "vaso-sunbeam": "Vaso",
-  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso",
+  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso",
 };
 
 /**
@@ -75,7 +75,7 @@ const EXACT_MODEL: Record<string, { name: string; fallback: string }> = {
  * su perfil; los demás del tipo siguen con la forma genérica.
  */
 const NAMED_MODEL: Record<string, Record<string, string>> = {
-  vaso: { "vaso": "vaso-hydrate", "vaso sunbeam": "vaso-sunbeam", "vaso taza espresso": "vaso-espresso" },
+  vaso: { "vaso": "vaso-hydrate", "vaso sunbeam": "vaso-sunbeam", "vaso taza espresso": "vaso-espresso", "vaso manija": "taza-manija", "vaso mini coffee mug": "mini-coffee" },
   termo: { "termo mate": "termo-mate", "termo mate forge": "termo-mate-forge" },
   "botella-ancha": { "hoppie": "hoppie-hydrate", "termo kids": "termo-kids" },
   // La "Copa" de Hydrate (vaso de vino sin tallo) puede clasificarse como copa o
