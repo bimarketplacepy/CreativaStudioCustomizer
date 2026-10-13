@@ -512,35 +512,33 @@ export const PRODUCTS: ProductDef[] = [
     id: "vaso-manija",
     name: "Vasos con manija",
     singular: "Vaso con manija",
-    // Hydrate "Vaso con Pico y Agarre" 887 ml — primera forma con modelo real
-    // (artifacts/3D/forma-vaso-manijaV4.glb). Perfil = radio del cuerpo medido
-    // sobre el .glb (m × 12, centrado en 0,1015 m). Cuerpo cónico abajo, escalón
-    // a ~45% de la altura y parte superior casi recta, donde va la manija. La V4
-    // suma el logo Hydrate, que en el .glb ya está atrás (−Z): sin giro extra.
+    // Hydrate taza coral (artifacts/3D/taza-hydrate-coral-landing.glb): cuerpo
+    // cilíndrico recto Ø 88 mm con base redondeada, aro de acero arriba, tapa
+    // transparente y manija lateral. Perfil = radio del cuerpo medido sobre el
+    // .glb (m × 12, centrado en 0,095 m). Logo atrás (yawDeg 180); con ese giro
+    // la manija (+X en el .glb) queda en u 0.25.
+    // (Modelo anterior: forma-vaso-manijaV4.glb, sigue en public/models.)
     desc: "Vaso térmico de 887 ml con manija lateral y tapa transparente.",
     cap: "none",
     handle: "none",
     profile: [
-      [0.438, -0.994], [0.446, -0.871], [0.452, -0.748], [0.458, -0.625],
-      [0.466, -0.502], [0.473, -0.379], [0.481, -0.256], [0.532, -0.133],
-      [0.572, -0.010], [0.576,  0.113], [0.578,  0.236], [0.582,  0.359],
-      [0.586,  0.482], [0.588,  0.605], [0.590,  0.727], [0.594,  0.850],
-      [0.596,  0.973],
+      [0.445, -1.140], [0.479, -1.116], [0.515, -1.080], [0.527, -1.044],
+      [0.528, -1.020], [0.528,  0.792],
     ],
-    band: [-0.92, 0.90],
-    // Cara frontal a 90° de la manija (u 0.75), en la parte superior recta:
-    // el área no baja al escalón del cuerpo ni toca la manija.
-    frontFace: { uHalfWidth: 0.16, vCenter: 0.27, vHeightFrac: 0.46 },
+    band: [-1.00, 0.77],
+    // Cara frontal a 90° de la manija (u 0.25): el área no toca la manija.
+    frontFace: { uHalfWidth: 0.16 },
     model: {
-      url: "/models/forma-vaso-manija.glb?v=4",
+      url: "/models/taza-hydrate-coral.glb?v=1",
       exactFor: ["Vaso con Pico y Agarre"],
       unitsPerMeter: 12,
-      centerYm: 0.1015,
-      heightM: 0.203,
-      reachM: 0.0842,
+      centerYm: 0.095,
+      heightM: 0.19,
+      reachM: 0.079,
+      yawDeg: 180,
     },
-    // Caras de grabado: manija a la izquierda (u 0.75) y logo atrás.
-    engraveFaces: ["front", "right"],
+    // Caras de grabado: manija a la derecha (u 0.25) y logo atrás.
+    engraveFaces: ["front", "left"],
     sizes: [
       { id: "vaso-manija-887",  name: "887ml",  label: "Clásico", scale: 1.00 },
       { id: "vaso-manija-1183", name: "1183ml", label: "Grande",  scale: 1.10 },
