@@ -6,10 +6,8 @@ import { scrollToSection } from "@/lib/section-reveal";
 // Everything below the hero is loaded on demand. The hero is the only
 // above-the-fold section: it is pre-rendered into index.html and hydrated from
 // its own root by main.tsx (it is NOT rendered here). The rest is split into
-// separate chunks: the section right under the hero loads straight away, the
-// ones further down (LazySection) and the heavy Three.js customizer only when
-// the visitor scrolls near them.
-const FunnelDemo = lazy(() => import("@/components/funnel-demo"));
+// separate chunks: the ones further down (LazySection) and the heavy Three.js
+// customizer load only when the visitor scrolls near them.
 const PersonalizationInfo = lazy(() => import("@/components/personalization-info"));
 const Customizer = lazy(() => import("@/components/customizer"));
 const CustomRequests = lazy(() => import("@/components/custom-requests"));
@@ -70,9 +68,6 @@ export default function Home() {
     // Sin wrapper propio: el contenedor flex de página vive en index.html
     // (envuelve #hero-root y #root, ambos display:contents).
     <>
-      <Suspense fallback={<SectionFallback minH="70vh" />}>
-        <FunnelDemo />
-      </Suspense>
       <DeferUntilVisible id="customizer" minHeight="90vh">
         <Suspense fallback={<SectionFallback minH="90vh" label="Cargando personalizador…" />}>
           <Customizer />

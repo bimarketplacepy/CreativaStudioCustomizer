@@ -3206,8 +3206,8 @@ export default function Customizer() {
   // contenido que scrollea por detrás se transparentaba a través del panel
   // (bg-secondary/30) y el termo parecía flotar sobre los controles.
   const renderMiniPreview = () => (
-    <div className="sticky top-16 z-30 bg-white pt-1 pb-0.5">
-      <div className="relative bg-secondary/30 rounded-2xl border border-border overflow-hidden shadow-lg shadow-black/5">
+    <div className="sticky top-16 z-30 bg-white pt-1 pb-0.5 [transform:translateZ(0)]">
+      <div className="relative isolate [transform:translateZ(0)] bg-secondary/30 rounded-2xl border border-border overflow-hidden shadow-lg shadow-black/5">
         {isGlass ? (
           <div className="absolute inset-0 rounded-2xl" style={{ background: "radial-gradient(circle at 50% 38%, #eef2f6 0%, #d3dae2 55%, #aeb8c4 100%)" }} />
         ) : (
@@ -3515,8 +3515,8 @@ export default function Customizer() {
               <ShopRail items={shopItems} value={shopKey} initialBrand={shopItem?.brand ?? shopBrands(shopItems)[0]} onPick={pickShopItem} />
             </div>
           )}
-          <div className="w-full min-w-0 lg:col-span-4 relative max-lg:sticky max-lg:top-16 max-lg:z-30 max-lg:bg-white max-lg:pt-1 lg:self-start">
-            <div ref={previewPanelRef} className="lg:sticky lg:top-24 z-20 bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[280px] md:min-h-[520px] max-lg:shadow-lg max-lg:shadow-black/5">
+          <div className="w-full min-w-0 lg:col-span-4 relative max-lg:sticky max-lg:top-16 max-lg:z-30 max-lg:bg-white max-lg:pt-1 max-lg:[transform:translateZ(0)] lg:self-start">
+            <div ref={previewPanelRef} className="lg:sticky lg:top-24 z-20 isolate [transform:translateZ(0)] bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[280px] md:min-h-[520px] max-lg:shadow-lg max-lg:shadow-black/5">
               {isGlass ? (
                 // Glass needs an environment to reflect and a graded backdrop to
                 // read against — on flat white the transparency disappears. A soft

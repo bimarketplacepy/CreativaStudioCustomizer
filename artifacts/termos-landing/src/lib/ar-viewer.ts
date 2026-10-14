@@ -20,6 +20,12 @@ export async function detectAR(): Promise<ArMode | null> {
     const a = document.createElement("a");
     if (a.relList?.supports?.("ar")) return "quicklook";
   } catch { /* sin relList */ }
+  // Chrome, Firefox, Edge y la app de Google en iPhone/iPad usan el motor de
+  // Safari y abren Quick Look igual, pero `relList.supports("ar")` les da false.
+  // iPadOS se presenta como Mac: se lo reconoce por la pantalla táctil.
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  if (isIOS && /CriOS\/|FxiOS\/|EdgiOS\/|GSA\/|DuckDuckGo\//.test(ua)) return "quicklook";
   try {
     const xr = (navigator as Navigator & { xr?: { isSessionSupported(m: string): Promise<boolean> } }).xr;
     if (xr && (await xr.isSessionSupported("immersive-ar"))) return "webxr";
