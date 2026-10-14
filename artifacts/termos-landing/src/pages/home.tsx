@@ -12,7 +12,6 @@ import { scrollToSection } from "@/lib/section-reveal";
 const FunnelDemo = lazy(() => import("@/components/funnel-demo"));
 const PersonalizationInfo = lazy(() => import("@/components/personalization-info"));
 const Customizer = lazy(() => import("@/components/customizer"));
-const Stickers = lazy(() => import("@/components/stickers"));
 const CustomRequests = lazy(() => import("@/components/custom-requests"));
 const PricingEngraving = lazy(() => import("@/components/pricing-engraving"));
 const Gallery = lazy(() => import("@/components/gallery"));
@@ -81,9 +80,6 @@ export default function Home() {
       </DeferUntilVisible>
       <LazySection minH="40vh">
         <PersonalizationInfo />
-      </LazySection>
-      <LazySection minH="90vh">
-        <Stickers />
       </LazySection>
       <LazySection minH="40vh">
         <CustomRequests />

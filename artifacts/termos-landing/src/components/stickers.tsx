@@ -375,267 +375,252 @@ export default function Stickers() {
     active ? "border-[#8B1A2F] bg-[#8B1A2F] text-white" : "border-[#e2d8ca] bg-white text-[#1A1614] hover:border-[#8B1A2F]/60",
   );
 
+  // Vive dentro del personalizador (modo "Stickers"): solo el creador, sin
+  // encabezado de sección propio.
   return (
-    <section id="stickers" className="scroll-mt-20 py-12 md:py-24 px-4 sm:px-6 bg-white border-b border-border">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-7 md:mb-12 max-w-2xl">
-          <p className="text-[#8B1A2F] text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.25em] sm:tracking-[0.3em] mb-2 md:mb-4">
-            Stickers
-          </p>
-          <h2 className="font-serif font-light text-[1.6rem] leading-[1.15] md:text-5xl text-[#1A1614] mb-2.5 md:mb-5 md:leading-[1.1]">
-            Stickers con tu diseño
-          </h2>
-          <p className="text-[#5f574d] leading-relaxed font-light text-sm sm:text-base md:text-lg">
-            Impresos a todo color, con acabado brillante o con relieve que se siente al tacto. Se pegan
-            en termos, botellas, notebooks, celulares o packaging, y resisten agua y roce.
-          </p>
-        </div>
-
-        <div className="grid lg:grid-cols-2 gap-6 lg:gap-12 items-start">
-          {/* Vista previa */}
-          <div className="lg:sticky lg:top-24">
-            <div className="relative aspect-square rounded-2xl overflow-hidden border border-[#ece4d8] bg-[#faf7f2]">
-              {art && shape ? (
-                <StickerPreview art={art} shape={shape} finish={finish} svgRef={svgRef} />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => inputRef.current?.click()}
-                  onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={e => { e.preventDefault(); setIsDragging(false); handleFile(e.dataTransfer.files?.[0]); }}
-                  className={cn(
-                    "absolute inset-6 sm:inset-10 rounded-[2rem] border-2 border-dashed flex flex-col items-center justify-center gap-3 text-center px-6 transition-colors",
-                    isDragging ? "border-[#8B1A2F] bg-[#f5eaec]" : "border-[#d8cdbf] hover:border-[#8B1A2F]/60",
-                  )}
-                >
-                  {isProcessing
-                    ? <Loader2 className="w-8 h-8 text-[#8B1A2F] animate-spin" />
-                    : <ImagePlus className="w-8 h-8 text-[#8B1A2F]" strokeWidth={1.5} />}
-                  <span className="font-serif text-xl text-[#1A1614]">{isProcessing ? "Preparando tu diseño…" : "Tu sticker aparece acá"}</span>
-                  <span className="text-xs text-[#6f685d] max-w-xs">Subí tu logo, dibujo o foto. Si tiene fondo liso, lo recortamos solos.</span>
-                </button>
+    <div className="grid lg:grid-cols-2 gap-6 lg:gap-12 items-start">
+      {/* Vista previa */}
+      <div className="lg:sticky lg:top-24">
+        <div className="relative aspect-square rounded-2xl overflow-hidden border border-[#ece4d8] bg-[#faf7f2]">
+          {art && shape ? (
+            <StickerPreview art={art} shape={shape} finish={finish} svgRef={svgRef} />
+          ) : (
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={e => { e.preventDefault(); setIsDragging(false); handleFile(e.dataTransfer.files?.[0]); }}
+              className={cn(
+                "absolute inset-6 sm:inset-10 rounded-[2rem] border-2 border-dashed flex flex-col items-center justify-center gap-3 text-center px-6 transition-colors",
+                isDragging ? "border-[#8B1A2F] bg-[#f5eaec]" : "border-[#d8cdbf] hover:border-[#8B1A2F]/60",
               )}
-              {art && shape && (
-                <div className="absolute left-3 bottom-3 rounded-full bg-white/90 border border-[#ece4d8] px-3 py-1 text-xs text-[#1A1614] tabular-nums">
-                  {sizeText} · cada cuadro = 1 cm
-                </div>
-              )}
-              {finish === "relieve" && art && (
-                <div className="absolute right-3 top-3 rounded-full bg-[#1A1614] text-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wider inline-flex items-center gap-1.5">
-                  <Layers className="w-3 h-3" /> Relieve 3D
-                </div>
-              )}
+            >
+              {isProcessing
+                ? <Loader2 className="w-8 h-8 text-[#8B1A2F] animate-spin" />
+                : <ImagePlus className="w-8 h-8 text-[#8B1A2F]" strokeWidth={1.5} />}
+              <span className="font-serif text-xl text-[#1A1614]">{isProcessing ? "Preparando tu diseño…" : "Tu sticker aparece acá"}</span>
+              <span className="text-xs text-[#6f685d] max-w-xs">Subí tu logo, dibujo o foto. Si tiene fondo liso, lo recortamos solos.</span>
+            </button>
+          )}
+          {art && shape && (
+            <div className="absolute left-3 bottom-3 rounded-full bg-white/90 border border-[#ece4d8] px-3 py-1 text-xs text-[#1A1614] tabular-nums">
+              {sizeText} · cada cuadro = 1 cm
             </div>
-          </div>
-
-          {/* Pasos */}
-          <div className="space-y-7">
-            {/* 1. Diseño */}
-            <div>
-              {stepTitle(1, "Subí tu diseño")}
-              <input
-                ref={inputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                className="sr-only"
-                onChange={e => handleFile(e.target.files?.[0])}
-              />
-              {art ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button type="button" variant="outline" onClick={() => inputRef.current?.click()} disabled={isProcessing} className="min-h-10">
-                    {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Cambiar imagen
-                  </Button>
-                  {art.other && (
-                    <Button type="button" variant="ghost" onClick={swapBackground} className="min-h-10 text-[#5f574d]">
-                      {art.backgroundRemoved ? "Usar con el fondo original" : "Quitar el fondo"}
-                    </Button>
-                  )}
-                  <Button type="button" variant="ghost" onClick={() => setArt(null)} className="min-h-10 text-[#5f574d]">
-                    <X className="w-4 h-4" /> Quitar
-                  </Button>
-                </div>
-              ) : (
-                <Button type="button" onClick={() => inputRef.current?.click()} disabled={isProcessing} className="min-h-11">
-                  {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />} Elegir imagen
-                </Button>
-              )}
-              <p className="text-xs text-[#6f685d] mt-2">PNG, JPG, WebP o SVG, hasta 8 MB. Mejor si es PNG con fondo transparente.</p>
-              {uploadError && <p className="text-xs text-red-700 mt-2" role="alert">{uploadError}</p>}
-              {lowRes && (
-                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2 flex gap-2" role="status">
-                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  Tu imagen tiene poca resolución para este tamaño y puede verse pixelada. Probá un tamaño menor o mandanos el archivo original.
-                </p>
-              )}
+          )}
+          {finish === "relieve" && art && (
+            <div className="absolute right-3 top-3 rounded-full bg-[#1A1614] text-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wider inline-flex items-center gap-1.5">
+              <Layers className="w-3 h-3" /> Relieve 3D
             </div>
-
-            {/* 2. Tamaño y forma */}
-            <div>
-              {stepTitle(2, "Tamaño y forma")}
-              <p className="text-xs text-[#6f685d] mb-2">Lado más largo del sticker</p>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {STICKER_SIZE_PRESETS.map(cm => (
-                  <button key={cm} type="button" onClick={() => setSizeCm(cm)} className={chip(sizeCm === cm)}>
-                    {cm} cm
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-4">
-                <Slider
-                  value={[sizeCm]}
-                  min={STICKER_MIN_CM}
-                  max={STICKER_MAX_CM}
-                  step={0.5}
-                  onValueChange={([v]) => setSizeCm(v)}
-                  aria-label="Tamaño del sticker en centímetros"
-                />
-                <span className="w-24 shrink-0 text-right text-sm tabular-nums text-[#1A1614]">
-                  {art ? sizeText : `${sizeCm.toLocaleString("es-PY")} cm`}
-                </span>
-              </div>
-
-              <p className="text-xs text-[#6f685d] mt-5 mb-2">Corte</p>
-              <div className="grid grid-cols-2 gap-2">
-                {STICKER_CUTS.map(c => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setCut(c.id)}
-                    aria-pressed={cut === c.id}
-                    className={cn(
-                      "text-left rounded-xl border p-3 transition-colors",
-                      cut === c.id ? "border-[#8B1A2F] bg-[#f5eaec]" : "border-[#e2d8ca] bg-white hover:border-[#8B1A2F]/60",
-                    )}
-                  >
-                    <span className="block text-sm font-semibold text-[#1A1614]">{c.name}</span>
-                    <span className="block text-xs text-[#6f685d] mt-0.5 leading-snug">{c.desc}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 3. Acabado */}
-            <div>
-              {stepTitle(3, "Acabado")}
-              <div className="grid grid-cols-2 gap-2">
-                {STICKER_FINISHES.map(f => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => setFinish(f.id)}
-                    aria-pressed={finish === f.id}
-                    className={cn(
-                      "text-left rounded-xl border p-3 transition-colors",
-                      finish === f.id ? "border-[#8B1A2F] bg-[#f5eaec]" : "border-[#e2d8ca] bg-white hover:border-[#8B1A2F]/60",
-                    )}
-                  >
-                    <span className="flex items-center gap-1.5 text-sm font-semibold text-[#1A1614]">
-                      {f.id === "relieve" ? <Layers className="w-3.5 h-3.5 text-[#8B1A2F]" /> : <Sparkles className="w-3.5 h-3.5 text-[#8B1A2F]" />}
-                      {f.name}
-                    </span>
-                    <span className="block text-xs text-[#6f685d] mt-0.5 leading-snug">{f.desc}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 4. Cantidad */}
-            <div>
-              {stepTitle(4, "Cantidad")}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex items-center rounded-lg border border-[#e2d8ca] bg-white">
-                  <button type="button" onClick={() => setQty(quantity - 1)} className="w-10 h-10 flex items-center justify-center text-[#1A1614]" aria-label="Menos">
-                    <Minus className="w-4 h-4" />
-                  </button>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    max={STICKER_MAX_QTY}
-                    value={quantity}
-                    onChange={e => setQty(Number(e.target.value))}
-                    className="w-16 h-10 text-center text-base tabular-nums bg-transparent outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
-                    aria-label="Cantidad de stickers"
-                  />
-                  <button type="button" onClick={() => setQty(quantity + 1)} className="w-10 h-10 flex items-center justify-center text-[#1A1614]" aria-label="Más">
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
-                {STICKER_QTY_PRESETS.filter(n => n > 1).map(n => (
-                  <button key={n} type="button" onClick={() => setQty(n)} className={chip(quantity === n)}>
-                    {n}
-                  </button>
-                ))}
-              </div>
-              {STICKER_PRICES_ENABLED && quote.next && (
-                <p className="text-xs text-[#6f685d] mt-2">
-                  Desde {quote.next.min} unidades pagás {formatGs(quote.next.unit)} c/u ({pct(quote.next.discount)} off).
-                </p>
-              )}
-            </div>
-
-            {/* Precio + pedido */}
-            <div className="space-y-3">
-              <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3">
-                {STICKER_PRICES_ENABLED ? (
-                  <>
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="text-sm text-muted-foreground">{art ? "Precio estimado" : "Precio estimado desde"}</span>
-                      <span className="font-serif text-xl text-foreground tabular-nums">{formatGs(quote.total)}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
-                      {quantity} × {formatGs(quote.unit)}
-                      {quote.discount > 0 && <> · {pct(quote.discount)} off por cantidad (ahorrás {formatGs(quote.savings)})</>}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-sm text-muted-foreground">Precio</span>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Te pasamos el precio por WhatsApp según el tamaño, el acabado y la cantidad.
-                    </p>
-                  </>
-                )}
-              </div>
-
-              <Button
-                onClick={handleOrder}
-                disabled={isPreparing || isOrdered}
-                size="lg"
-                className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal"
-              >
-                {isPreparing ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Creando tu pedido...</>
-                ) : isOrdered ? (
-                  lastOrderNumber ? `Pedido ${lastOrderNumber} creado ✓` : "Abriendo WhatsApp..."
-                ) : art ? "Pedir por WhatsApp" : "Consultar por WhatsApp"}
-              </Button>
-
-              {orderFallback && (
-                <p className="text-xs text-amber-700 text-center leading-relaxed">
-                  No pudimos registrar tu pedido online, pero los datos salen igual por WhatsApp. Mandanos tu diseño en el chat.
-                </p>
-              )}
-
-              <ul className="space-y-1.5 text-xs text-muted-foreground">
-                <li className="flex items-start gap-2">
-                  <MessageCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" />
-                  Revisamos el diseño final con vos por WhatsApp antes de imprimir.
-                </li>
-                <li className="flex items-start gap-2">
-                  <HandCoins className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" />
-                  Pagás recién cuando confirmás el diseño.
-                </li>
-                <li className="flex items-start gap-2">
-                  <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" />
-                  Retirás en nuestro local: {ADDRESS}.
-                </li>
-              </ul>
-            </div>
-          </div>
+          )}
         </div>
       </div>
-    </section>
+
+      {/* Pasos */}
+      <div className="space-y-7">
+        {/* 1. Diseño */}
+        <div>
+          {stepTitle(1, "Subí tu diseño")}
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+            className="sr-only"
+            onChange={e => handleFile(e.target.files?.[0])}
+          />
+          {art ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" onClick={() => inputRef.current?.click()} disabled={isProcessing} className="min-h-10">
+                {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Cambiar imagen
+              </Button>
+              {art.other && (
+                <Button type="button" variant="ghost" onClick={swapBackground} className="min-h-10 text-[#5f574d]">
+                  {art.backgroundRemoved ? "Usar con el fondo original" : "Quitar el fondo"}
+                </Button>
+              )}
+              <Button type="button" variant="ghost" onClick={() => setArt(null)} className="min-h-10 text-[#5f574d]">
+                <X className="w-4 h-4" /> Quitar
+              </Button>
+            </div>
+          ) : (
+            <Button type="button" onClick={() => inputRef.current?.click()} disabled={isProcessing} className="min-h-11">
+              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />} Elegir imagen
+            </Button>
+          )}
+          <p className="text-xs text-[#6f685d] mt-2">PNG, JPG, WebP o SVG, hasta 8 MB. Mejor si es PNG con fondo transparente.</p>
+          {uploadError && <p className="text-xs text-red-700 mt-2" role="alert">{uploadError}</p>}
+          {lowRes && (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2 flex gap-2" role="status">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              Tu imagen tiene poca resolución para este tamaño y puede verse pixelada. Probá un tamaño menor o mandanos el archivo original.
+            </p>
+          )}
+        </div>
+
+        {/* 2. Tamaño y forma */}
+        <div>
+          {stepTitle(2, "Tamaño y forma")}
+          <p className="text-xs text-[#6f685d] mb-2">Lado más largo del sticker</p>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {STICKER_SIZE_PRESETS.map(cm => (
+              <button key={cm} type="button" onClick={() => setSizeCm(cm)} className={chip(sizeCm === cm)}>
+                {cm} cm
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-4">
+            <Slider
+              value={[sizeCm]}
+              min={STICKER_MIN_CM}
+              max={STICKER_MAX_CM}
+              step={0.5}
+              onValueChange={([v]) => setSizeCm(v)}
+              aria-label="Tamaño del sticker en centímetros"
+            />
+            <span className="w-24 shrink-0 text-right text-sm tabular-nums text-[#1A1614]">
+              {art ? sizeText : `${sizeCm.toLocaleString("es-PY")} cm`}
+            </span>
+          </div>
+
+          <p className="text-xs text-[#6f685d] mt-5 mb-2">Corte</p>
+          <div className="grid grid-cols-2 gap-2">
+            {STICKER_CUTS.map(c => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCut(c.id)}
+                aria-pressed={cut === c.id}
+                className={cn(
+                  "text-left rounded-xl border p-3 transition-colors",
+                  cut === c.id ? "border-[#8B1A2F] bg-[#f5eaec]" : "border-[#e2d8ca] bg-white hover:border-[#8B1A2F]/60",
+                )}
+              >
+                <span className="block text-sm font-semibold text-[#1A1614]">{c.name}</span>
+                <span className="block text-xs text-[#6f685d] mt-0.5 leading-snug">{c.desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 3. Acabado */}
+        <div>
+          {stepTitle(3, "Acabado")}
+          <div className="grid grid-cols-2 gap-2">
+            {STICKER_FINISHES.map(f => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFinish(f.id)}
+                aria-pressed={finish === f.id}
+                className={cn(
+                  "text-left rounded-xl border p-3 transition-colors",
+                  finish === f.id ? "border-[#8B1A2F] bg-[#f5eaec]" : "border-[#e2d8ca] bg-white hover:border-[#8B1A2F]/60",
+                )}
+              >
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-[#1A1614]">
+                  {f.id === "relieve" ? <Layers className="w-3.5 h-3.5 text-[#8B1A2F]" /> : <Sparkles className="w-3.5 h-3.5 text-[#8B1A2F]" />}
+                  {f.name}
+                </span>
+                <span className="block text-xs text-[#6f685d] mt-0.5 leading-snug">{f.desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 4. Cantidad */}
+        <div>
+          {stepTitle(4, "Cantidad")}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center rounded-lg border border-[#e2d8ca] bg-white">
+              <button type="button" onClick={() => setQty(quantity - 1)} className="w-10 h-10 flex items-center justify-center text-[#1A1614]" aria-label="Menos">
+                <Minus className="w-4 h-4" />
+              </button>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={STICKER_MAX_QTY}
+                value={quantity}
+                onChange={e => setQty(Number(e.target.value))}
+                className="w-16 h-10 text-center text-base tabular-nums bg-transparent outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                aria-label="Cantidad de stickers"
+              />
+              <button type="button" onClick={() => setQty(quantity + 1)} className="w-10 h-10 flex items-center justify-center text-[#1A1614]" aria-label="Más">
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+            {STICKER_QTY_PRESETS.filter(n => n > 1).map(n => (
+              <button key={n} type="button" onClick={() => setQty(n)} className={chip(quantity === n)}>
+                {n}
+              </button>
+            ))}
+          </div>
+          {STICKER_PRICES_ENABLED && quote.next && (
+            <p className="text-xs text-[#6f685d] mt-2">
+              Desde {quote.next.min} unidades pagás {formatGs(quote.next.unit)} c/u ({pct(quote.next.discount)} off).
+            </p>
+          )}
+        </div>
+
+        {/* Precio + pedido */}
+        <div className="space-y-3">
+          <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3">
+            {STICKER_PRICES_ENABLED ? (
+              <>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-sm text-muted-foreground">{art ? "Precio estimado" : "Precio estimado desde"}</span>
+                  <span className="font-serif text-xl text-foreground tabular-nums">{formatGs(quote.total)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
+                  {quantity} × {formatGs(quote.unit)}
+                  {quote.discount > 0 && <> · {pct(quote.discount)} off por cantidad (ahorrás {formatGs(quote.savings)})</>}
+                </p>
+              </>
+            ) : (
+              <>
+                <span className="text-sm text-muted-foreground">Precio</span>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Te pasamos el precio por WhatsApp según el tamaño, el acabado y la cantidad.
+                </p>
+              </>
+            )}
+          </div>
+
+          <Button
+            onClick={handleOrder}
+            disabled={isPreparing || isOrdered}
+            size="lg"
+            className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal"
+          >
+            {isPreparing ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Creando tu pedido...</>
+            ) : isOrdered ? (
+              lastOrderNumber ? `Pedido ${lastOrderNumber} creado ✓` : "Abriendo WhatsApp..."
+            ) : art ? "Pedir por WhatsApp" : "Consultar por WhatsApp"}
+          </Button>
+
+          {orderFallback && (
+            <p className="text-xs text-amber-700 text-center leading-relaxed">
+              No pudimos registrar tu pedido online, pero los datos salen igual por WhatsApp. Mandanos tu diseño en el chat.
+            </p>
+          )}
+
+          <ul className="space-y-1.5 text-xs text-muted-foreground">
+            <li className="flex items-start gap-2">
+              <MessageCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" />
+              Revisamos el diseño final con vos por WhatsApp antes de imprimir.
+            </li>
+            <li className="flex items-start gap-2">
+              <HandCoins className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" />
+              Pagás recién cuando confirmás el diseño.
+            </li>
+            <li className="flex items-start gap-2">
+              <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" />
+              Retirás en nuestro local: {ADDRESS}.
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -372,26 +372,28 @@ export const PRODUCTS: ProductDef[] = [
     id: "guampa",
     name: "Guampas",
     singular: "Guampa",
-    // Guampa Hydrate (artifacts/3D/Guampa-v1.glb): vaso bajo y ancho, base
-    // redondeada, paredes casi rectas que se abren apenas hacia arriba y tapa
-    // con pico. Perfil = radio del cuerpo medido sobre el .glb (m × 14,
-    // centrado en 0,0587 m). Logo atrás (yawDeg 180).
+    // Guampa Hydrate (artifacts/3D/Guampa.glb, 2026-10-14): vaso bajo y ancho
+    // con cuerpo apenas abarrilado (más ancho a un tercio de la altura), base
+    // y aro superior de acero, y tapa con pico. Perfil = radio del cuerpo
+    // pintable medido sobre el .glb (m × 14, centrado en 0,05565 m, la mitad
+    // del alto con tapa). Logo atrás (yawDeg 180).
     desc: "Guampa térmica baja y ancha, con tapa.",
     cap: "none",
     handle: "none",
     profile: [
-      [0.322, -0.822], [0.388, -0.808], [0.424, -0.778], [0.458, -0.735],
-      [0.487, -0.679], [0.510, -0.612], [0.525, -0.536], [0.535, -0.456],
-      [0.538, -0.353], [0.543, -0.206], [0.549, -0.059], [0.554,  0.088],
-      [0.559,  0.235], [0.564,  0.382], [0.570,  0.529], [0.571,  0.578],
+      [0.535, -0.540], [0.552, -0.484], [0.578, -0.426], [0.585, -0.370],
+      [0.588, -0.313], [0.587, -0.257], [0.581, -0.199], [0.575, -0.143],
+      [0.571, -0.029], [0.567,  0.027], [0.563,  0.085], [0.559,  0.198],
+      [0.556,  0.254], [0.553,  0.311], [0.552,  0.368],
     ],
-    band: [-0.45, 0.50],
+    // Zona grabable: el cuerpo pintado (17–82 mm) menos ~3 mm arriba y abajo.
+    band: [-0.492, 0.320],
     model: {
-      url: "/models/guampa.glb?v=1",
+      url: "/models/guampa.glb?v=2",
       unitsPerMeter: 14,
-      centerYm: 0.0587,
-      heightM: 0.1174,
-      reachM: 0.0595,
+      centerYm: 0.05565,
+      heightM: 0.1113,
+      reachM: 0.0555,
       yawDeg: 180,
     },
     // Caras de grabado: logo atrás.

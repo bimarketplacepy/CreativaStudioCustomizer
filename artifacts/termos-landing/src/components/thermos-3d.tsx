@@ -97,6 +97,12 @@ interface Thermos3DProps {
   renderNowRef?: React.MutableRefObject<(() => void) | null>;
   /** La pieza ya está en pantalla (modelo .glb incluido): sirve para capturarla. */
   onReady?: () => void;
+  /**
+   * "Ver en AR": el padre guarda acá una función que devuelve una copia de la
+   * pieza (derecha, apoyada en y = 0, sin guías) y cuántos metros mide una
+   * unidad de escena. Ver lib/ar-viewer.ts.
+   */
+  arModelRef?: React.MutableRefObject<(() => { object: THREE.Object3D; metersPerUnit: number } | null) | null>;
 }
 
 /** Everything the meshes and the camera rig need, derived from the product profile. */
@@ -515,7 +521,7 @@ function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
   textPlacement, artPlacement, colorPrint, textColor, engraveStyle, singleFace, editSingleFace, showGuides, frontFaceU, guideFace, glass,
   designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, snapToURef, renderNowRef, onReady,
-  autoSpin = false, rotationLocked = false, onMotionChange,
+  autoSpin = false, rotationLocked = false, onMotionChange, arModelRef,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
@@ -534,6 +540,7 @@ function ThermosMesh({
   autoSpin?: boolean; rotationLocked?: boolean;
   /** La pieza empezó (true) o terminó (false) de moverse: giro, arrastre, inercia. */
   onMotionChange?: (moving: boolean) => void;
+  arModelRef?: Thermos3DProps["arModelRef"];
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
@@ -963,6 +970,27 @@ function ThermosMesh({
     };
     return () => { snapToURef.current = null; };
   }, [snapToURef, invalidate]);
+
+  useEffect(() => {
+    if (!arModelRef) return;
+    arModelRef.current = () => {
+      const g = groupRef.current;
+      if (!g) return null;
+      // Copia superficial: comparte geometría y materiales (texturas del
+      // grabado incluidas) con el visor.
+      const copy = g.clone(true);
+      copy.rotation.set(0, 0, 0);
+      copy.position.set(0, -sil.bottomY, 0);
+      const lines: THREE.Object3D[] = [];
+      copy.traverse(o => { if ((o as THREE.Line).isLine) lines.push(o); });
+      lines.forEach(o => o.removeFromParent());
+      // Modelos .glb: unidades por metro conocidas. Formas genéricas: ~10/m,
+      // la escala con la que están dibujados los perfiles.
+      const unitsPerMeter = product.model?.unitsPerMeter ?? 10;
+      return { object: copy, metersPerUnit: 1 / unitsPerMeter };
+    };
+    return () => { arModelRef.current = null; };
+  }, [arModelRef, sil, product]);
 
   useEffect(() => {
     if (!renderNowRef) return;
@@ -1582,6 +1610,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           autoSpin={props.autoSpin ?? false}
           rotationLocked={props.rotationLocked ?? false}
           onMotionChange={onMotionChange}
+          arModelRef={props.arModelRef}
         />
 
         {/* Single, stable ground shadow, anchored to the floor plane — no

@@ -16,9 +16,11 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
   WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
   ChevronUp, Crosshair, CirclePlay, Orbit, Link2, MessageCircle, MapPin, HandCoins,
-  Undo2, Trash2, Search,
+  Undo2, Trash2, Search, ScanEye,
 } from "lucide-react";
 import Thermos3D from "./thermos-3d";
+// El creador de stickers baja recién al elegir el modo "Stickers".
+const StickerCreator = React.lazy(() => import("./stickers"));
 import Object3D from "./object-3d";
 import ImageUpload from "./image-upload";
 import { ENGRAVING_PLANS, type EngravingPlanId } from "@/lib/engraving-plans";
@@ -44,6 +46,7 @@ import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
 import { ADDRESS, whatsappUrl } from "@/lib/contact";
 import { clearSharedDesign, designLink, readSharedDesign, type SharedDesign } from "@/lib/design-link";
 import { onDesignPreset } from "@/lib/design-preset";
+import { CUSTOMIZER_MODE_EVENT, takeCustomizerMode } from "@/lib/section-reveal";
 import { machineFor, normalizeTechnique } from "@/lib/machines";
 import { printSpecFor } from "@/lib/print-specs";
 import { quote } from "@/lib/pricing";
@@ -688,6 +691,82 @@ function DesignEditBar({ kindLabel, onSmaller, onBigger, onCenter, onUndo, onDel
  * (o tocar el diseño sobre el producto) entra a editarlo. Tras borrar algo,
  * ofrece deshacerlo unos segundos.
  */
+type ArModelGetter = () => import("@/lib/ar-viewer").ArModel | null;
+
+/**
+ * "Ver en AR" (ver lib/ar-viewer.ts). Solo aparece si el dispositivo tiene AR:
+ * Quick Look en iPhone/iPad, WebXR en Android. En iOS el modelo se prepara
+ * primero y el toque sobre el enlace lo abre (Safari exige un toque directo
+ * sobre un <a rel="ar">); `designKey` invalida el preparado si cambia el diseño.
+ */
+function ArViewButton({ getModel, designKey }: { getModel: ArModelGetter; designKey: string }) {
+  const [mode, setMode] = useState<"quicklook" | "webxr" | null>(null);
+  const [state, setState] = useState<"idle" | "preparing" | "ready" | "error">("idle");
+  const [url, setUrl] = useState<string | null>(null);
+  const modRef = useRef<typeof import("@/lib/ar-viewer") | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    import("@/lib/ar-viewer")
+      .then(async m => { modRef.current = m; const d = await m.detectAR(); if (alive) setMode(d); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  // El USDZ preparado queda viejo apenas cambia el diseño.
+  useEffect(() => {
+    setState("idle");
+    setUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+  }, [designKey]);
+  useEffect(() => () => { setUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; }); }, []);
+
+  if (!mode) return null;
+
+  const btn = "h-10 px-4 inline-flex items-center gap-1.5 rounded-full bg-white text-foreground text-sm font-medium border border-border shadow-sm active:scale-95 transition";
+
+  if (mode === "quicklook" && state === "ready" && url) {
+    return (
+      <a rel="ar" href={url} className={btn} onClick={() => track("ar_open", { mode })}>
+        {/* Quick Look exige una imagen como primer hijo del enlace. */}
+        <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" width={1} height={1} />
+        <ScanEye className="w-4 h-4 text-primary" /> Abrir en tu espacio
+      </a>
+    );
+  }
+
+  const onClick = async () => {
+    const m = modRef.current;
+    const model = getModel();
+    if (!m || !model) { setState("error"); return; }
+    track("ar_click", { mode });
+    if (mode === "webxr") {
+      try { await m.startWebXR(model); } catch { setState("error"); }
+      return;
+    }
+    setState("preparing");
+    try {
+      const u = await m.buildQuickLookUrl(model);
+      setUrl(prev => { if (prev) URL.revokeObjectURL(prev); return u; });
+      setState("ready");
+    } catch {
+      setState("error");
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <button type="button" onClick={onClick} disabled={state === "preparing"} className={btn}>
+        {state === "preparing"
+          ? <><Loader2 className="w-4 h-4 animate-spin" /> Preparando AR…</>
+          : <><ScanEye className="w-4 h-4 text-primary" /> Ver en AR</>}
+      </button>
+      {state === "error" && (
+        <p className="text-xs text-muted-foreground">No pudimos abrir la vista AR en este dispositivo.</p>
+      )}
+    </div>
+  );
+}
+
 function DesignIdleActions({ onEdit, onUndoDelete }: {
   onEdit: (() => void) | null;
   onUndoDelete: (() => void) | null;
@@ -1449,6 +1528,8 @@ export default function Customizer() {
   // (flat objects, pens) collapse to two (Producto · Diseño). State is
   // centralised here, so stepping back and forth never loses anything.
   const [mobileStep, setMobileStep] = useState(1);
+  // "Stickers" (eufyMake E1) vive acá mismo, como otro modo del personalizador.
+  const [mode, setMode] = useState<"products" | "stickers">("products");
 
   // STEP 1 — material, STEP 2 — product within the material
   const [materialId, setMaterialId] = useState<MaterialId>(DEFAULT_MATERIAL_ID);
@@ -1681,6 +1762,14 @@ export default function Customizer() {
     setMobileStep(s => Math.min(s, wizardLabels.length));
   }, [wizardLabels.length]);
 
+  // Menú / footer / #stickers: abrir en el modo pedido (ver section-reveal.ts).
+  React.useEffect(() => {
+    const apply = () => { const m = takeCustomizerMode(); if (m) setMode(m); };
+    apply();
+    window.addEventListener(CUSTOMIZER_MODE_EVENT, apply);
+    return () => window.removeEventListener(CUSTOMIZER_MODE_EVENT, apply);
+  }, []);
+
   // ── "Diseñar uno igual" desde la galería ───────────────────────────────────
   // Arranca con el producto de la foto (material + producto + talla por
   // defecto); en celular salta al paso de Diseño, como un link compartido.
@@ -1689,6 +1778,7 @@ export default function Customizer() {
     const mp = m?.products.find(p => p.id === pid);
     if (!m || !mp) return;
     startColorPending.current = false;
+    setMode("products");
     handleSelectMaterial(m.id);
     setMaterialProductId(mp.id);
     if (mp.drinkwareProductId) {
@@ -2089,6 +2179,8 @@ export default function Customizer() {
   const thermosSnapRef = useRef<((u: number) => void) | null>(null);
   // Dibuja un cuadro en el momento (el visor solo dibuja cuando algo cambia).
   const thermosRenderRef = useRef<(() => void) | null>(null);
+  // "Ver en AR": copia de la pieza del visor grande (ver ArViewButton).
+  const thermosArRef = useRef<(() => { object: import("three").Object3D; metersPerUnit: number } | null) | null>(null);
   // Sube cuando el visor terminó de montar la pieza (re-dispara la captura).
   const [viewerReady, setViewerReady] = useState(0);
 
@@ -3110,8 +3202,11 @@ export default function Customizer() {
   // vista compacta del producto elegido que se actualiza en vivo. Los pasos del
   // wizard son mutuamente excluyentes, así que nunca hay dos canvas WebGL
   // montados a la vez (este o el grande del paso de Diseño, jamás ambos).
+  // top-16: debajo del header, que también es sticky (64px). Fondo opaco: el
+  // contenido que scrollea por detrás se transparentaba a través del panel
+  // (bg-secondary/30) y el termo parecía flotar sobre los controles.
   const renderMiniPreview = () => (
-    <div className="sticky top-0 z-30">
+    <div className="sticky top-16 z-30 bg-white pt-1 pb-0.5">
       <div className="relative bg-secondary/30 rounded-2xl border border-border overflow-hidden shadow-lg shadow-black/5">
         {isGlass ? (
           <div className="absolute inset-0 rounded-2xl" style={{ background: "radial-gradient(circle at 50% 38%, #eef2f6 0%, #d3dae2 55%, #aeb8c4 100%)" }} />
@@ -3235,12 +3330,46 @@ export default function Customizer() {
           <h2 className="font-serif font-light text-3xl md:text-5xl text-[#1A1614] mb-4 leading-[1.1]">
             Creá tu pieza
           </h2>
-          <p className="hidden md:block text-[#5f574d] font-light text-lg max-w-xl leading-relaxed">
+          <p className={`hidden ${mode === "products" ? "md:block" : ""} text-[#5f574d] font-light text-lg max-w-xl leading-relaxed`}>
             Elegí el material, luego el producto, y refinalo a tu gusto. El diseño final lo coordinamos
             con vos por WhatsApp.
           </p>
         </div>
 
+        <div role="tablist" aria-label="Qué querés crear" className="mb-6 md:mb-8 inline-flex w-full sm:w-auto rounded-xl border border-border bg-secondary/40 p-1">
+          {([
+            { id: "products", label: <><span className="sm:hidden">Termos y más</span><span className="hidden sm:inline">Termos, vasos y más</span></> },
+            { id: "stickers", label: "Stickers" },
+          ] as const).map(t => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={mode === t.id}
+              onClick={() => {
+                if (mode === t.id) return;
+                setMode(t.id);
+                track("customizer_mode", { mode: t.id });
+              }}
+              className={`flex-1 sm:flex-none min-h-11 px-5 rounded-lg text-sm font-medium transition-colors ${mode === t.id ? "bg-white text-[#8B1A2F] shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {mode === "stickers" ? (
+          <div>
+            <p className="text-[#5f574d] font-light text-sm md:text-base max-w-2xl leading-relaxed mb-6 md:mb-8">
+              Stickers impresos a todo color, con acabado brillante o con relieve que se siente al tacto.
+              Se pegan en termos, botellas, notebooks, celulares o packaging, y resisten agua y roce.
+            </p>
+            <React.Suspense fallback={<div className="min-h-[60vh] flex items-center justify-center text-sm text-muted-foreground">Cargando stickers…</div>}>
+              <StickerCreator />
+            </React.Suspense>
+          </div>
+        ) : (
+        <>
         {isMobile && <WizardProgress step={mobileStep} labels={wizardLabels} />}
 
         {/* Desktop: material + product as the original card grids. On mobile these
@@ -3386,7 +3515,7 @@ export default function Customizer() {
               <ShopRail items={shopItems} value={shopKey} initialBrand={shopItem?.brand ?? shopBrands(shopItems)[0]} onPick={pickShopItem} />
             </div>
           )}
-          <div className="w-full min-w-0 lg:col-span-4 relative max-lg:sticky max-lg:top-0 max-lg:z-30 lg:self-start">
+          <div className="w-full min-w-0 lg:col-span-4 relative max-lg:sticky max-lg:top-16 max-lg:z-30 max-lg:bg-white max-lg:pt-1 lg:self-start">
             <div ref={previewPanelRef} className="lg:sticky lg:top-24 z-20 bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[280px] md:min-h-[520px] max-lg:shadow-lg max-lg:shadow-black/5">
               {isGlass ? (
                 // Glass needs an environment to reflect and a graded backdrop to
@@ -3435,6 +3564,7 @@ export default function Customizer() {
                       onTap={handleViewerTap}
                       snapToURef={thermosSnapRef}
                       renderNowRef={thermosRenderRef}
+                      arModelRef={thermosArRef}
                       onReady={() => setViewerReady(n => n + 1)}
                       autoSpin={wrapSpin}
                       rotationLocked={wrapSpin}
@@ -3460,10 +3590,16 @@ export default function Customizer() {
                         <p className="text-xs text-muted-foreground">
                           {idleEditKind ? "Arrastrá para girar · tocá tu diseño para moverlo" : "Arrastrá para girar"}
                         </p>
-                        <DesignIdleActions
-                          onEdit={idleEditKind ? () => selectDesign(idleEditKind, "button") : null}
-                          onUndoDelete={undoDeleteUntil ? () => { setUndoDeleteUntil(0); undo(); } : null}
-                        />
+                        <div className="flex flex-wrap items-start justify-center gap-2">
+                          <DesignIdleActions
+                            onEdit={idleEditKind ? () => selectDesign(idleEditKind, "button") : null}
+                            onUndoDelete={undoDeleteUntil ? () => { setUndoDeleteUntil(0); undo(); } : null}
+                          />
+                          <ArViewButton
+                            getModel={() => thermosArRef.current?.() ?? null}
+                            designKey={[productId, viewSize, activeColorHex, finish, text, font, iconId, artUrl?.length ?? 0, textColor, effectiveTechnique, singleFace, JSON.stringify(textPlacement), JSON.stringify(artPlacement)].join("|")}
+                          />
+                        </div>
                       </>
                     )}
                   </div>
@@ -4128,6 +4264,8 @@ export default function Customizer() {
           />
         )}
 
+        </>
+        )}
       </div>
     </section>
   );

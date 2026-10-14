@@ -2,6 +2,7 @@ import React from "react";
 import { Phone, Mail, MapPin, Instagram, Facebook } from "lucide-react";
 import { ADDRESS, EMAIL, FACEBOOK_URL, INSTAGRAM_URL, WHATSAPP_PHONE_DISPLAY, whatsappUrl } from "@/lib/contact";
 import { WhatsAppGlyph } from "./whatsapp-button";
+import { scrollToSection } from "@/lib/section-reveal";
 
 /** Every support topic opens WhatsApp with the question already framed. */
 const SUPPORT_LINKS = [
@@ -60,7 +61,7 @@ export default function Footer() {
           <ul className="space-y-1 text-sm text-muted-foreground">
             <li><a href="#personalizaciones" className="inline-block py-1.5 hover:text-primary active:text-primary transition-colors">Qué personalizamos</a></li>
             <li><a href="#customizer" className="inline-block py-1.5 hover:text-primary active:text-primary transition-colors">Personalizador</a></li>
-            <li><a href="#stickers" className="inline-block py-1.5 hover:text-primary active:text-primary transition-colors">Stickers</a></li>
+            <li><a href="#stickers" onClick={e => { e.preventDefault(); scrollToSection("stickers"); }} className="inline-block py-1.5 hover:text-primary active:text-primary transition-colors">Stickers</a></li>
             <li><a href="#precios" className="inline-block py-1.5 hover:text-primary active:text-primary transition-colors">Precios de grabado</a></li>
             <li>
               <a

@@ -399,3 +399,92 @@ Las fases 1 y 3 se pueden hacer ya. La 2 necesita que el taller confirme el form
 - ✅ Pedido: `designState.machine` (la API la normaliza o la infiere en pedidos viejos: sticker → eufy, técnica `eufy`/`color` → dacen, resto → láser). Stickers mandan `machine: "eufy"`.
 - ✅ `/admin`: etiqueta de máquina, filtro (Todas / Láser / Dacen F5 / eufyMake E1, `?machine=`), botón "SVG láser" / "PNG para eufyMake" / "PNG para Dacen" / "SVG referencia (Dacen)".
 - Pendiente: renombre `eufy` → `color` en `customizer.tsx` y uso de `quote()` en su "Precio estimado"; fase 2 (PNG desenrollado). Mientras tanto los pedidos de la Dacen siguen generando el SVG de referencia.
+
+---
+
+## 10. Investigación: diseño envolvente 360° en la Dacen F5 (2026-10-14)
+
+### Datos de la máquina
+
+| Dato | Valor | Fuente |
+|---|---|---|
+| Ø imprimible | 45–125 mm (una nota dice 45–130) | [F5](https://www.dacenprinter.com/cylinder-printer/dacen-f5-uv-cylinder-printer.html), [nota F5.a](https://www.dacenprinter.com/news/the-latest-device-dacen-f5-a-cylindrical-pri-78429941.html) |
+| Largo | 30–270 mm | ídem |
+| Conicidad | 0–5° (Dacen pide Ø de cada punta + largo + foto para la sujeción) | FAQ F5 |
+| Velocidad | "desde 20 s/pieza" (la nota dice ~30 s) | ídem |
+| Cabezales | Toshiba CF3 (1–5), 600×1800 dpi, gota 3,5 pL | F5 |
+| Tintas | CMYK + Blanco + Barniz (opción 8 colores) | F5 |
+| Programa | RIPrint · TIFF, JPG, EPS, PDF, PNG, AI, PSD | F5 |
+| 360° | "360 degrees rotary printing", clamp "zero slip for seamless 360° joints" | F5 |
+| Perfil | "Automatic Profile Scanning" (mide el contorno) | F5 |
+| Sin verificar | Si RIPrint compensa la conicidad, si genera el blanco solo, dpi y perfil de color, manijas, impresión en espiral | — |
+
+**Clave:** la rotativa gira la pieza, así que cada columna del archivo es un **ángulo**. El archivo correcto es un rectángulo (vuelta × alto): el mismo espacio u/v que ya usa la textura 3D (`makeBodyMaps`). Curvar el archivo en arco (sector de corona) solo haría falta si RIPrint esperara el desarrollo plano; si no, sería una doble corrección (pregunta 1).
+
+### Propuesta: modo "Cubrir todo el termo (360°)"
+
+En Diseño → Imagen, solo en piezas con `fitsDacen()` y técnica a color:
+
+- **Fondo:**
+  - color liso o degradado que llena toda la banda.
+- **Imagen:**
+  - *Estirar* (al alto; recorta o centra a lo ancho);
+  - *Mosaico* (n copias enteras);
+  - *Espejo* (n par, la costura queda continua aunque el arte no sea seamless);
+  - escala y corrimiento en u y v.
+- **Arriba del envolvente** van el texto, el ícono y el logo de siempre.
+- **Costura:** línea punteada atrás (u = 0) con el aviso "acá empieza y termina la impresión".
+- **Manija:** franja rayada (`handleU`) que no se imprime.
+- **Aviso de resolución:** dpi efectivos = px de la imagen ÷ (mm que ocupa / 25,4), calculado con el Ø mayor. Menos de 150 dpi advierte; menos de 100 desaconseja.
+
+**En el código:**
+
+- `engraving-maps.ts`: extraer el bloque `colorPrint` a `drawColorLayer(ctx, metrics, W, opts)`.
+  - Orden: envolvente, después imagen y texto; al final se borra la franja de la manija.
+  - El mosaico usa `createPattern` con ancho W/n, así la costura cierra exacta.
+- `placement.ts`, `designState` y `design-link.ts`: campo nuevo `wrap?: { mode, repeats, scale, offsetU, offsetV, bg }`.
+- `production-dacen.ts`: `renderUnwrapped(opts, spec, dpi = 300)`.
+  - Lienzo de π·Ø/25,4·dpi × alto/25,4·dpi.
+  - PNG con transparencia donde no hay tinta.
+  - Si el taller las pide: máscaras de blanco y barniz.
+- `print-specs.ts`: agregar `seamU`, `bleedMm`, `wrapAllowed`, `dpi`, `ripExpects: "angle" | "developed"`, `printStartFromRimMm` y el alto sobre la pared inclinada.
+- `pricing.ts`: `coverage = "wrap"` cuando el envolvente está activo (precio `tiers.wrap`).
+
+**Tamaño del archivo:**
+
+| Pieza | Ancho | Px a 300 dpi | Megapíxeles |
+|---|---|---|---|
+| Ø 70 × 180 mm | 219,9 mm | 2598 × 2126 | 5,5 |
+| Ø 90 × 200 mm | — | 3340 × 2362 | 7,9 |
+
+Un diseño fotográfico a 360° pesa 10–20 MB en PNG y **no entra en el JSON de 6 MB del pedido**. Opciones: subirlo aparte (multipart o storage) o bajar a 200 dpi como en stickers.
+
+**Conicidad** (solo si `ripExpects = "developed"`):
+
+- Fórmulas:
+  - generatriz s = √(h² + ((D−d)/2)²);
+  - R = s·D/(D−d), r = R − s;
+  - θ = π·D/R.
+- Cada píxel del sector (ρ, φ) se toma de u = φ/θ + 0,5, v = (R − ρ)/s.
+- Ejemplo: vaso de Ø 90/70 mm y 150 mm de alto → R ≈ 676 mm, r ≈ 526 mm, θ ≈ 23,9°.
+
+**Fases:**
+
+| Fase | Qué | Esfuerzo |
+|---|---|---|
+| 2a | `drawColorLayer` + `renderUnwrapped` + PNG en el pedido + descarga "PNG para Dacen" | 2–3 días |
+| 2b | Subida aparte para archivos > 6 MB | 1 día |
+| 4a | Modo 360° (fondo, estirar, mosaico, espejo, costura, manija, aviso de dpi, precio "wrap") | 3–4 días |
+| 4b | Máscaras de blanco y barniz (si el RIP las pide) | 0,5–1 día |
+| 4c | Curvado en arco para conos (solo si hace falta) | 1–2 días |
+
+### Preguntas para el taller (además de las de §8)
+
+1. ¿RIPrint toma la imagen como vuelta angular (rectángulo) o como desarrollo plano? En conos, ¿qué Ø usa para escalar? ¿Compensa la conicidad solo?
+2. ¿El blanco y el barniz salen solos de la transparencia, o van como capa aparte? ¿El blanco va solo debajo del color?
+3. ¿Qué formato, dpi y perfil de color prefieren?
+4. ¿La F5 imprime en espiral o por pasadas? ¿Se nota la costura en un fondo liso? ¿Hace falta superposición?
+5. ¿Dónde arranca la vuelta respecto del frente o de la manija? ¿Qué margen dejan arriba y abajo?
+6. ¿Qué piezas con manija entran y qué ángulo queda libre?
+7. Medidas con calibre por producto y tamaño (Ø de cada punta y alto sobre la pared inclinada).
+8. Tiempo y costo reales de una pieza 360° a todo color, para cargar `tiers.wrap`.
