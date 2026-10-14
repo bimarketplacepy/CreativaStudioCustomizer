@@ -72,6 +72,12 @@ interface Thermos3DProps {
    * coordenadas de placement (u, v de la banda), o null si no se tocó el cuerpo.
    */
   onTap?: (hit: { u: number; v: number } | null) => void;
+  /**
+   * ¿Ese punto del cuerpo cae sobre el diseño que se está editando? En el
+   * celular solo un dedo apoyado sobre el diseño lo mueve; apoyado en otro
+   * lado, el desliz vertical scrollea la página.
+   */
+  isOverDesign?: (hit: { u: number; v: number }) => boolean;
   /** A design drag started (used to flash the front-face guides). */
   onDesignDragStart?: () => void;
   /** A design drag ended. */
@@ -520,7 +526,7 @@ function FrontFaceGuide({ sil, product, face }: { sil: Silhouette; product: Prod
 function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
   textPlacement, artPlacement, colorPrint, textColor, engraveStyle, singleFace, editSingleFace, showGuides, frontFaceU, guideFace, glass,
-  designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, snapToURef, renderNowRef, onReady,
+  designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, snapToURef, renderNowRef, onReady,
   autoSpin = false, rotationLocked = false, onMotionChange, arModelRef,
 }: {
   colorHex: string; finish: string; text: string;
@@ -534,6 +540,7 @@ function ThermosMesh({
   onDesignDragStart?: () => void;
   onDesignDragEnd?: () => void;
   onTap?: (hit: { u: number; v: number } | null) => void;
+  isOverDesign?: (hit: { u: number; v: number }) => boolean;
   snapToURef?: React.MutableRefObject<((u: number) => void) | null>;
   renderNowRef?: React.MutableRefObject<(() => void) | null>;
   onReady?: () => void;
@@ -557,8 +564,8 @@ function ThermosMesh({
 
   // Latest design-drag inputs, read inside the (stable) pointer listeners so we
   // don't re-attach them every render when the callbacks change identity.
-  const designRef = useRef({ designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, sil, product });
-  designRef.current = { designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, sil, product };
+  const designRef = useRef({ designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, sil, product });
+  designRef.current = { designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, sil, product };
 
   const bodyGeo = useMemo(() => {
     const geo = new THREE.LatheGeometry(sil.points, 128);
@@ -802,11 +809,13 @@ function ThermosMesh({
   useEffect(() => {
     const canvas = gl.domElement;
 
-    // El canvas tiene touch-action: none: todo gesto sobre el producto es del
-    // visor (girar, inclinar para ver la base, mover el diseño). Antes el
-    // navegador se quedaba los verticales (scroll de página) y el giro recién
-    // arrancaba pasados 10 px: costaba girar y no se podía mirar la base. La
-    // página se scrollea tocando fuera del visor.
+    // Gestos táctiles: el desliz VERTICAL es de la página (touch-action:
+    // pan-y, ver el efecto de abajo). En el celular el visor ocupa casi toda
+    // la pantalla y queda fijo arriba: si se quedaba el gesto, no se podía
+    // bajar la página y el termo se inclinaba y "se iba para abajo". El desliz
+    // horizontal gira la pieza. Editando un diseño, solo un dedo apoyado SOBRE
+    // el diseño lo mueve (en las dos direcciones). Con mouse se sigue pudiendo
+    // inclinar para ver la base.
     // Toque = soltar cerca de donde se apoyó y rápido. Sirve para seleccionar
     // el diseño (o terminar la edición tocando fuera de él).
     let down: { x: number; y: number; t: number; id: number } | null = null;
@@ -828,6 +837,8 @@ function ThermosMesh({
 
     const startDrag = (e: PointerEvent, mode: "design" | "rotate") => {
       isDragging.current = true;
+      // Con el dedo solo se gira: el eje vertical es el scroll de la página.
+      allowPitch = e.pointerType === "mouse";
       velYaw.current = 0;
       spinLeft.current = 0;
       velPitch.current = 0;
@@ -841,12 +852,22 @@ function ThermosMesh({
       canvas.setPointerCapture(e.pointerId);
     };
     let rotGain = 0.008;
+    let allowPitch = true;
+    /** El dedo se apoyó sobre el diseño en edición (lo mueve en vez de girar). */
+    let touchOnDesign = false;
 
     const onDown = (e: PointerEvent) => {
       down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
       // Con un diseño seleccionado (en una cara), el gesto lo mueve; si no, gira.
+      // Con el dedo, solo si se apoyó sobre el diseño (ver onTouchStart).
       const d = designRef.current;
-      const mode = d.designActive && d.editSingleFace ? "design" : "rotate";
+      const editing = d.designActive && d.editSingleFace;
+      // Chrome dispara pointerdown ANTES que touchstart: se calcula acá también.
+      if (editing && e.pointerType !== "mouse") touchOnDesign = onDesignAt(e);
+      // Editando, un dedo fuera del diseño no gira (la cara queda de frente):
+      // ese gesto es solo el scroll de la página.
+      if (editing && e.pointerType !== "mouse" && !touchOnDesign) return;
+      const mode = editing ? "design" : "rotate";
       // Envolvente 360° while typing: manual rotation is locked (the piece is
       // auto-spinning); ignore the gesture entirely until the input blurs.
       if (mode === "rotate" && d.rotationLocked) return;
@@ -886,18 +907,20 @@ function ThermosMesh({
         return;
       }
       velYaw.current   = dx / dt * 16;
-      velPitch.current = dy / dt * 16;
+      velPitch.current = allowPitch ? dy / dt * 16 : 0;
       if (groupRef.current) {
         groupRef.current.rotation.y += dx * rotGain;
-        // Clamp pitch so it doesn't flip upside-down
-        const newPitch = groupRef.current.rotation.x + dy * rotGain;
-        groupRef.current.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, newPitch));
+        if (allowPitch) {
+          // Clamp pitch so it doesn't flip upside-down
+          const newPitch = groupRef.current.rotation.x + dy * rotGain;
+          groupRef.current.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, newPitch));
+        }
       }
       invalidate();
     };
 
     /** Qué hay bajo el dedo: un punto del cuerpo (u, v de la banda) o nada. */
-    const pick = (e: PointerEvent): { u: number; v: number } | null => {
+    const pick = (e: { clientX: number; clientY: number }): { u: number; v: number } | null => {
       const group = groupRef.current;
       if (!group) return null;
       const { camera, raycaster } = get();
@@ -928,6 +951,22 @@ function ThermosMesh({
       invalidate(); // la inercia sigue en useFrame
     };
 
+    // Toque sobre el diseño en edición: el gesto es del visor (moverlo en las
+    // dos direcciones), así que se cancela el scroll de la página. Tiene que
+    // decidirse acá: el navegador elige entre scroll y gesto en el touchstart.
+    const onDesignAt = (p: { clientX: number; clientY: number }) => {
+      const d = designRef.current;
+      if (!(d.designActive && d.editSingleFace)) return false;
+      const hit = pick(p);
+      return !!hit && (d.isOverDesign ? d.isOverDesign(hit) : true);
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      touchOnDesign = !!t && e.touches.length === 1 && onDesignAt(t);
+      if (touchOnDesign && e.cancelable) e.preventDefault();
+    };
+
+    canvas.addEventListener("touchstart", onTouchStart, { passive: false });
     canvas.addEventListener("pointerdown", onDown);
     canvas.addEventListener("pointermove", onMove);
     canvas.addEventListener("pointerup", onUp);
@@ -936,6 +975,7 @@ function ThermosMesh({
     canvas.addEventListener("pointercancel", onUp);
     return () => {
       if (moveRaf) cancelAnimationFrame(moveRaf);
+      canvas.removeEventListener("touchstart", onTouchStart);
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);
@@ -1472,10 +1512,12 @@ function FallbackCanvas({
     return () => cancelAnimationFrame(rafRef.current);
   }, []);
 
-  // Igual que el canvas WebGL (ver ThermosMesh): todo gesto sobre el producto
-  // gira o inclina la pieza (touch-action: none).
+  // Igual que el canvas WebGL (ver ThermosMesh): el desliz vertical táctil es
+  // de la página (touch-action: pan-y); el dedo solo gira, el mouse inclina.
+  const pitchRef = useRef(true);
   const startDrag = (e: React.PointerEvent) => {
     isDragging.current = true;
+    pitchRef.current = e.pointerType === "mouse";
     velRef.current = 0; velXRef.current = 0;
     lastX.current = e.clientX; lastY.current = e.clientY;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -1486,17 +1528,19 @@ function FallbackCanvas({
     const dx = e.clientX - lastX.current;
     const dy = e.clientY - lastY.current;
     velRef.current  = dx * 0.010;
-    velXRef.current = dy * 0.010;
     angleRef.current  += dx * 0.009;
-    const np = angleXRef.current + dy * 0.009;
-    angleXRef.current = Math.max(-1.1, Math.min(1.1, np));
+    if (pitchRef.current) {
+      velXRef.current = dy * 0.010;
+      const np = angleXRef.current + dy * 0.009;
+      angleXRef.current = Math.max(-1.1, Math.min(1.1, np));
+    }
     lastX.current = e.clientX; lastY.current = e.clientY;
   };
   const onPUp = () => { isDragging.current = false; };
 
   return (
     <canvas ref={canvasRef} width={280} height={480}
-      style={{ width:"100%", height:"100%", cursor:"grab", touchAction:"none" }}
+      style={{ width:"100%", height:"100%", cursor:"grab", touchAction:"pan-y" }}
       onPointerDown={onPDown} onPointerMove={onPMove} onPointerUp={onPUp} onPointerLeave={onPUp} onPointerCancel={onPUp}
     />
   );
@@ -1570,7 +1614,9 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
       // none: todo gesto sobre el producto es del visor (girar en cualquier
       // dirección, inclinar para ver la base, mover el diseño). La página se
       // scrollea tocando fuera del visor.
-      style={{ background: "transparent", cursor: "grab", touchAction: "none" }}
+      // pan-y: el desliz vertical scrollea la página; un dedo apoyado sobre el
+      // diseño en edición lo cancela en el touchstart (ThermosMesh).
+      style={{ background: "transparent", cursor: "grab", touchAction: "pan-y" }}
     >
       <Rig sil={sil} />
       {/* 0.5: con las luces direccionales de abajo, más reflejo lava los colores
@@ -1604,6 +1650,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           onDesignDragStart={props.onDesignDragStart}
           onDesignDragEnd={props.onDesignDragEnd}
           onTap={props.onTap}
+          isOverDesign={props.isOverDesign}
           snapToURef={props.snapToURef}
           renderNowRef={props.renderNowRef}
           onReady={props.onReady}

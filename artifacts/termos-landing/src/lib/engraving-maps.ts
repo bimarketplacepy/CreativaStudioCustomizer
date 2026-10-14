@@ -401,6 +401,56 @@ export function wrap360Fits(opts: { text: string; fontFamily?: string; lineHeigh
   return box.boxW <= avail;
 }
 
+/** Lo que se imprime a color: el diseño solo, sin el color de la pieza. */
+export interface ColorLayerInput {
+  text: string;
+  textPlacement: Placement;
+  fontFamily: string;
+  textColor: string;
+  artImage: HTMLImageElement | null;
+  imageSize: "none" | "small" | "large";
+  artPlacement: Placement;
+  singleFace: boolean;
+}
+
+/**
+ * Dibuja la capa de impresión a color (logo/ícono y texto) sobre la textura
+ * desenrollada de TEXTURE_W × TEXTURE_H (el contexto puede venir escalado para
+ * dibujarla en alta resolución). La usan la vista 3D y el PNG de producción de
+ * la Dacen (production-dacen.ts): lo que se ve es exactamente lo que se imprime.
+ */
+export function drawColorLayer(ctx: CanvasRenderingContext2D, product: ProductDef, o: ColorLayerInput) {
+  const W = TEXTURE_W;
+  const m = bandMetrics(product, W, TEXTURE_H);
+  const { artImage, imageSize, artPlacement, text, textPlacement, fontFamily, textColor, singleFace } = o;
+  if (artImage && imageSize !== "none") {
+    const naturalW = artImage.naturalWidth || artImage.width || 1;
+    const naturalH = artImage.naturalHeight || artImage.height || 1;
+    const maxDim = W * (imageSize === "large" ? 0.34 : 0.19) * artPlacement.scale;
+    const ratio = Math.min(maxDim / naturalW, maxDim / naturalH);
+    const dw = naturalW * ratio;
+    const dh = naturalH * ratio;
+    drawPlaced(ctx, m, W, artPlacement, dw / 2, dh / 2, () => {
+      ctx.drawImage(artImage, -dw / 2, -dh / 2, dw, dh);
+    }, singleFace);
+  }
+
+  if (text) {
+    const L = computeFaceTextLayout(
+      product,
+      { text, fontFamily, colorPrint: true, orientation: textPlacement.orientation, align: textPlacement.align, layout: textPlacement.layout, lineHeight: textPlacement.lineHeight },
+      textPlacement.scale,
+      singleFace,
+    );
+    drawPlaced(ctx, m, W, textPlacement, L.boxW / 2, L.boxH / 2, () => {
+      ctx.font = makeTextFont(L.fontPx, fontFamily);
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = textColor;
+      fillLinesAligned(ctx, L.lines, L.lineHeight, L.blockW, L.align);
+    }, singleFace);
+  }
+}
+
 /**
  * Paints the engraving once as an alpha coverage mask — how deep the laser bit
  * at every texel — then derives colour, roughness, metalness and depth from it.
@@ -488,34 +538,9 @@ export function makeBodyMaps({
   ctx.fillStyle = "rgba(255,255,255,0.05)";
   ctx.fillRect(0, m.topPx, W, m.botPx - m.topPx);
 
-  // ── Eufy Make (UV DTF): the artwork is PRINTED in colour, not engraved ─────
+  // ── Impresión UV a color (Dacen F5): the artwork is PRINTED, not engraved ──
   if (colorPrint) {
-    if (artImage && imageSize !== "none") {
-      const naturalW = artImage.naturalWidth || artImage.width || 1;
-      const naturalH = artImage.naturalHeight || artImage.height || 1;
-      const maxDim = W * (imageSize === "large" ? 0.34 : 0.19) * artPlacement.scale;
-      const ratio = Math.min(maxDim / naturalW, maxDim / naturalH);
-      const dw = naturalW * ratio;
-      const dh = naturalH * ratio;
-      drawPlaced(ctx, m, W, artPlacement, dw / 2, dh / 2, () => {
-        ctx.drawImage(artImage, -dw / 2, -dh / 2, dw, dh);
-      }, singleFace);
-    }
-
-    if (text) {
-      const L = computeFaceTextLayout(
-        product,
-        { text, fontFamily, colorPrint: true, orientation: textPlacement.orientation, align: textPlacement.align, layout: textPlacement.layout, lineHeight: textPlacement.lineHeight },
-        textPlacement.scale,
-        singleFace,
-      );
-      drawPlaced(ctx, m, W, textPlacement, L.boxW / 2, L.boxH / 2, () => {
-        ctx.font = makeTextFont(L.fontPx, fontFamily);
-        ctx.textBaseline = "middle";
-        ctx.fillStyle = textColor;
-        fillLinesAligned(ctx, L.lines, L.lineHeight, L.blockW, L.align);
-      }, singleFace);
-    }
+    drawColorLayer(ctx, product, { text, textPlacement, fontFamily, textColor, artImage, imageSize, artPlacement, singleFace });
 
     // Print sits flush on the coating: keep the base finish, no groove.
     // Flat data maps: a 1×1-texel look is identical, so keep them tiny.

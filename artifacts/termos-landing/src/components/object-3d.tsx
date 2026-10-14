@@ -397,9 +397,12 @@ function ObjectMesh({
   useEffect(() => {
     const canvas = gl.domElement;
 
-    // touch-action: none (igual que thermos-3d): todo gesto sobre el objeto lo
-    // gira o inclina al instante; la página se scrollea tocando fuera del visor.
+    // Igual que thermos-3d: con el dedo, el desliz vertical scrollea la página
+    // (touch-action: pan-y) y el horizontal gira; el mouse además inclina. En
+    // modo diseño el arrastre es en las dos direcciones (touch-action: none,
+    // efecto de abajo).
     let rotGain = 0.008;
+    let allowPitch = true;
 
     const startDrag = (e: PointerEvent, mode: "design" | "rotate") => {
       isDragging.current = true;
@@ -407,6 +410,7 @@ function ObjectMesh({
       lastX.current = e.clientX; lastY.current = e.clientY;
       dragMode.current = mode;
       rotGain = e.pointerType === "mouse" ? 0.008 : 0.013;
+      allowPitch = e.pointerType === "mouse";
       if (mode === "design") designRef.current.onDesignDragStart?.();
       canvas.setPointerCapture(e.pointerId);
     };
@@ -428,11 +432,13 @@ function ObjectMesh({
         return;
       }
       velYaw.current = dx * 0.5;
-      velPitch.current = dy * 0.5;
+      velPitch.current = allowPitch ? dy * 0.5 : 0;
       if (groupRef.current) {
         groupRef.current.rotation.y += dx * rotGain;
-        const np = groupRef.current.rotation.x + dy * rotGain;
-        groupRef.current.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, np));
+        if (allowPitch) {
+          const np = groupRef.current.rotation.x + dy * rotGain;
+          groupRef.current.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, np));
+        }
       }
     };
     const onUp = () => {
@@ -454,6 +460,12 @@ function ObjectMesh({
       canvas.removeEventListener("pointercancel", onUp);
     };
   }, [gl]);
+
+  // Modo diseño: el gesto es todo del visor (mover el diseño en las dos
+  // direcciones); si no, el contenedor deja el desliz vertical a la página.
+  useEffect(() => {
+    gl.domElement.style.touchAction = designActive ? "none" : "";
+  }, [gl, designActive]);
 
   useFrame((_, delta) => {
     if (!groupRef.current || isDragging.current) return;
@@ -576,13 +588,12 @@ function ThreeCanvas({ obj, onContextLost, onContextRestored, ...props }: Object
         canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); onContextLost?.(); }, false);
         canvas.addEventListener("webglcontextrestored", () => { onContextRestored?.(); invalidate(); }, false);
       }}
-      // pan-y + pinch-zoom: swipe vertical scrollea, pinch de accesibilidad
-      // funciona, drag horizontal rota (lock de intención en ObjectMesh). En
-      // modo diseño el arrastre es bidireccional → none.
+      // pan-y: el desliz vertical scrollea la página y el horizontal rota. En
+      // modo diseño ObjectMesh pone "none" en el canvas (arrastre en 2 ejes).
       style={{
         background: "transparent",
         cursor: "grab",
-        touchAction: "none",
+        touchAction: "pan-y",
       }}
     >
       <Rig obj={obj} />

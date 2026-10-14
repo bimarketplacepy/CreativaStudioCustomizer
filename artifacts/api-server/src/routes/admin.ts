@@ -69,7 +69,8 @@ router.get("/api/admin/orders", async (req, res) => {
           imageToken: r.previewImagePath ? orderImageToken(r.orderNumber) : null,
           hasPreview: !!r.previewImagePath,
           hasProduction: !!r.productionFilePath,
-          productionKind: r.productionFilePath?.endsWith(".png") ? "png" : "svg",
+          productionKind: r.productionFilePath?.endsWith(".png") ? "png"
+            : r.productionFilePath?.endsWith(".dxf") ? "dxf" : "svg",
           previewImagePath: undefined,
           productionFilePath: undefined,
         };
@@ -293,7 +294,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
       </div>
       <div class="chips" id="machineFilter" role="group" aria-label="Filtrar por máquina">
         <button class="chip" type="button" data-machine="">Todas</button>
-        <button class="chip" type="button" data-machine="laser">Láser</button>
+        <button class="chip" type="button" data-machine="laser">Láser CO2</button>
         <button class="chip" type="button" data-machine="dacen">Dacen F5</button>
         <button class="chip" type="button" data-machine="eufy">eufyMake E1</button>
       </div>
@@ -332,14 +333,15 @@ const ADMIN_HTML = `<!DOCTYPE html>
     } catch (e) { return iso; }
   }
 
-  var MACHINE_NAMES = { laser: "Láser", dacen: "Dacen F5", eufy: "eufyMake E1" };
+  var MACHINE_NAMES = { laser: "Láser CO2", dacen: "Dacen F5", eufy: "eufyMake E1" };
   // Filtro por máquina: vive en la URL (?machine=dacen) para poder dejar
   // abierta la cola de una máquina y recargarla.
   var machine = new URLSearchParams(location.search).get("machine") || "";
   if (!MACHINE_NAMES[machine]) machine = "";
 
   function fileLabel(o) {
-    if (o.productionKind === "png") return o.machine === "dacen" ? "PNG para Dacen" : "PNG para eufyMake";
+    if (o.productionKind === "png") return o.machine === "dacen" ? "PNG 360° para RIPrint (Dacen)" : "PNG para eufyMake";
+    if (o.productionKind === "dxf") return "DXF láser";
     return o.machine === "dacen" ? "SVG referencia (Dacen)" : "SVG láser";
   }
 
@@ -380,6 +382,11 @@ const ADMIN_HTML = `<!DOCTYPE html>
           encodeURIComponent(key()) + '" download>' +
           fileLabel(o) + '</a>'
         : '<span class="btn" aria-disabled="true">Archivo no generado</span>';
+      // Láser: junto al DXF queda el SVG de referencia (con el logo embebido).
+      if (o.hasProduction && o.productionKind === "dxf") {
+        svgBtn += '<a class="btn" href="/api/orders/' + esc(o.orderNumber) + '/production-file?formato=svg&key=' +
+          encodeURIComponent(key()) + '" download>SVG referencia</a>';
+      }
       var imgBtn = o.hasPreview
         ? '<a class="btn" href="' + imgUrl + '" download="' +
           esc(o.orderNumber) + '-preview.jpg">Imagen preview</a>'

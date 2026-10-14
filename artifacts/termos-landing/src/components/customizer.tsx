@@ -49,7 +49,8 @@ import { onDesignPreset } from "@/lib/design-preset";
 import { CUSTOMIZER_MODE_EVENT, takeCustomizerMode } from "@/lib/section-reveal";
 import { machineFor, normalizeTechnique } from "@/lib/machines";
 import { printSpecFor } from "@/lib/print-specs";
-import { quote } from "@/lib/pricing";
+import { loadImage, renderDacenPng, type DacenPrintFile } from "@/lib/production-dacen";
+import { PRICING, quote } from "@/lib/pricing";
 import {
   colorOptions, defaultVariant, engravingPrice, findVariant, formatGs, GENERIC_BRAND,
   matchingProducts, odooShopItems, priceFrom, sectionTitles, shopBrands, shopSections, sizeOptions,
@@ -1321,7 +1322,7 @@ function ExtraEngravingFields({ lid, base, onLid, onBase }: {
     <div className="rounded-xl border border-border bg-secondary/30 px-4 py-3 space-y-3">
       <div>
         <p className="text-sm font-medium text-foreground">También grabar en…</p>
-        <p className="text-xs text-muted-foreground">Sin costo extra. No se ve en la vista 3D: lo revisamos con vos por WhatsApp.</p>
+        <p className="text-xs text-muted-foreground">{formatGs(PRICING.laser.extraText)} más por cada una. No se ve en la vista 3D: lo revisamos con vos por WhatsApp.</p>
       </div>
       {row("Tapa", lid, onLid, "Texto para la tapa (ej. iniciales)")}
       {row("Base", base, onBase, "Texto para la base (ej. una fecha)")}
@@ -1726,6 +1727,10 @@ export default function Customizer() {
   const [technique, setTechnique] = useState<TechniqueId>("laser");
   // Eufy (colour) is drinkware-with-coating only; everything else is laser-only.
   const canColor = allowsColorPrint(materialId, activeMProduct);
+  /** Acero que la Dacen no toma (manija / no cilíndrico): se consulta en el local. */
+  const colorConsult = !canColor && (materialId === "acero" || materialId === "inox") && activeMProduct?.drinkwareProductId
+    ? printSpecFor(activeMProduct.drinkwareProductId)?.consult ?? null
+    : null;
   const effectiveTechnique: TechniqueId = canColor ? technique : "laser";
   const activeTechnique = TECHNIQUES.find(t => t.id === effectiveTechnique) || TECHNIQUES[0];
   const [iconId, setIconId] = useState<string | null>(null);
@@ -2242,6 +2247,15 @@ export default function Customizer() {
     if (activeDesignKind) finishEditing();
   }, [hasText, hasArt, textPlacement, artPlacement, textExtents, artExtents, activeDesignKind, selectDesign, finishEditing]);
 
+  /** ¿El dedo se apoyó sobre el diseño en edición? (mismo margen que el toque). */
+  const isOverActiveDesign = React.useCallback((hit: { u: number; v: number }) => {
+    const p = activeDesignKind === "text" ? textPlacement : activeDesignKind === "art" ? artPlacement : null;
+    const ext = activeDesignKind === "text" ? textExtents : artExtents;
+    if (!p) return false;
+    const du = hit.u - p.u - Math.round(hit.u - p.u);
+    return Math.abs(du) <= ext.halfU + 0.05 && Math.abs(hit.v - p.v) <= ext.halfV + 0.1;
+  }, [activeDesignKind, textPlacement, artPlacement, textExtents, artExtents]);
+
   // Acciones de la barra de edición.
   const resizeActive = (delta: number) => {
     pushHistory();
@@ -2479,6 +2493,13 @@ export default function Customizer() {
     ? machineFor({ technique: effectiveTechnique, kind: "drinkware", spec: printSpecFor(productId, viewSize) })
     : machineFor({ technique: "laser", kind: "object" });
 
+  // Tapa / base: solo drinkware (el cristal no lleva). null = no pedido.
+  const extraEngraving = isDrinkware && !isGlass;
+  const extraLidText = extraEngraving && extraLid !== null ? extraLid.trim() : null;
+  const extraBaseText = extraEngraving && extraBase !== null ? extraBase.trim() : null;
+  /** Escrituras extra (tapa / base): + Gs. 5.000 cada una (pricing.ts). */
+  const extraTextCount = (extraLidText !== null ? 1 : 0) + (extraBaseText !== null ? 1 : 0);
+
   /** Precio estimado según lo diseñado. Solo montos que la landing ya publica
    *  (Tarifas y bolígrafos); lo que no tiene precio fijo se dice explícito. */
   // `total`: el monto ya suma pieza + grabado (se rotula "Total estimado").
@@ -2493,7 +2514,7 @@ export default function Customizer() {
     // color con los escalones de la Dacen, "se cotiza" mientras sean null).
     if (isDrinkware) {
       const q = effectiveTechnique === "laser"
-        ? quote({ technique: "laser", plan: activePlan.id, catalog, piecePrice: piece, pieceLabel: orderProductLabel, ownProduct: isOwnProduct })
+        ? quote({ technique: "laser", plan: activePlan.id, catalog, piecePrice: piece, pieceLabel: orderProductLabel, ownProduct: isOwnProduct, extraTexts: extraTextCount })
         : quote({ technique: "color", machine: productionMachine, piecePrice: piece, pieceLabel: orderProductLabel });
       if (q.total !== null) {
         return { price: formatGs(q.total), note: q.note, total: q.breakdown.length > 1 };
@@ -2508,10 +2529,6 @@ export default function Customizer() {
   /** Campos del pedido — ÚNICA fuente de datos del "Resumen de tu
    *  personalización" (Paso 4) y del mensaje de WhatsApp. Campos sin dato se
    *  omiten por completo (nunca "Texto: —"). */
-  // Tapa / base: solo drinkware (el cristal no lleva). null = no pedido.
-  const extraEngraving = isDrinkware && !isGlass;
-  const extraLidText = extraEngraving && extraLid !== null ? extraLid.trim() : null;
-  const extraBaseText = extraEngraving && extraBase !== null ? extraBase.trim() : null;
   const orderFields = (): [string, string][] => {
     const rows: [string, string][] = [["Producto", isOwnProduct ? orderProductName : orderProductLabel]];
     if (isOwnProduct) rows.push(["Origen", "Lo trae el cliente"]);
@@ -2534,7 +2551,7 @@ export default function Customizer() {
 
   /** Cuerpo del POST /api/orders: los mismos datos del resumen más el snapshot
    *  completo del diseño (suficiente para reabrirlo/reproducirlo después). */
-  const orderPayload = (previewImage: string | null): CreateOrderRequest => {
+  const orderPayload = (previewImage: string | null, dacenFile: DacenPrintFile | null = null): CreateOrderRequest => {
     const trimmedText = text.trim();
     return {
       product: (isOwnProduct ? orderProductName : orderProductLabel).slice(0, 120),
@@ -2581,12 +2598,43 @@ export default function Customizer() {
         odooVariantId: isOwnProduct ? null : odooVariant?.id ?? null,
         sku: isOwnProduct ? null : odooVariant?.sku ?? null,
         piecePrice: isOwnProduct ? null : odooVariant?.price ?? null,
+        // Dacen F5: medidas y dpi del PNG desenrollado (nombre del archivo y
+        // dpi grabados por el server). printSizeApprox: medidas del modelo 3D.
+        ...(dacenFile ? {
+          productionDpi: dacenFile.dpi,
+          printWidthMm: dacenFile.widthMm,
+          printHeightMm: dacenFile.heightMm,
+          printSizeApprox: dacenFile.approxSize,
+        } : {}),
       },
       previewImage: previewImage ?? undefined,
       // Logo/foto original en la máxima resolución que tiene el cliente: el
       // server lo embebe en el archivo vectorial de producción (uso interno).
       customImage: customImage?.svgDataUrl ?? undefined,
+      // Dacen F5: el diseño desenrollado en PNG, listo para RIPrint.
+      productionImage: dacenFile?.dataUrl,
     };
+  };
+
+  /** PNG 360° para la Dacen (solo impresión a color en pieza cilíndrica). Un
+   *  fallo no frena el pedido: queda el SVG de referencia en el panel. */
+  const buildDacenFile = async (): Promise<DacenPrintFile | null> => {
+    if (productionMachine !== "dacen" || effectiveTechnique !== "color") return null;
+    try {
+      const artImage = artUrl && artImageSize !== "none" ? await loadImage(artUrl) : null;
+      return await renderDacenPng(productId, viewSize, {
+        text,
+        textPlacement,
+        fontFamily: (activeFont.style?.fontFamily as string | undefined) ?? "Inter, system-ui, sans-serif",
+        textColor,
+        artImage,
+        imageSize: artImageSize,
+        artPlacement,
+        singleFace,
+      });
+    } catch {
+      return null;
+    }
   };
 
   /** Mensaje de WhatsApp — sale de orderFields(), la misma fuente que el
@@ -2670,12 +2718,13 @@ export default function Customizer() {
       const full = capturePreview() ?? previewImgRef.current;
       if (full) { setPreviewImg(full); previewImgRef.current = full; }
       const jpeg = full ? await dataUrlToJpeg(full, 1080) : null;
+      const dacenFile = await buildDacenFile();
 
       let orderNumber: string | null = null;
       let imageUrl: string | null = null;
       try {
         const created = await Promise.race([
-          createOrderAsync({ data: orderPayload(jpeg) }),
+          createOrderAsync({ data: orderPayload(jpeg, dacenFile) }),
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error("order timeout")), ORDER_TIMEOUT_MS),
           ),
@@ -2979,8 +3028,10 @@ export default function Customizer() {
           <div>
             <p className="text-sm font-semibold">Grabado láser</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Este producto solo admite grabado láser monocromático. La impresión UV a color
-              está reservada al drinkware de acero con pintura electrostática.
+              {colorConsult
+                ? <>La impresión UV a color se hace solo en piezas cilíndricas{colorConsult === "handle" ? " sin manija" : ""}. Para color en esta pieza, consultá en el local o por WhatsApp.</>
+                : <>Este producto solo admite grabado láser monocromático. La impresión UV a color
+                  está reservada al drinkware de acero con pintura electrostática.</>}
             </p>
           </div>
         </div>
@@ -3562,6 +3613,7 @@ export default function Customizer() {
                       onDesignDragStart={beginDesignDrag}
                       onDesignDragEnd={endDesignDrag}
                       onTap={handleViewerTap}
+                      isOverDesign={isOverActiveDesign}
                       snapToURef={thermosSnapRef}
                       renderNowRef={thermosRenderRef}
                       arModelRef={thermosArRef}

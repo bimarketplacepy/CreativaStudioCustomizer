@@ -40,7 +40,7 @@ export interface CatalogProduct {
   name: string;
   /** Product brand as loaded in Odoo (e.g. Hydrate). The customizer groups the catalog by it. */
   brand: string;
-  /** Customizer 3D profile (termo, vaso, vaso-manija, hoppie, botella-ancha, jug, guampa, copa, botella, chopera) */
+  /** Customizer 3D profile (termo, termo-mate, termo-mate-forge, vaso, vaso-hydrate, vaso-sunbeam, vaso-manija, hoppie, botella-ancha, jug, guampa, copa, botella, chopera) */
   productType: string;
   /** Customizer material id (acero, inox, cuero, cristal) */
   material: string;
@@ -136,6 +136,8 @@ export interface CreateOrderRequest {
   previewImage?: string;
   /** Original uploaded logo/photo as a data URL, at the highest resolution the client has. Used only to embed the artwork in the internal production file; never echoed back to the client. */
   customImage?: string;
+  /** Production artwork as a PNG data URL, already at real size (e.g. the unwrapped 360° print for the Dacen F5 UV cylinder printer, opened in RIPrint). Internal use only; never echoed back to the client. */
+  productionImage?: string;
 }
 
 export interface CreateOrderResponse {

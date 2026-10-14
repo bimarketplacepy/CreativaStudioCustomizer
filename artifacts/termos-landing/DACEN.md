@@ -1,7 +1,7 @@
-# DACEN — Plan de integración de las máquinas (Dacen F5 + eufyMake E1 + láser)
+# DACEN — Plan de integración de las máquinas (Dacen F5 + eufyMake E1 + láser CO2 Willpex)
 
 **Fecha:** 2026-10-12 · Complementa `Mejoras.md` y `PLAN-EDITOR.md`.
-**Estado:** fases 1 y 3 implementadas (2026-10-14), salvo el renombre `eufy` → `color` en el personalizador. El resto es planteamiento. Lo implementado está marcado ✅.
+**Estado:** fases 1, 2 y 3 implementadas (2026-10-14), salvo el renombre `eufy` → `color` en el personalizador. Lo implementado está marcado ✅. Ver §11 para las reglas del taller confirmadas.
 **Precios:** se definen después. Este plan deja la **estructura** lista para que
 cargar un precio sea completar un número en un solo archivo, sin tocar
 componentes.
@@ -25,14 +25,14 @@ Que cada pedido de la landing:
 
 ## 1. Las máquinas
 
-| | **Dacen F5** | **eufyMake E1** | **Láser** (modelo a confirmar) |
+| | **Dacen F5** | **eufyMake E1** | **Láser CO2 Willpex** (modelo a confirmar: 3020 / 4040 / 6040) |
 |---|---|---|---|
 | Qué es | UV **cilíndrica industrial**: imprime directo sobre la pieza girándola | UV de escritorio con relieve (cama plana, rotativa o film) | Grabado (fibra / diodo / CO₂) |
-| Uso en el negocio | **Drinkware a color**: termos, vasos, botellas, copas | **Stickers** UV DTF ✅ · (a futuro) piezas planas a color | Grabado en todo lo demás |
+| Uso en el negocio | **Drinkware a color, solo piezas cilíndricas** (termos, hoppies, vasos rectos); el resto se consulta en el local | **Stickers** UV DTF ✅ · (a futuro) piezas planas a color | Grabado láser (termos con eje rotativo) |
 | Límites | Ø 45–125 mm · largo 30–270 mm · cónico 0–5° · ~20–30 s/pieza | Film hasta ~33 cm de ancho · plano hasta 33×42 cm, 10 cm de alto | Según modelo |
 | Tintas | CMYK + Blanco + Barniz | CMYK + Blanco + Gloss (relieve) | — |
-| Programa | **RIPrint** (PNG, TIFF, PDF, JPG, EPS, AI, PSD) | **eufyMake Studio** (PNG, JPG, WebP, SVG, PSD, AI, PDF) | LightBurn / EzCad / xTool (SVG, DXF) |
-| Archivo que le damos | **PNG desenrollado** (ancho = π × Ø), transparente, tamaño real | **PNG** transparente, tamaño real, 300 dpi ✅ | **SVG** vectorial ✅ (ya existe) |
+| Programa | **RIPrint** (PNG, TIFF, PDF, JPG, EPS, AI, PSD) | **eufyMake Studio** (PNG, JPG, WebP, SVG, PSD, AI, PDF) | Diseño en **CorelDRAW** → exporta **DXF** (AutoCAD) → programa de la láser |
+| Archivo que le damos | **PNG desenrollado 360°** (ancho = π × Ø), transparente, tamaño real ✅ | **PNG** transparente, tamaño real, 300 dpi ✅ | **DXF** R12 en mm ✅ (+ SVG de referencia) |
 
 Fuentes (investigación del 2026-10-12):
 - Dacen F5: https://www.dacenprinter.com/cylinder-printer/dacen-f5-uv-cylinder-printer.html
@@ -488,3 +488,30 @@ Un diseño fotográfico a 360° pesa 10–20 MB en PNG y **no entra en el JSON d
 6. ¿Qué piezas con manija entran y qué ángulo queda libre?
 7. Medidas con calibre por producto y tamaño (Ø de cada punta y alto sobre la pared inclinada).
 8. Tiempo y costo reales de una pieza 360° a todo color, para cargar `tiers.wrap`.
+
+---
+
+## 11. Reglas del taller confirmadas e implementadas (2026-10-14)
+
+**Láser CO2 Willpex → DXF ✅**
+- Proceso del taller: diseño en CorelDRAW → exportar DXF (AutoCAD) → láser CO2 Willpex (con eje rotativo para termos). Willpex es una marca que se vende en Paraguay (Tupi, Todo Costura, Nissei, Top Informática): CO2 3020 (40 W, se vende con licencia "Corel Laser"), 4040 (50 W), 6040 (80 W), 1390 (100 W). Modelo exacto del taller: **a confirmar**.
+- `api-server/src/lib/production-dxf.ts`: convierte el SVG de producción (texto ya en curvas, íconos vectoriales) a **DXF R12 (AC1009)**, en **mm**, Y hacia arriba. Todo va como POLYLINE cerradas (curvas y arcos en tramos de ≤ 0,1 mm); los trazos (aro de la pelota, asa del mate) pasan a su contorno con el ancho real.
+- Capas: `GRABADO` (se graba), `INFO` (borde del área, pedido y avisos: apagar antes de grabar), `LOGO-VECTORIZAR` (recuadro de un logo/foto raster, que un DXF no puede llevar: vectorizar en Corel; el logo está en el SVG de referencia).
+- Pedido láser: guarda `CS-xxxx-produccion.dxf` y `CS-xxxx-produccion.svg`. `/admin`: botones "DXF láser" y "SVG referencia" (`?formato=svg`).
+- Verificado con ezdxf: abre sin errores ni reparaciones, unidades = mm.
+
+**Dacen F5 → solo piezas cilíndricas ✅**
+- `print-specs.ts`: `dacen: false` + `consult` en piezas con manija (`handle`: jug, vaso-sunbeam, vaso-manija, taza-manija, mini-coffee, chopera) y no cilíndricas (`shape`: copa, copa-hydrate, guampa, vaso-espresso). La landing ofrece solo láser y dice "consultá en el local o por WhatsApp" para color.
+- El "termo" (Stanley con mango lateral) sigue habilitado: **confirmar con el taller** si su mango deja girar la pieza en la Dacen.
+
+**Dacen F5 → PNG 360° para RIPrint ✅ (fase 2a)**
+- `engraving-maps.ts`: `drawColorLayer()` (la capa de color que ve el 3D) extraída y compartida.
+- `src/lib/production-dacen.ts`: `renderDacenPng()` dibuja la banda imprimible en un solo lienzo de tamaño final (300 dpi, baja a 240/200/150 si pasa 3,5 MB), píxeles cuadrados, fondo transparente, frente en el centro, costura en los bordes.
+- Medidas: las de `print-specs.ts` si están cargadas; si no, las del modelo 3D (`printSizeApprox: true` en el pedido). Ej.: termo mate 1200 ≈ 270 × 183 mm, vaso 20 oz ≈ 267 × 107 mm.
+- Viaja en `productionImage` (nuevo campo de `POST /api/orders`, límite del JSON subido a 12 MB); el server graba los dpi y lo guarda como `CS-xxxx-produccion.png`; descarga `CS-xxxx-dacen-360-270x183mm.png`.
+
+**Stickers → PNG ✅** (ya estaba: eufyMake E1).
+
+**Precios del grabado láser ✅**
+- Nombres Gs. 35.000 · + ícono chico Gs. 40.000 · + logo Gs. 50.000 (ya estaban).
+- Nuevo: **+ Gs. 5.000 por cada escritura extra** (texto en la tapa o en la base): `PRICING.laser.extraText`. Se suma en el precio estimado, el mensaje de WhatsApp y la sección Tarifas.

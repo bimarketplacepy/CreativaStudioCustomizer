@@ -11,7 +11,8 @@ import {
   loadOrderImage,
 } from "../lib/order-images";
 import { buildProductionSvg } from "../lib/production-svg";
-import { stickerFileName, stickerProductionPng } from "../lib/production-sticker";
+import { productionPng, productionPngFileName } from "../lib/production-sticker";
+import { svgToDxf } from "../lib/production-dxf";
 import { orderMachine } from "../lib/machines";
 import { checkInternalKey, checkOrderImageToken, orderImageToken } from "../lib/internal-key";
 import { logger } from "../lib/logger";
@@ -42,21 +43,33 @@ function extraText(extra: unknown, key: "lid" | "base"): string | null {
 async function generateProductionFile(
   order: Order,
   customImageDataUrl: string | null,
+  productionImageDataUrl: string | null,
 ): Promise<string | null> {
   try {
     const ds = (order.designState ?? {}) as Record<string, unknown>;
+    const machine = orderMachine(ds);
     // El archivo depende de la máquina (DACEN.md §4.1):
     //  - eufyMake E1 (stickers): PNG transparente a tamaño real, el formato
     //    que se carga en la app de la E1.
-    //  - Dacen F5: el PNG desenrollado llega en la fase 2; mientras tanto se
-    //    genera el SVG de siempre como referencia de ubicación y textos.
-    //  - Láser: SVG vectorial.
-    if (orderMachine(ds) === "eufy" && ds.kind === "sticker") {
-      const png = stickerProductionPng(customImageDataUrl, ds.productionDpi);
+    //  - Dacen F5 (UV cilíndrica): PNG desenrollado (la vuelta completa × el
+    //    alto imprimible) que arma la landing, para RIPrint. Sin PNG válido,
+    //    queda el SVG de referencia de ubicación y textos.
+    //  - Láser CO2 (Willpex): DXF, el formato que el taller exporta de Corel.
+    //    El SVG se guarda al lado como referencia (trae el logo embebido).
+    if (machine === "eufy" && ds.kind === "sticker") {
+      const png = productionPng(customImageDataUrl, ds.productionDpi);
       if (!png) return null;
       const name = `orders/${order.orderNumber}-produccion.png`;
       await storeOrderFile(name, png, "image/png");
       return name;
+    }
+    if (machine === "dacen") {
+      const png = productionPng(productionImageDataUrl, ds.productionDpi);
+      if (png) {
+        const name = `orders/${order.orderNumber}-produccion.png`;
+        await storeOrderFile(name, png, "image/png");
+        return name;
+      }
     }
     const svg = await buildProductionSvg({
       orderNumber: order.orderNumber,
@@ -73,9 +86,15 @@ async function generateProductionFile(
       extraLid: extraText(ds.extraEngraving, "lid"),
       extraBase: extraText(ds.extraEngraving, "base"),
     });
-    const name = `orders/${order.orderNumber}-produccion.svg`;
-    await storeOrderFile(name, Buffer.from(svg, "utf8"), "image/svg+xml");
-    return name;
+    const svgName = `orders/${order.orderNumber}-produccion.svg`;
+    await storeOrderFile(svgName, Buffer.from(svg, "utf8"), "image/svg+xml");
+    if (machine !== "laser") return svgName;
+    const dxf = svgToDxf(svg, {
+      comment: `Creativa Studio - pedido ${order.orderNumber} - ${order.product} - USO INTERNO\nCapas: GRABADO (grabar) / INFO y LOGO-VECTORIZAR (no grabar). Unidades: mm.`,
+    });
+    const dxfName = `orders/${order.orderNumber}-produccion.dxf`;
+    await storeOrderFile(dxfName, Buffer.from(dxf, "utf8"), "application/dxf");
+    return dxfName;
   } catch (err) {
     logger.error({ orderNumber: order.orderNumber, err }, "orders: production file failed");
     return null;
@@ -163,7 +182,7 @@ router.post("/orders", rateLimit({ max: 10, windowMs: 60 * 60 * 1000 }), async (
 
     // Archivo vectorial de producción (uso interno del taller). Nunca viaja en
     // la respuesta al cliente ni en el mensaje de WhatsApp.
-    const productionPath = await generateProductionFile(order, body.customImage ?? null);
+    const productionPath = await generateProductionFile(order, body.customImage ?? null, body.productionImage ?? null);
     if (productionPath) {
       await db
         .update(ordersTable)
@@ -213,8 +232,10 @@ router.get("/orders/:orderNumber", async (req, res) => {
   }
 });
 
-// GET /api/orders/:orderNumber/production-file — archivo de producción: SVG
-// vectorial (láser/UV/plotter) o PNG del sticker (eufyMake E1).
+// GET /api/orders/:orderNumber/production-file — archivo de producción: DXF
+// (láser CO2), PNG desenrollado (Dacen F5 / RIPrint), PNG del sticker
+// (eufyMake E1) o SVG. `?formato=svg` en un pedido láser baja el SVG de
+// referencia que se guardó junto al DXF (trae el logo raster embebido).
 // USO INTERNO: requiere la clave (header x-internal-key o ?key=). El cliente
 // jamás recibe esta URL; sin clave responde 401 sin revelar si el pedido existe.
 router.get("/orders/:orderNumber/production-file", async (req, res) => {
@@ -236,17 +257,20 @@ router.get("/orders/:orderNumber/production-file", async (req, res) => {
       res.status(404).json({ message: "Archivo de producción no disponible" });
       return;
     }
-    const entry = await loadOrderImage(order.productionFilePath);
+    let path = order.productionFilePath;
+    if (req.query.formato === "svg" && path.endsWith(".dxf")) path = path.replace(/\.dxf$/, ".svg");
+    const entry = await loadOrderImage(path);
     if (!entry) {
       res.status(404).json({ message: "Archivo de producción no disponible" });
       return;
     }
-    // Stickers: PNG para la eufyMake E1; el resto, SVG vectorial.
-    const isPng = order.productionFilePath.endsWith(".png");
-    const fileName = isPng
-      ? stickerFileName(orderNumber, (order.designState ?? {}) as Record<string, unknown>)
-      : `${orderNumber}-produccion.svg`;
-    res.setHeader("Content-Type", isPng ? "image/png" : "image/svg+xml");
+    const ds = (order.designState ?? {}) as Record<string, unknown>;
+    const ext = path.slice(path.lastIndexOf(".") + 1);
+    const fileName = ext === "png"
+      ? productionPngFileName(orderNumber, orderMachine(ds), ds)
+      : ext === "dxf" ? `${orderNumber}-laser.dxf` : `${orderNumber}-produccion.svg`;
+    const type = ext === "png" ? "image/png" : ext === "dxf" ? "application/dxf" : "image/svg+xml";
+    res.setHeader("Content-Type", type);
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.end(entry.buf);

@@ -8,7 +8,7 @@ export type MachineId = "laser" | "dacen" | "eufy";
 export const MACHINE_IDS: readonly MachineId[] = ["laser", "dacen", "eufy"];
 
 export const MACHINE_LABELS: Record<MachineId, string> = {
-  laser: "Láser",
+  laser: "Láser CO2",
   dacen: "Dacen F5",
   eufy: "eufyMake E1",
 };

@@ -2,6 +2,7 @@ import React from "react";
 import { motion, MotionConfig } from "framer-motion";
 import { ENGRAVING_BASE, ENGRAVING_PLANS } from "@/lib/engraving-plans";
 import { engravingPrice, formatGs, useCatalog } from "@/lib/odoo-catalog";
+import { PRICING } from "@/lib/pricing";
 
 export default function PricingEngraving() {
   // Precios de grabado desde Odoo (servicios GRAB-*) cuando existen; si no, los
@@ -48,6 +49,14 @@ export default function PricingEngraving() {
               </span>
             </motion.div>
           ))}
+          <div className="flex items-baseline justify-between gap-6 py-5 border-b border-white/10">
+            <p className="text-white/75 text-sm md:text-base font-light leading-snug">
+              Escritura extra en la tapa o en la base
+            </p>
+            <span className="shrink-0 font-serif text-lg md:text-xl text-white/90 tracking-wide tabular-nums">
+              + {formatGs(PRICING.laser.extraText)}
+            </span>
+          </div>
         </div>
       </motion.div>
       </MotionConfig>

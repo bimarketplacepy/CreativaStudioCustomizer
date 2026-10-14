@@ -21,6 +21,8 @@ export type StickerFinishId = "brillo" | "relieve";
 export const PRICING = {
   laser: {
     // Planes actuales (engraving-plans.ts / Odoo GRAB-*): se mantienen allá.
+    /** Cada escritura extra (texto en la tapa o en la base), en Gs. */
+    extraText: 5000,
   },
   dacen: {
     /** Escalones por cobertura del diseño, en Gs. null = "se cotiza". AJUSTAR. */
@@ -90,6 +92,8 @@ export type QuoteInput =
       /** Nombre de la pieza para la nota ("Termo Mate 1 L"). */
       pieceLabel?: string;
       ownProduct?: boolean;
+      /** Escrituras extra pedidas (tapa y/o base): 0, 1 o 2. */
+      extraTexts?: number;
       quantity?: number;
     }
   | {
@@ -168,8 +172,11 @@ export function quote(input: QuoteInput): Quote {
   if (input.technique === "laser") {
     // Mismo cálculo y textos que el "Precio estimado" del personalizador.
     const plan = ENGRAVING_PLANS.find(p => p.id === input.plan) ?? ENGRAVING_PLANS[0];
-    const engraving = engravingPrice(input.catalog, plan.id);
-    const planName = plan.shortLabel.toLowerCase();
+    const extras = Math.max(0, Math.round(input.extraTexts ?? 0));
+    const extraAmount = extras * PRICING.laser.extraText;
+    const engraving = engravingPrice(input.catalog, plan.id) + extraAmount;
+    const planName = plan.shortLabel.toLowerCase()
+      + (extras ? ` + ${extras === 1 ? "1 escritura extra" : `${extras} escrituras extra`}` : "");
     const breakdown = [{ label: `Grabado (${planName})`, amount: engraving }];
     if (!PRICING.enabled.laser) {
       return { total: null, unit: null, note: "Te pasamos el precio por WhatsApp", breakdown: [], machine: "laser" };

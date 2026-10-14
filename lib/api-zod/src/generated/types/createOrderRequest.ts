@@ -48,4 +48,6 @@ export interface CreateOrderRequest {
   previewImage?: string;
   /** Original uploaded logo/photo as a data URL, at the highest resolution the client has. Used only to embed the artwork in the internal production file; never echoed back to the client. */
   customImage?: string;
+  /** Production artwork as a PNG data URL, already at real size (e.g. the unwrapped 360° print for the Dacen F5 UV cylinder printer, opened in RIPrint). Internal use only; never echoed back to the client. */
+  productionImage?: string;
 }

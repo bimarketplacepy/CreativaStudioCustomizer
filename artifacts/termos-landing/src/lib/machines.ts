@@ -17,17 +17,21 @@ export type ProductionKind = "drinkware" | "object" | "sticker";
 
 export interface MachineDef {
   id: MachineId;
-  /** Nombre interno (panel, archivo): "Dacen F5", "eufyMake E1", "Láser". */
+  /** Nombre interno (panel, archivo): "Dacen F5", "eufyMake E1", "Láser CO2". */
   name: string;
   /** Lo que ve el cliente. */
   customerLabel: string;
   /** Archivo de producción que necesita la máquina. */
-  fileKind: "svg" | "png-unwrapped" | "png";
+  fileKind: "dxf" | "png-unwrapped" | "png";
   limits?: { minDiameterMm: number; maxDiameterMm: number; maxTaperDeg: number; maxLengthMm: number };
 }
 
 export const MACHINES: Record<MachineId, MachineDef> = {
-  laser: { id: "laser", name: "Láser", customerLabel: "Grabado láser", fileKind: "svg" },
+  // Láser CO2 Willpex con eje rotativo (termos). El taller trabaja Corel →
+  // DXF → láser: el pedido trae el DXF (más un SVG de referencia).
+  laser: { id: "laser", name: "Láser CO2", customerLabel: "Grabado láser", fileKind: "dxf" },
+  // UV cilíndrica: solo piezas cilíndricas (print-specs.ts). PNG desenrollado
+  // de la vuelta completa (360°), que se abre en RIPrint.
   dacen: {
     id: "dacen", name: "Dacen F5", customerLabel: "Impresión a color", fileKind: "png-unwrapped",
     limits: { minDiameterMm: 45, maxDiameterMm: 125, maxTaperDeg: 5, maxLengthMm: 270 },

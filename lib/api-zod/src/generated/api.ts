@@ -42,7 +42,7 @@ export const GetCatalogResponse = zod.object({
       productType: zod
         .string()
         .describe(
-          "Customizer 3D profile (termo, vaso, vaso-manija, hoppie, botella-ancha, jug, guampa, copa, botella, chopera)",
+          "Customizer 3D profile (termo, termo-mate, termo-mate-forge, vaso, vaso-hydrate, vaso-sunbeam, vaso-manija, hoppie, botella-ancha, jug, guampa, copa, botella, chopera)",
         ),
       material: zod
         .string()
@@ -151,6 +151,12 @@ export const CreateOrderBody = zod.object({
     .optional()
     .describe(
       "Original uploaded logo\/photo as a data URL, at the highest resolution the client has. Used only to embed the artwork in the internal production file; never echoed back to the client.",
+    ),
+  productionImage: zod
+    .string()
+    .optional()
+    .describe(
+      "Production artwork as a PNG data URL, already at real size (e.g. the unwrapped 360° print for the Dacen F5 UV cylinder printer, opened in RIPrint). Internal use only; never echoed back to the client.",
     ),
 });
 

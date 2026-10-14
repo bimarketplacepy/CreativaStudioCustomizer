@@ -29,6 +29,13 @@ export interface PrintDims {
 export interface PrintSpec extends PrintDims {
   /** Se puede imprimir a color en la Dacen F5 (lo confirma el taller). */
   dacen: boolean;
+  /**
+   * Por qué una pieza de acero NO va a la Dacen: la UV cilíndrica solo toma
+   * cuerpos cilíndricos (lo dice el taller). La landing no ofrece color y
+   * manda a consultar en el local. `handle`: cuerpo cilíndrico con manija
+   * (estorba al giro); `shape`: la pieza no es cilíndrica.
+   */
+  consult?: "handle" | "shape";
 }
 
 interface PrintSpecEntry extends PrintSpec {
@@ -45,7 +52,12 @@ const UNMEASURED: PrintDims = {
 
 const steel = (extra: Partial<PrintSpecEntry> = {}): PrintSpecEntry => ({ ...UNMEASURED, dacen: true, ...extra });
 
-/** AJUSTAR: completar con medidas reales (DACEN.md §8, punto 4). */
+/**
+ * AJUSTAR: completar con medidas reales (DACEN.md §8, punto 4).
+ * La Dacen solo imprime piezas CILÍNDRICAS (regla del taller): las que tienen
+ * manija, las cónicas y las copas quedan en `dacen: false` con `consult`, y la
+ * landing ofrece solo grabado láser + "consultá en el local" para el color.
+ */
 export const PRINT_SPECS: Record<ProductId, PrintSpecEntry> = {
   "termo": steel(),
   "termo-mate": steel(),
@@ -55,19 +67,19 @@ export const PRINT_SPECS: Record<ProductId, PrintSpecEntry> = {
   "hoppie-hydrate": steel(),
   "botella-ancha": steel(),
   "botella": steel(),
-  "jug": steel(),
+  "jug": steel({ dacen: false, consult: "handle" }),
   "vaso": steel(),
   "vaso-hydrate": steel(),
-  "vaso-sunbeam": steel(),
-  "vaso-espresso": steel(),
-  "vaso-manija": steel(),
-  "taza-manija": steel(),
-  "mini-coffee": steel(),
-  "chopera": steel(),
-  "copa": steel(),
-  "copa-hydrate": steel(),
-  // Base redondeada y paredes que se abren: solo grabado láser.
-  "guampa": steel({ dacen: false }),
+  "vaso-sunbeam": steel({ dacen: false, consult: "handle" }),
+  "vaso-espresso": steel({ dacen: false, consult: "shape" }),
+  "vaso-manija": steel({ dacen: false, consult: "handle" }),
+  "taza-manija": steel({ dacen: false, consult: "handle" }),
+  "mini-coffee": steel({ dacen: false, consult: "handle" }),
+  "chopera": steel({ dacen: false, consult: "handle" }),
+  "copa": steel({ dacen: false, consult: "shape" }),
+  "copa-hydrate": steel({ dacen: false, consult: "shape" }),
+  // Base redondeada y paredes que se abren.
+  "guampa": steel({ dacen: false, consult: "shape" }),
 };
 
 /** Medidas de un producto en un tamaño (la base, pisada por las del tamaño). */
