@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 
-type Img = { src: string; caption: string };
+type Img = { src: string; caption: string; preset?: unknown };
 
 /**
  * Lightbox de la galería — overlay propio, sin librerías. Se monta recién al
@@ -10,11 +10,13 @@ type Img = { src: string; caption: string };
  * en /galeria y el caption siempre visible (en móvil no hay hover).
  * Cierres: X (44px), tap fuera de la foto, Escape y swipe vertical.
  */
-export default function GalleryLightbox({ images, index, onClose, onNavigate }: {
+export default function GalleryLightbox({ images, index, onClose, onNavigate, onDesignLike }: {
   images: Img[];
   index: number;
   onClose: () => void;
   onNavigate: (next: number) => void;
+  /** "Diseñar uno igual": solo en fotos con un producto equivalente. */
+  onDesignLike?: (index: number) => void;
 }) {
   const img = images[index];
   const count = images.length;
@@ -88,6 +90,15 @@ export default function GalleryLightbox({ images, index, onClose, onNavigate }: 
         />
         <figcaption className="mt-4 flex items-center justify-between gap-3 text-white">
           <span className="text-sm font-light">{img.caption}</span>
+          {img.preset != null && onDesignLike && (
+            <button
+              type="button"
+              onClick={() => onDesignLike(index)}
+              className="ml-auto shrink-0 min-h-10 px-4 rounded-full bg-[#8B1A2F] hover:bg-[#721527] text-white text-xs font-semibold uppercase tracking-[0.15em]"
+            >
+              Diseñar uno igual
+            </button>
+          )}
           <span className="text-xs tabular-nums text-white/60 shrink-0" aria-hidden>
             {index + 1} / {count}
           </span>

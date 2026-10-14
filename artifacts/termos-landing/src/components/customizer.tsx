@@ -43,6 +43,10 @@ import {
 import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
 import { ADDRESS, whatsappUrl } from "@/lib/contact";
 import { clearSharedDesign, designLink, readSharedDesign, type SharedDesign } from "@/lib/design-link";
+import { onDesignPreset } from "@/lib/design-preset";
+import { machineFor, normalizeTechnique } from "@/lib/machines";
+import { printSpecFor } from "@/lib/print-specs";
+import { quote } from "@/lib/pricing";
 import {
   colorOptions, defaultVariant, engravingPrice, findVariant, formatGs, GENERIC_BRAND,
   matchingProducts, odooShopItems, priceFrom, sectionTitles, shopBrands, shopSections, sizeOptions,
@@ -190,7 +194,9 @@ const FONTS = [
 /** Engraving techniques offered on drinkware. */
 const TECHNIQUES = [
   { id: "laser", name: "Grabado láser", desc: "Monocromático, permanente sobre el acero.", color: false },
-  { id: "eufy",  name: "Impresión UV", desc: "Impresión a todo color sobre el producto.", color: true },
+  // id "color" (antes eufy): impresión directa sobre la pieza, en la Dacen F5
+  // (ver DACEN.md). Los links compartidos viejos se normalizan al leerlos.
+  { id: "color", name: "Impresión UV", desc: "Impresión a todo color sobre el producto.", color: true },
 ] as const;
 type TechniqueId = (typeof TECHNIQUES)[number]["id"];
 
@@ -244,9 +250,14 @@ function WizardProgress({ step, labels }: { step: number; labels: string[] }) {
   );
 }
 
-/** Fixed bottom nav: Back (all but first step) + Next (all but last step). */
-function WizardNav({ step, total, onBack, onNext, nextLabel }: {
+/**
+ * Fixed bottom nav: Back (all but first step) + Next. En el último paso (el
+ * resumen) el botón principal envía el pedido: es el paso que convierte y el
+ * CTA no puede quedar abajo, fuera de la vista.
+ */
+function WizardNav({ step, total, onBack, onNext, nextLabel, final }: {
   step: number; total: number; onBack: () => void; onNext: () => void; nextLabel?: string;
+  final?: { label: React.ReactNode; onClick: () => void; disabled?: boolean };
 }) {
   return (
     <div
@@ -268,6 +279,16 @@ function WizardNav({ step, total, onBack, onNext, nextLabel }: {
           className="flex-1 inline-flex items-center justify-center gap-1 px-4 py-3 min-h-11 rounded-full bg-primary text-primary-foreground text-sm font-semibold shadow-sm active:scale-[0.98] transition-transform"
         >
           {nextLabel ?? "Siguiente"} <ChevronRight className="w-4 h-4" />
+        </button>
+      )}
+      {step >= total && final && (
+        <button
+          type="button"
+          onClick={final.onClick}
+          disabled={final.disabled}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-3 min-h-11 rounded-full bg-primary text-primary-foreground text-sm font-semibold shadow-sm active:scale-[0.98] transition-transform disabled:opacity-60"
+        >
+          {final.label}
         </button>
       )}
     </div>
@@ -700,6 +721,11 @@ function DesignIdleActions({ onEdit, onUndoDelete }: {
  *  fondo black/55 sobre el canvas), desaparece con el primer toque sobre el
  *  visor y no vuelve en la sesión. pointer-events-none: nunca intercepta el
  *  gesto que enseña. */
+/**
+ * Pista de giro para la vista previa compacta (Pasos 1–2 del celular). Va
+ * arriba: abajo tapaba la base de la pieza. Los visores grandes no la usan:
+ * ya muestran "Arrastrá para girar" debajo, y salía repetido.
+ */
 function RotateHintChip() {
   const [visible, setVisible] = useState(() => {
     try { return sessionStorage.getItem("cs-rotate-hint") !== "1"; } catch { return true; }
@@ -718,7 +744,7 @@ function RotateHintChip() {
   }, [visible]);
   if (!visible) return null;
   return (
-    <div ref={ref} className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center">
+    <div ref={ref} className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center">
       <span className="inline-flex items-center gap-1.5 rounded-full bg-black/55 px-3.5 py-2 text-[13px] font-medium text-white backdrop-blur-sm">
         <MoveHorizontal className="w-4 h-4" aria-hidden />
         Arrastrá para girar
@@ -1618,8 +1644,8 @@ export default function Customizer() {
 
   const [technique, setTechnique] = useState<TechniqueId>("laser");
   // Eufy (colour) is drinkware-with-coating only; everything else is laser-only.
-  const canEufy = allowsColorPrint(materialId, activeMProduct);
-  const effectiveTechnique: TechniqueId = canEufy ? technique : "laser";
+  const canColor = allowsColorPrint(materialId, activeMProduct);
+  const effectiveTechnique: TechniqueId = canColor ? technique : "laser";
   const activeTechnique = TECHNIQUES.find(t => t.id === effectiveTechnique) || TECHNIQUES[0];
   const [iconId, setIconId] = useState<string | null>(null);
   const selectedIcon = ENGRAVING_ICONS.find(i => i.id === iconId) ?? null;
@@ -1655,6 +1681,25 @@ export default function Customizer() {
     setMobileStep(s => Math.min(s, wizardLabels.length));
   }, [wizardLabels.length]);
 
+  // ── "Diseñar uno igual" desde la galería ───────────────────────────────────
+  // Arranca con el producto de la foto (material + producto + talla por
+  // defecto); en celular salta al paso de Diseño, como un link compartido.
+  React.useEffect(() => onDesignPreset(({ materialId: mid, materialProductId: pid }) => {
+    const m = MATERIALS.find(x => x.id === mid);
+    const mp = m?.products.find(p => p.id === pid);
+    if (!m || !mp) return;
+    startColorPending.current = false;
+    handleSelectMaterial(m.id);
+    setMaterialProductId(mp.id);
+    if (mp.drinkwareProductId) {
+      const dp = getProduct(mp.drinkwareProductId);
+      setSize(dp.sizes[1]?.id ?? dp.sizes[0].id);
+    }
+    setMobileStep(mp.drinkwareProductId ? 3 : 2);
+    track("customizer_preset", { material: m.id, product: mp.id });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), []);
+
   // ── Link de diseño compartido (#diseno=…) ──────────────────────────────────
   // Al montar, si la URL trae un diseño, se aplica tal cual (validando cada id
   // contra el catálogo: un link viejo o editado a mano nunca rompe nada) y se
@@ -1678,7 +1723,7 @@ export default function Customizer() {
     if (COLORS.some(c => c.id === d.colorId)) setColor(d.colorId);
     setCustomHex(isHex(d.customHex) ? d.customHex : null);
     if (FINISHES.some(f => f.id === d.finish)) setFinish(d.finish);
-    setTechnique(d.technique === "eufy" ? "eufy" : "laser");
+    setTechnique(normalizeTechnique(d.technique));
     setText(capEngravingText(typeof d.text === "string" ? d.text : ""));
     if (FONTS.some(f => f.id === d.fontId)) setFont(d.fontId);
     if (isHex(d.textColor)) setTextColor(d.textColor);
@@ -1739,9 +1784,8 @@ export default function Customizer() {
   // los planes/precios se quitaron del personalizador.)
   const allowsImage = canUploadImage;
   // Custom art shown on the 3D — a selected icon takes priority over an upload.
-  const artUrl = selectedIcon
-    ? iconToDataUrl(selectedIcon)
-    : (allowsImage ? customImage?.svgDataUrl ?? null : null);
+  const iconDataUrl = useMemo(() => (selectedIcon ? iconToDataUrl(selectedIcon) : null), [selectedIcon]);
+  const artUrl = iconDataUrl ?? (allowsImage ? customImage?.svgDataUrl ?? null : null);
   const artImageSize: "none" | "small" | "large" = selectedIcon
     ? "large"
     : isDrinkware
@@ -1754,7 +1798,7 @@ export default function Customizer() {
   // The mark specs feed the shared measurer so the pad, the clamp and the 3D
   // texture all agree on how big the text/art is in placement space.
   const textFontFamily = activeFont.style.fontFamily as string | undefined;
-  const isColorPrint = effectiveTechnique === "eufy";
+  const isColorPrint = effectiveTechnique === "color";
   const artNaturalW = selectedIcon ? 256 : customImage?.width ?? 0;
   const artNaturalH = selectedIcon ? 256 : customImage?.height ?? 0;
 
@@ -2135,8 +2179,8 @@ export default function Customizer() {
     : hasText ? "text" : hasArt ? "art" : null;
 
   // ── Preview capture ─────────────────────────────────────────────────────────
-  // Grab a PNG of the live 3D canvas (preserveDrawingBuffer keeps the last frame
-  // readable). Returns null if the canvas isn't mounted (e.g. mobile Step 4).
+  // Grab a PNG of the live 3D canvas (the termo draws a fresh frame right before
+  // reading it). Returns null if the canvas isn't mounted (e.g. mobile Step 4).
   const capturePreview = React.useCallback((): string | null => {
     const canvas = previewPanelRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
     if (!canvas) return null;
@@ -2170,31 +2214,64 @@ export default function Customizer() {
     }
   }, []);
 
-  // Refresh the stored snapshot ~500ms after the design settles, while the canvas
-  // is still on screen (design step / desktop). On mobile the canvas unmounts at
-  // Step 4, so this keeps the last good frame captured during Step 3.
-  // Codificar el PNG cuesta: se hace con el diseño quieto un rato y en un
-  // momento ocioso del navegador, nunca entre tecla y tecla. (Al pasar al
-  // resumen y al enviar se vuelve a capturar igual, con el diseño de frente.)
+  // Sin captura en segundo plano: codificar el PNG del visor bloqueaba el hilo
+  // principal cientos de ms (segundos en celulares) en cada pausa mientras se
+  // diseñaba. Se captura solo cuando hace falta: al pasar al resumen (móvil),
+  // al enviar el pedido y al descargar la imagen.
+  const handleDownloadPreview = () => {
+    const img = capturePreview() ?? previewImgRef.current;
+    if (!img) return;
+    setPreviewImg(img);
+    previewImgRef.current = img;
+    downloadDataUrl(img, "mi-diseno.png");
+  };
+
+  // Miniatura del resumen en escritorio (en móvil el resumen es otro paso y se
+  // captura al entrar). Barata a propósito: copia a resolución nativa y PNG
+  // codificado con toBlob, que el navegador hace fuera del hilo principal.
+  const [liveThumb, setLiveThumb] = useState<string | null>(null);
   React.useEffect(() => {
+    if (isMobile) return;
+    let cancelled = false;
     let idle: number | null = null;
     const t = setTimeout(() => {
       const run = () => {
-        const img = capturePreview();
-        if (img) { setPreviewImg(img); previewImgRef.current = img; }
+        const canvas = previewPanelRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
+        if (!canvas || !canvas.width || !canvas.height) return;
+        try {
+          thermosRenderRef.current?.();
+          const off = document.createElement("canvas");
+          off.width = canvas.width; off.height = canvas.height;
+          off.getContext("2d")?.drawImage(canvas, 0, 0);
+          off.toBlob(blob => {
+            if (cancelled || !blob) return;
+            const url = URL.createObjectURL(blob);
+            setLiveThumb(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
+          }, "image/png");
+        } catch { /* sin miniatura; el resumen se arma igual */ }
       };
       if (typeof window.requestIdleCallback === "function") idle = window.requestIdleCallback(run, { timeout: 2000 });
       else run();
     }, 1200);
     return () => {
+      cancelled = true;
       clearTimeout(t);
       if (idle !== null && typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(idle);
     };
   }, [
-    capturePreview, isDrinkware, is3DObject, productId, viewSize, activeColorHex,
+    isDrinkware, is3DObject, productId, viewSize, activeColorHex,
     finish, text, font, iconId, artUrl, textColor, effectiveTechnique, isGlass,
-    singleFace, textPlacement, artPlacement, mobileStep, isMobile, viewerReady,
+    singleFace, textPlacement, artPlacement, isMobile, viewerReady,
   ]);
+  React.useEffect(() => () => { setLiveThumb(prev => { if (prev) URL.revokeObjectURL(prev); return null; }); }, []);
+  // En escritorio la miniatura en vivo sigue al diseño; la captura puntual
+  // (descarga, pedido) puede haber quedado vieja si se siguió editando.
+  const summaryThumb = isMobile ? previewImg : liveThumb ?? previewImg;
+  const clearPreviews = () => {
+    setPreviewImg(null);
+    previewImgRef.current = null;
+    setLiveThumb(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+  };
 
   const handleSelectColor = (id: string) => {
     setColor(id);
@@ -2208,8 +2285,7 @@ export default function Customizer() {
     setGenericPick(false);
     track("customizer_material_select", { material: id });
     // La captura anterior pertenece a otro producto: nunca ofrecer descargarla.
-    setPreviewImg(null);
-    previewImgRef.current = null;
+    clearPreviews();
     const m = getMaterial(id);
     const first = m.products[0];
     setMaterialProductId(first?.id ?? "");
@@ -2245,8 +2321,7 @@ export default function Customizer() {
     startColorPending.current = false;
     track("customizer_product_select", { material: materialId, product: id });
     // Ídem: la captura del producto anterior deja de ser válida.
-    setPreviewImg(null);
-    previewImgRef.current = null;
+    clearPreviews();
     const mp = material.products.find(p => p.id === id);
     if (mp?.drinkwareProductId) {
       const dp = getProduct(mp.drinkwareProductId);
@@ -2270,7 +2345,7 @@ export default function Customizer() {
       // Toda imagen subida (archivo o URL, chica o grande) se muestra a todo
       // color: la técnica pasa a impresión UV por defecto. El cliente puede
       // volver a láser a mano si lo prefiere.
-      if (canEufy) setTechnique("eufy");
+      if (canColor) setTechnique("color");
     }
   };
 
@@ -2306,32 +2381,33 @@ export default function Customizer() {
   /** La pieza elegida de la tienda está agotada: no se puede pedir (sí con "Traigo el mío"). */
   const isSoldOut = odooMode && !isOwnProduct && (odooVariant ? !odooVariant.inStock : odooAllOut);
 
+  /** Máquina que produce el pedido (DACEN.md): el cliente elige la técnica, no
+   *  la máquina. Solo viaja en el pedido y al panel /admin. */
+  const productionMachine = isDrinkware
+    ? machineFor({ technique: effectiveTechnique, kind: "drinkware", spec: printSpecFor(productId, viewSize) })
+    : machineFor({ technique: "laser", kind: "object" });
+
   /** Precio estimado según lo diseñado. Solo montos que la landing ya publica
    *  (Tarifas y bolígrafos); lo que no tiene precio fijo se dice explícito. */
-  const estimate: { price: string | null; note: string } = (() => {
+  // `total`: el monto ya suma pieza + grabado (se rotula "Total estimado").
+  const estimate: { price: string | null; note: string; total?: boolean } = (() => {
     if (material.pens) {
       const opt = PEN_OPTIONS.find(o => o.id === (isOwnProduct ? "own" : "shop")) ?? PEN_OPTIONS[0];
       return { price: opt.priceLabel, note: opt.label };
     }
     // Pieza: precio real de la variante de Odoo (si el cliente no trae la suya).
     const piece = !isOwnProduct && odooVariant ? odooVariant.price : null;
-    if (isDrinkware && effectiveTechnique === "laser") {
-      const engraving = engravingPrice(catalog, activePlan.id);
-      const engravingLabel = `grabado (${activePlan.shortLabel.toLowerCase()}) ${formatGs(engraving)}`;
-      if (piece !== null) {
-        return { price: formatGs(piece + engraving), note: `${orderProductLabel} ${formatGs(piece)} + ${engravingLabel}` };
-      }
-      return {
-        price: formatGs(engraving),
-        note: isOwnProduct
-          ? `Grabado (${activePlan.shortLabel.toLowerCase()}) sobre tu producto`
-          : `Grabado (${activePlan.shortLabel.toLowerCase()}). La pieza se cotiza aparte`,
-      };
-    }
+    // Drinkware: precio único de pricing.ts (láser con los planes de Tarifas;
+    // color con los escalones de la Dacen, "se cotiza" mientras sean null).
     if (isDrinkware) {
-      return piece !== null
-        ? { price: formatGs(piece), note: `${orderProductLabel}. La impresión UV a color se suma según el diseño` }
-        : { price: null, note: "La impresión UV a color se cotiza según el diseño" };
+      const q = effectiveTechnique === "laser"
+        ? quote({ technique: "laser", plan: activePlan.id, catalog, piecePrice: piece, pieceLabel: orderProductLabel, ownProduct: isOwnProduct })
+        : quote({ technique: "color", machine: productionMachine, piecePrice: piece, pieceLabel: orderProductLabel });
+      if (q.total !== null) {
+        return { price: formatGs(q.total), note: q.note, total: q.breakdown.length > 1 };
+      }
+      // Sin precio de impresión: se muestra el de la pieza, si lo hay.
+      return { price: piece !== null ? formatGs(piece) : null, note: q.note };
     }
     return { price: null, note: "Te pasamos el precio por WhatsApp" };
   })();
@@ -2376,7 +2452,7 @@ export default function Customizer() {
       customText: trimmedText || undefined,
       font: trimmedText ? activeFont.name : undefined,
       // El color de texto solo aplica en impresión UV (láser es monocromático).
-      textColor: trimmedText && effectiveTechnique === "eufy" ? textColor : undefined,
+      textColor: trimmedText && effectiveTechnique === "color" ? textColor : undefined,
       iconName: selectedIcon?.name,
       hasUploadedImage: !!customImage,
       designState: {
@@ -2406,6 +2482,8 @@ export default function Customizer() {
         sizeLabel: orderSizeName,
         ownProduct: isOwnProduct,
         engravingEstimate: estimateText,
+        // Máquina de producción (laser | dacen | eufy): cola de trabajo en /admin.
+        machine: productionMachine,
         // Vínculo con Odoo (para el futuro pedido de venta / pago online).
         odooTemplateId: odooProduct?.id ?? null,
         odooVariantId: isOwnProduct ? null : odooVariant?.id ?? null,
@@ -2441,6 +2519,16 @@ export default function Customizer() {
    *  preview. Si el POST falla o tarda de más, fallback: mensaje solo con las
    *  especificaciones, más un aviso sutil y el botón "Descargar imagen". */
   const isEmptyDesign = !text.trim() && !selectedIcon && !customImage && !extraLidText && !extraBaseText;
+  // Lo que mira a cámara en la foto del resumen: el área personalizada, o sin
+  // diseño el frente de la marca (u = 0, el logo del modelo) y no el dorso.
+  const captureFaceU = isEmptyDesign ? 0 : designFaceU;
+
+  // El aviso vive junto al botón de la página; en celular se envía desde la
+  // barra fija, así que hay que traerlo a la vista.
+  React.useEffect(() => {
+    if (!emptyWarning) return;
+    document.querySelector("[data-empty-warning]")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [emptyWarning]);
 
   const handleOrder = async (force = false) => {
     if (isOrdered || isPreparing || isSoldOut) return;
@@ -2481,7 +2569,7 @@ export default function Customizer() {
       // Girar el área personalizada de frente y esperar el repintado, para que
       // la captura muestre el diseño completo.
       if (activeDesignKind) finishEditing();
-      thermosSnapRef.current?.(designFaceU);
+      thermosSnapRef.current?.(captureFaceU);
       await new Promise(resolve => setTimeout(resolve, 150));
 
       // Captura nítida para el resumen/descarga; al server viaja re-encodeada
@@ -2784,10 +2872,10 @@ export default function Customizer() {
   const renderDrinkTechnique = () => (
     <div>
       <Label className="text-sm font-medium mb-2 block">Técnica de grabado</Label>
-      {canEufy ? (
+      {canColor ? (
         <>
           <TechniqueSelector value={effectiveTechnique} onChange={setTechnique} />
-          {effectiveTechnique === "eufy" && (
+          {effectiveTechnique === "color" && (
             <p className="text-xs text-muted-foreground mt-2">
               La impresión UV a todo color se cotiza por WhatsApp según el diseño.
             </p>
@@ -2907,7 +2995,7 @@ export default function Customizer() {
       {/* Precio estimado — antes el cliente llegaba al final sin ningún monto. */}
       <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-sm text-muted-foreground">Precio estimado</span>
+          <span className="text-sm text-muted-foreground">{estimate.total ? "Total estimado" : "Precio estimado"}</span>
           {estimate.price && (
             <span className="font-serif text-lg text-foreground tabular-nums">{estimate.price}</span>
           )}
@@ -2916,7 +3004,7 @@ export default function Customizer() {
       </div>
 
       {emptyWarning && isEmptyDesign && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 space-y-2" role="alert">
+        <div data-empty-warning className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 space-y-2 scroll-mb-28" role="alert">
           <p>Todavía no agregaste texto, ícono ni imagen para grabar. ¿Querés enviarlo igual y lo definimos por WhatsApp?</p>
           <div className="flex gap-2">
             <button
@@ -2991,10 +3079,10 @@ export default function Customizer() {
         >
           <Link2 className="w-4 h-4" /> {linkCopied ? "¡Link copiado!" : "Compartir diseño"}
         </button>
-        {previewImg && (
+        {(previewImg || isDrinkware || (is3DObject && activeObject)) && (
           <button
             type="button"
-            onClick={() => downloadDataUrl(previewImg, "mi-diseno.png")}
+            onClick={handleDownloadPreview}
             className="inline-flex items-center gap-2 min-h-10 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
           >
             <Download className="w-4 h-4" /> Descargar imagen
@@ -3044,7 +3132,7 @@ export default function Customizer() {
               imageSize={artImageSize}
               textPlacement={textPlacement}
               artPlacement={artPlacement}
-              colorPrint={effectiveTechnique === "eufy"}
+              colorPrint={effectiveTechnique === "color"}
               textColor={textColor}
               engraveStyle={drinkwareEngraveStyle}
               singleFace={singleFace}
@@ -3093,12 +3181,15 @@ export default function Customizer() {
   const renderDrinkSummary = () => (
     <div className="space-y-4">
       {/* Imagen de vista previa del diseño final, capturada del 3D. */}
-      {previewImg && (
+      {summaryThumb && (
         <div>
           <Label className="text-sm font-medium mb-2 block">Vista de tu diseño</Label>
           <div className="rounded-xl border border-border bg-secondary/30 p-2 flex justify-center">
-            <img src={previewImg} alt="Vista del diseño final" className="max-h-64 w-auto object-contain" />
+            <img src={summaryThumb} alt="Vista del diseño final" className="max-h-64 w-auto object-contain" />
           </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Vista de referencia. Antes de producir te enviamos el diseño final por WhatsApp para confirmarlo.
+          </p>
         </div>
       )}
 
@@ -3328,7 +3419,7 @@ export default function Customizer() {
                       imageSize={artImageSize}
                       textPlacement={textPlacement}
                       artPlacement={artPlacement}
-                      colorPrint={effectiveTechnique === "eufy"}
+                      colorPrint={effectiveTechnique === "color"}
                       textColor={textColor}
                       engraveStyle={drinkwareEngraveStyle}
                       singleFace={singleFace}
@@ -3348,7 +3439,6 @@ export default function Customizer() {
                       autoSpin={wrapSpin}
                       rotationLocked={wrapSpin}
                     />
-                    {!designActive && !idleEditKind && !undoDeleteUntil && !wrapSpin && <RotateHintChip />}
                   </div>
 
                   {/* Debajo del visor (no encima): la barra nunca tapa la pieza. */}
@@ -3418,7 +3508,6 @@ export default function Customizer() {
                       onDesignDragStart={beginDesignDrag}
                       onDesignDragEnd={endDesignDrag}
                     />
-                    {!designActive && !idleEditKind && !undoDeleteUntil && <RotateHintChip />}
                   </div>
 
                   <div className="-mt-1 mb-2 min-h-6 flex flex-col items-center gap-1.5">
@@ -3473,7 +3562,7 @@ export default function Customizer() {
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground max-w-xs">
-                    Vista previa referencial. El diseño final lo coordinamos con vos por WhatsApp antes de producir.
+                    Vista de referencia. Antes de producir te enviamos el diseño final por WhatsApp para confirmarlo.
                   </p>
                 </div>
               )}
@@ -4001,7 +4090,9 @@ export default function Customizer() {
           </motion.div>
         )}
 
-        {isMobile && (
+        {/* Solo con el personalizador en pantalla: si no, la barra fija quedaba
+            flotando sobre el hero, Tarifas, la Galería y el footer. */}
+        {isMobile && customizerInView && (
           <WizardNav
             step={mobileStep}
             total={wizardLabels.length}
@@ -4014,7 +4105,7 @@ export default function Customizer() {
               if (mobileStep === designStepIndex) {
                 // Terminar la edición: sin guías ni selección en la foto.
                 if (activeDesignKind) finishEditing();
-                thermosSnapRef.current?.(designFaceU);
+                thermosSnapRef.current?.(captureFaceU);
                 setTimeout(() => {
                   const img = capturePreview();
                   if (img) { setPreviewImg(img); previewImgRef.current = img; }
@@ -4025,6 +4116,15 @@ export default function Customizer() {
               goToStep(Math.min(wizardLabels.length, mobileStep + 1));
             }}
             nextLabel={mobileStep === designStepIndex ? "Continuar" : mobileStep === 1 ? "Diseñar" : "Siguiente"}
+            final={{
+              label: isPreparing
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando tu pedido...</>
+                : isOrdered
+                  ? (lastOrderNumber ? `Pedido ${lastOrderNumber} ✓` : "Abriendo WhatsApp...")
+                  : isSoldOut ? "Agotado" : <><MessageCircle className="w-4 h-4" /> Enviar por WhatsApp</>,
+              onClick: () => handleOrder(),
+              disabled: isOrdered || isPreparing || isSoldOut,
+            }}
           />
         )}
 

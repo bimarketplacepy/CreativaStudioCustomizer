@@ -1,7 +1,7 @@
 # DACEN — Plan de integración de las máquinas (Dacen F5 + eufyMake E1 + láser)
 
 **Fecha:** 2026-10-12 · Complementa `Mejoras.md` y `PLAN-EDITOR.md`.
-**Estado:** planteamiento. Nada de esto está implementado salvo lo marcado ✅.
+**Estado:** fases 1 y 3 implementadas (2026-10-14), salvo el renombre `eufy` → `color` en el personalizador. El resto es planteamiento. Lo implementado está marcado ✅.
 **Precios:** se definen después. Este plan deja la **estructura** lista para que
 cargar un precio sea completar un número en un solo archivo, sin tocar
 componentes.
@@ -115,11 +115,11 @@ sequenceDiagram
 
 ```
 termos-landing/src/lib/
-  machines.ts          ← NUEVO: registro de máquinas + machineFor()
-  print-specs.ts       ← NUEVO: medidas físicas reales por producto (Ø, alto, manija)
-  pricing.ts           ← NUEVO: precios de TODAS las técnicas (reemplaza sueltos)
+  machines.ts          ← ✅ registro de máquinas + machineFor()
+  print-specs.ts       ← ✅ estructura + flag dacen; medidas en null (AJUSTAR)
+  pricing.ts           ← ✅ precios de TODAS las técnicas + quote()
   production-dacen.ts  ← NUEVO: render del PNG desenrollado (reusa engraving-maps)
-  sticker-pricing.ts   ← ✅ existe; pasa a leer sus números de pricing.ts
+  sticker-pricing.ts   ← ✅ lee sus números de pricing.ts
   sticker-shape.ts     ← ✅ existe
   engraving-maps.ts    ← se extrae la capa de color a una función reutilizable
 
@@ -132,7 +132,7 @@ api-server/src/lib/
 
 ## 4. Diseño de cada pieza
 
-### 4.1 `machines.ts` — registro de máquinas
+### 4.1 `machines.ts` — registro de máquinas ✅
 
 ```ts
 export type MachineId = "laser" | "dacen" | "eufy";
@@ -175,7 +175,7 @@ export function machineFor(opts: {
   - `TechniqueId = "laser" | "color"`.
   - Para no romper links compartidos viejos, al leer un link se acepta también `"eufy"` (`customizer.tsx`, al aplicar el diseño compartido).
 
-### 4.2 `print-specs.ts` — medidas físicas reales
+### 4.2 `print-specs.ts` — medidas físicas reales ✅ (estructura; faltan las medidas)
 
 Hoy las medidas en mm viven en `production-svg.ts` (`PRODUCT_AREAS_MM`, marcadas "AJUSTAR") y solo cubren el frente. Pasan a un único lugar, compartido por landing y API:
 
@@ -248,7 +248,7 @@ Es lo que diferencia a la Dacen: imprimir **alrededor de todo el termo**.
 - **Precio:** escalón "360°" (§4.5).
 - **Aviso de calidad:** dpi efectivos = px de la imagen / (π × Ø / 25,4). Si dan menos de 150, se avisa igual que en stickers.
 
-### 4.5 `pricing.ts` — estructura de precios única (montos a definir)
+### 4.5 `pricing.ts` — estructura de precios única (montos a definir) ✅
 
 Un solo archivo con los precios de **todas** las técnicas. Mientras un precio no esté definido (`null`), la landing muestra "se cotiza por WhatsApp", que es el comportamiento actual. Cuando se carga el número, aparece el precio sin tocar componentes.
 
@@ -320,7 +320,7 @@ Etapa 1, **sin migración**: todo en `designState`, como los stickers.
 
 Etapa 2, cuando haga falta filtrar o sumar en el panel: columnas `machine`, `quantity`, `quote_total` y `production_kind` en `orders` (`lib/db/src/schema/orders.ts`), con `drizzle push`.
 
-### 4.7 Panel `/admin`
+### 4.7 Panel `/admin` (etiqueta, filtro y botón por máquina ✅)
 
 - Etiqueta de máquina en cada pedido (Láser / Dacen / eufy), con filtro por máquina para la **cola de trabajo de cada una**.
 - Botón de descarga según el archivo: "SVG láser", "PNG para Dacen" o "PNG para eufyMake" ✅.
@@ -342,9 +342,9 @@ Etapa 2, cuando haga falta filtrar o sumar en el panel: columnas `machine`, `qua
 
 | Fase | Qué | Resultado | Depende de |
 |---|---|---|---|
-| **1** | `machines.ts` + `print-specs.ts` (con medidas reales) + renombrar `eufy` → `color` + `machine` en el pedido y en el panel | Cada pedido dice en qué máquina va | Medidas (§8 punto 4) |
+| **1** ✅ (falta renombre en personalizador y medidas) | `machines.ts` + `print-specs.ts` (con medidas reales) + renombrar `eufy` → `color` + `machine` en el pedido y en el panel | Cada pedido dice en qué máquina va | Medidas (§8 punto 4) |
 | **2** | `drawColorLayer` + `renderUnwrapped` + PNG desenrollado en el pedido + descarga "PNG para Dacen" | El taller imprime en la Dacen directo del pedido | Formato RIPrint (§8 puntos 1–3) |
-| **3** | `pricing.ts` único + `quote()`; stickers y Dacen leen de ahí; `enabled` por técnica | Precio automático en cuanto se carguen montos | — (montos después) |
+| **3** ✅ | `pricing.ts` único + `quote()`; stickers y Dacen leen de ahí; `enabled` por técnica | Precio automático en cuanto se carguen montos | — (montos después) |
 | **4** | Diseño 360° + aviso de dpi | Producto diferencial de la Dacen | Fase 2 |
 | **5** | Columnas en `orders`, filtros por máquina, servicios de Odoo para precios | Gestión y precios desde Odoo | Fases 1–3 |
 
@@ -388,3 +388,14 @@ Las fases 1 y 3 se pueden hacer ya. La 2 necesita que el taller confirme el form
 5. **Piezas con manija o correa:** ¿cuáles entran en la Dacen y cuánto ángulo queda libre?
 6. **Láser:** modelo y programa (LightBurn / EzCad / xTool), para ajustar el SVG de producción.
 7. **Precios** (después): escalones de la Dacen (chico / frente / 360°), stickers y descuentos por cantidad.
+
+---
+
+## 9. Estado de la implementación (2026-10-14)
+
+- ✅ `src/lib/machines.ts`: `MACHINES`, `machineFor()`, `normalizeTechnique()` (acepta `"eufy"` viejo).
+- ✅ `src/lib/print-specs.ts`: `PRINT_SPECS` por producto (con `bySize`), `printSpecFor()`, `fitsDacen()`, `taperDeg()`. Medidas en `null` (AJUSTAR); el flag `dacen` reproduce la regla anterior (acero, sin guampa) y `allowsColorPrint()` ya lo lee. Vive en la landing: pasar a un paquete compartido cuando la API lo necesite (fase 2).
+- ✅ `src/lib/pricing.ts`: `PRICING` (láser vía engraving-plans/Odoo, Dacen por escalones en `null`, stickers), `enabled`, `quote()`. `sticker-pricing.ts` toma sus montos de acá (mismos valores).
+- ✅ Pedido: `designState.machine` (la API la normaliza o la infiere en pedidos viejos: sticker → eufy, técnica `eufy`/`color` → dacen, resto → láser). Stickers mandan `machine: "eufy"`.
+- ✅ `/admin`: etiqueta de máquina, filtro (Todas / Láser / Dacen F5 / eufyMake E1, `?machine=`), botón "SVG láser" / "PNG para eufyMake" / "PNG para Dacen" / "SVG referencia (Dacen)".
+- Pendiente: renombre `eufy` → `color` en `customizer.tsx` y uso de `quote()` en su "Precio estimado"; fase 2 (PNG desenrollado). Mientras tanto los pedidos de la Dacen siguen generando el SVG de referencia.

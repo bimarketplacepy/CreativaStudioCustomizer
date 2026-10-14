@@ -10,6 +10,7 @@ import { checkInternalKey, orderImageToken } from "../lib/internal-key";
 import { logger } from "../lib/logger";
 import { getCatalog } from "../lib/catalog";
 import { getDisabledProducts, setProductEnabled } from "../lib/product-settings";
+import { MACHINE_LABELS, isMachineId, orderMachine } from "../lib/machines";
 
 const router: IRouter = Router();
 
@@ -18,15 +19,19 @@ function hasKey(req: Request): boolean {
 }
 
 // GET /api/admin/orders — listado para el panel (interno).
+// `?machine=laser|dacen|eufy` filtra la cola de trabajo de una máquina.
 router.get("/api/admin/orders", async (req, res) => {
   if (!hasKey(req)) {
     res.status(401).json({ message: "No autorizado" });
     return;
   }
+  const machineFilter = isMachineId(req.query.machine) ? req.query.machine : null;
   try {
     const rows = await db.query.ordersTable.findMany({
       orderBy: desc(ordersTable.createdAt),
-      limit: 200,
+      // La máquina vive en el JSON de designState: con filtro se miran más
+      // pedidos para que la cola de una máquina no quede corta.
+      limit: machineFilter ? 1000 : 200,
       columns: {
         orderNumber: true,
         status: true,
@@ -44,13 +49,19 @@ router.get("/api/admin/orders", async (req, res) => {
         createdAt: true,
       },
     });
+    const list = rows
+      .map(r => ({ r, machine: orderMachine(r.designState) }))
+      .filter(x => !machineFilter || x.machine === machineFilter)
+      .slice(0, 200);
     res.json(
-      rows.map(({ designState, ...r }) => {
+      list.map(({ r: { designState, ...r }, machine }) => {
         // Datos legibles que el personalizador guarda dentro del snapshot.
         const ds = (designState ?? {}) as Record<string, unknown>;
         const str = (v: unknown) => (typeof v === "string" && v ? v : null);
         return {
           ...r,
+          machine,
+          machineLabel: MACHINE_LABELS[machine],
           createdAt: r.createdAt.toISOString(),
           size: str(ds.sizeLabel) ?? str(ds.sizeId),
           ownProduct: ds.ownProduct === true,
@@ -210,6 +221,10 @@ const ADMIN_HTML = `<!DOCTYPE html>
            border-radius:999px; border:1px solid var(--line); color:var(--muted); margin-left:8px; vertical-align:2px; }
   .badge.nueva { border-color:var(--brand); color:var(--brand); }
   .status { min-height:40px; padding:6px 10px; border:1px solid var(--line); border-radius:10px; background:#fff; font-size:13px; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+  .chip { min-height:36px; padding:6px 12px; border:1px solid var(--line); border-radius:999px; background:#fff; font:inherit; font-size:13px; cursor:pointer; }
+  .chip[aria-pressed="true"] { background:var(--ink); color:#fff; border-color:var(--ink); }
+  .tag.machine { background:#eef1f5; color:#33404f; }
   .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:6px; background:#f5eaec; color:var(--brand); margin-left:6px; }
   .meta { color:var(--muted); font-size:13px; margin-top:2px; }
   .text { font-size:13px; margin-top:4px; }
@@ -276,6 +291,12 @@ const ADMIN_HTML = `<!DOCTYPE html>
       <div class="tools">
         <input id="search" type="search" placeholder="Buscar por número, producto, texto…">
       </div>
+      <div class="chips" id="machineFilter" role="group" aria-label="Filtrar por máquina">
+        <button class="chip" type="button" data-machine="">Todas</button>
+        <button class="chip" type="button" data-machine="laser">Láser</button>
+        <button class="chip" type="button" data-machine="dacen">Dacen F5</button>
+        <button class="chip" type="button" data-machine="eufy">eufyMake E1</button>
+      </div>
       <div id="list"></div>
     </div>
     <div id="productsView" style="display:none">
@@ -311,6 +332,24 @@ const ADMIN_HTML = `<!DOCTYPE html>
     } catch (e) { return iso; }
   }
 
+  var MACHINE_NAMES = { laser: "Láser", dacen: "Dacen F5", eufy: "eufyMake E1" };
+  // Filtro por máquina: vive en la URL (?machine=dacen) para poder dejar
+  // abierta la cola de una máquina y recargarla.
+  var machine = new URLSearchParams(location.search).get("machine") || "";
+  if (!MACHINE_NAMES[machine]) machine = "";
+
+  function fileLabel(o) {
+    if (o.productionKind === "png") return o.machine === "dacen" ? "PNG para Dacen" : "PNG para eufyMake";
+    return o.machine === "dacen" ? "SVG referencia (Dacen)" : "SVG láser";
+  }
+
+  function paintChips() {
+    var chips = document.querySelectorAll("#machineFilter .chip");
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].setAttribute("aria-pressed", chips[i].getAttribute("data-machine") === machine ? "true" : "false");
+    }
+  }
+
   function render(filter) {
     var q = (filter || "").toLowerCase();
     var rows = orders.filter(function (o) {
@@ -319,7 +358,8 @@ const ADMIN_HTML = `<!DOCTYPE html>
         .join(" ").toLowerCase().indexOf(q) >= 0;
     });
     document.getElementById("count").textContent =
-      rows.length + " de " + orders.length + " pedidos (últimos 200)";
+      rows.length + " de " + orders.length + " pedidos" +
+      (machine ? " · " + MACHINE_NAMES[machine] : "") + " (últimos 200)";
     if (!rows.length) {
       list.innerHTML = '<div class="empty-state">Sin pedidos que coincidan.</div>';
       return;
@@ -338,7 +378,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
       var svgBtn = o.hasProduction
         ? '<a class="btn primary" href="/api/orders/' + esc(o.orderNumber) + '/production-file?key=' +
           encodeURIComponent(key()) + '" download>' +
-          (o.productionKind === "png" ? "PNG para eufyMake" : "SVG producción") + '</a>'
+          fileLabel(o) + '</a>'
         : '<span class="btn" aria-disabled="true">Archivo no generado</span>';
       var imgBtn = o.hasPreview
         ? '<a class="btn" href="' + imgUrl + '" download="' +
@@ -347,6 +387,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
       return '<div class="card">' + img +
         '<div><span class="num">' + esc(o.orderNumber) + '</span>' +
         '<span class="badge ' + esc(o.status) + '">' + esc(o.status).replace("_", " ") + "</span>" +
+        '<span class="tag machine">' + esc(o.machineLabel || "") + "</span>" +
         (o.ownProduct ? '<span class="tag">Trae su producto</span>' : "") +
         '<div class="meta">' + esc(o.product) + " — " + detalles + "</div>" +
         '<div class="meta">' + fmtDate(o.createdAt) + "</div>" +
@@ -389,7 +430,9 @@ const ADMIN_HTML = `<!DOCTYPE html>
   });
 
   function load() {
-    return fetch("/api/admin/orders", { headers: { "x-internal-key": key() } }).then(function (r) {
+    paintChips();
+    var url = "/api/admin/orders" + (machine ? "?machine=" + encodeURIComponent(machine) : "");
+    return fetch(url, { headers: { "x-internal-key": key() } }).then(function (r) {
       if (r.status === 401) throw new Error("unauthorized");
       if (!r.ok) throw new Error("http " + r.status);
       return r.json();
@@ -410,6 +453,15 @@ const ADMIN_HTML = `<!DOCTYPE html>
     });
   });
   document.getElementById("search").addEventListener("input", function (e) { render(e.target.value); });
+  document.getElementById("machineFilter").addEventListener("click", function (e) {
+    var btn = e.target.closest ? e.target.closest(".chip") : null;
+    if (!btn) return;
+    machine = btn.getAttribute("data-machine") || "";
+    var u = new URL(location.href);
+    if (machine) u.searchParams.set("machine", machine); else u.searchParams.delete("machine");
+    history.replaceState(null, "", u.toString());
+    load().catch(function () {});
+  });
   document.getElementById("refresh").addEventListener("click", function () {
     if (view === "products") loadProducts();
     else load().catch(function () {});

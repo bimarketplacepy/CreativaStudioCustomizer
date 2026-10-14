@@ -22,6 +22,48 @@
   src: url('/fonts/inter-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
+/* Respaldo de Inter con métricas ajustadas, una cara por rango de peso
+   (calculadas con fontTools: instancia de Inter en ese peso vs Arial/Liberation
+   Sans, sobre el texto del hero que usa ese peso). El hero llega pre-renderizado
+   y pinta antes de que baje inter-latin.woff2: sin esto el swap re-acomodaba el
+   texto (el eyebrow en mayúsculas partía en 2 líneas) y movía el carrusel (CLS).
+   Cada cara declara el peso que cubre, así el navegador no sintetiza negrita. */
+@font-face {
+  font-family: 'Inter Fallback';
+  src: local('Arial'), local('ArialMT'), local('Liberation Sans'), local('Roboto');
+  font-weight: 100 349;
+  size-adjust: 104.45%;
+  ascent-override: 92.75%;
+  descent-override: 23.09%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Inter Fallback';
+  src: local('Arial'), local('ArialMT'), local('Liberation Sans'), local('Roboto');
+  font-weight: 350 449;
+  size-adjust: 106.21%;
+  ascent-override: 91.21%;
+  descent-override: 22.71%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Inter Fallback';
+  src: local('Arial'), local('ArialMT'), local('Liberation Sans'), local('Roboto');
+  font-weight: 450 549;
+  size-adjust: 99.47%;
+  ascent-override: 97.39%;
+  descent-override: 24.25%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Inter Fallback';
+  src: local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'), local('Roboto Bold');
+  font-weight: 550 1000;
+  size-adjust: 99.90%;
+  ascent-override: 96.97%;
+  descent-override: 24.14%;
+  line-gap-override: 0%;
+}
 @font-face {
   font-family: 'Abril Fatface';
   font-style: normal;
@@ -46,16 +88,21 @@
   font-style: normal;
   font-display: swap;
 }
+/* Light (300) e Italic (700) son solo de títulos del sitio: van subseteadas a
+   Latin + Latin-1 + Latin Ext-A + puntuación/monedas (63→34 KB y 78→36 KB) y
+   precargadas en index.html, porque el <h1> del hero (pre-renderizado) las usa
+   y llegar tarde movía el layout (CLS) y retrasaba el LCP. La Subhead (600) es
+   fuente de grabado del personalizador y la usa la API: queda completa. */
 @font-face {
   font-family: 'Cronos Pro';
-  src: url('/fonts/Cronos-Pro-Display-Italic.woff2') format('woff2');
+  src: url('/fonts/Cronos-Pro-Display-Italic-latin.woff2') format('woff2');
   font-weight: 700;
   font-style: italic;
   font-display: swap;
 }
 @font-face {
   font-family: 'Cronos Pro';
-  src: url('/fonts/Cronos-Pro-Light.woff2') format('woff2');
+  src: url('/fonts/Cronos-Pro-Light-latin.woff2') format('woff2');
   font-weight: 300;
   font-style: normal;
   font-display: swap;
@@ -334,7 +381,7 @@
   --chart-4: 38 92% 50%;
   --chart-5: 280 65% 60%;
 
-  --app-font-sans: 'Inter', 'Trebuchet MS', sans-serif;
+  --app-font-sans: 'Inter', 'Inter Fallback', 'Trebuchet MS', sans-serif;
   --app-font-serif: 'Cronos Pro', Georgia, 'Times New Roman', serif;
   --app-font-mono: Menlo, monospace;
   --radius: .5rem;

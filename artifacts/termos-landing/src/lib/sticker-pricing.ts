@@ -1,10 +1,10 @@
 /**
  * Stickers UV DTF (eufyMake E1 + Roll-to-Film): opciones y precio.
  *
- * ÚNICA fuente de precios de la sección Stickers (`stickers.tsx`). Los montos
- * son PROVISORIOS hasta tener los costos reales del taller (tinta, film, tiempo
- * de máquina): AJUSTAR acá y se actualiza todo (precio en pantalla, mensaje de
- * WhatsApp y pedido).
+ * Opciones y cálculo de la sección Stickers (`stickers.tsx`). Los MONTOS
+ * (provisorios) viven en `pricing.ts` → `PRICING.eufy.stickers`, junto con los
+ * de las demás técnicas: AJUSTAR allá y se actualiza todo (precio en pantalla,
+ * mensaje de WhatsApp y pedido).
  *
  * Modelo: el film se consume por el rectángulo que ocupa el sticker, así que el
  * precio va por el área del rectángulo (ancho × alto), no por la silueta.
@@ -13,14 +13,17 @@
  *   con descuento por cantidad, redondeado a Gs. 100
  */
 
-/**
- * Mostrar precios en la landing. En false (precios todavía sin definir) la
- * sección funciona igual, pero dice "Te pasamos el precio por WhatsApp" y el
- * pedido sale sin monto. Pasar a true cuando PRICE (abajo) tenga los valores reales.
- */
-export const STICKER_PRICES_ENABLED = false;
+import { PRICING, stickerTierFor, stickerUnit, type StickerFinishId } from "./pricing";
 
-export type StickerFinishId = "brillo" | "relieve";
+export type { StickerFinishId };
+
+/**
+ * Mostrar precios en la landing (`PRICING.enabled.stickers`). En false
+ * (precios todavía sin definir) la sección funciona igual, pero dice "Te
+ * pasamos el precio por WhatsApp" y el pedido sale sin monto.
+ */
+export const STICKER_PRICES_ENABLED = PRICING.enabled.stickers;
+
 export type StickerCutId = "silueta" | "rectangulo";
 
 export interface StickerFinish {
@@ -36,13 +39,13 @@ export const STICKER_FINISHES: StickerFinish[] = [
     id: "brillo",
     name: "Brillante",
     desc: "Colores vivos con barniz brillante. Resiste agua y roce.",
-    factor: 1,
+    factor: PRICING.eufy.stickers.finishFactor.brillo,
   },
   {
     id: "relieve",
     name: "Relieve 3D",
     desc: "Tinta con volumen que se siente al tacto. Efecto premium.",
-    factor: 1.5, // AJUSTAR: el relieve gasta mucha más tinta (≈ ×10 en la E1) y tiempo
+    factor: PRICING.eufy.stickers.finishFactor.relieve,
   },
 ];
 
@@ -62,24 +65,8 @@ export const STICKER_BORDER_MM = 2.5;
 export const STICKER_QTY_PRESETS = [1, 10, 25, 50, 100];
 export const STICKER_MAX_QTY = 1000;
 
-/** Descuento por cantidad: gana el escalón más alto alcanzado. AJUSTAR. */
-export const STICKER_QTY_TIERS: { min: number; discount: number }[] = [
-  { min: 1, discount: 0 },
-  { min: 10, discount: 0.1 },
-  { min: 25, discount: 0.2 },
-  { min: 50, discount: 0.3 },
-  { min: 100, discount: 0.35 },
-];
-
-/** AJUSTAR con los costos reales (en guaraníes). */
-const PRICE = {
-  /** Fijo por sticker: preparación, aplicación del film, corte. */
-  basePerSticker: 2000,
-  /** Por cm² del rectángulo que ocupa (tinta + film + máquina). */
-  perCm2: 110,
-  /** Ningún sticker baja de esto (antes del descuento por cantidad). */
-  minUnit: 4000,
-};
+/** Descuento por cantidad: gana el escalón más alto alcanzado (montos en pricing.ts). */
+export const STICKER_QTY_TIERS: { min: number; discount: number }[] = PRICING.eufy.stickers.qtyTiers;
 
 export interface StickerQuote {
   /** Precio unitario sin descuento. */
@@ -94,19 +81,9 @@ export interface StickerQuote {
   next: { min: number; discount: number; unit: number } | null;
 }
 
-const roundTo = (n: number, step: number) => Math.round(n / step) * step;
+const unitFor = stickerUnit;
 
-function unitFor(widthCm: number, heightCm: number, finish: StickerFinishId, discount: number): number {
-  const factor = STICKER_FINISHES.find(f => f.id === finish)?.factor ?? 1;
-  const list = Math.max(PRICE.minUnit, PRICE.basePerSticker + widthCm * heightCm * PRICE.perCm2) * factor;
-  return roundTo(list * (1 - discount), 100);
-}
-
-export function tierFor(quantity: number) {
-  let tier = STICKER_QTY_TIERS[0];
-  for (const t of STICKER_QTY_TIERS) if (quantity >= t.min) tier = t;
-  return tier;
-}
+export const tierFor = stickerTierFor;
 
 export function stickerQuote(opts: {
   widthCm: number;

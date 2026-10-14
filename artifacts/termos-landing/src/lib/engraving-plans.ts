@@ -32,8 +32,8 @@ export const ENGRAVING_PLANS: EngravingPlan[] = [
   {
     id: "drawing",
     title: "Grabado de Nombres y Apellidos",
-    subtitle: "más un icono pequeño",
-    shortLabel: "Nombres + un icono pequeño",
+    subtitle: "más un ícono pequeño",
+    shortLabel: "Nombres + un ícono pequeño",
     pickerLabel: "+ Dibujo",
     price: 40000,
     priceLabel: "Gs. 40.000",

@@ -78,22 +78,33 @@
       "name": "Creativa Studio",
       "description": "Taller de personalización premium: termos, vasos, guampas, tablas, cajas, billeteras y más, grabados a medida con láser o impresión a color.",
       "url": "https://creativastudiopy.com/",
-      "image": "https://creativastudiopy.com/opengraph.jpg",
+      "image": "https://creativastudiopy.com/og-cover-v5.jpg",
+      "logo": "https://creativastudiopy.com/la-creativa-logo-new.webp",
       "telephone": "+595981124607",
+      "email": "lacreativaparaguay@gmail.com",
+      "priceRange": "₲₲",
+      "currenciesAccepted": "PYG",
+      "areaServed": "PY",
       "address": {
         "@type": "PostalAddress",
-        "streetAddress": "MarketPlace, Avda. España",
+        "streetAddress": "Local dentro de MarketPlace, Avda. España",
+        "addressLocality": "Asunción",
         "addressCountry": "PY"
       },
-      "sameAs": ["https://www.instagram.com/creativastudio.py"]
+      "sameAs": ["https://www.instagram.com/creativastudio.py", "https://www.facebook.com/lacreativa.paraguay"]
     }
     </script>
 
-    <!-- Fonts are now self-hosted (see @font-face in index.css) — no third-party
-         connection blocks render. Preload only Inter (the body font used across
-         the whole page); Cronos Pro (headline only) is left to load with
-         font-display:swap so it doesn't compete with the LCP image. -->
+    <!-- Fonts are self-hosted (see @font-face in index.css) — no third-party
+         connection blocks render. Inter is the body font. The two Cronos Pro
+         faces are the hero <h1> (Light + italic span): now that the hero is
+         pre-rendered into this HTML it paints before the CSS-discovered fonts
+         would even be requested, so without these preloads the late swap
+         shifted the carousel (CLS) and pushed LCP back. They are Latin subsets
+         (~34 + 36 KB). -->
     <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin.woff2" crossorigin>
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/Cronos-Pro-Light-latin.woff2" crossorigin>
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/Cronos-Pro-Display-Italic-latin.woff2" crossorigin>
 
     <!-- Preload the hero carousel's first frame — the LCP element.
          imagesrcset/imagesizes must stay identical to the <img> in
@@ -114,7 +125,19 @@
     <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5T5V9NTQ"
     height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <!-- End Google Tag Manager (noscript) -->
-    <div id="root"></div>
+    <!-- Dos raíces de React dentro del mismo contenedor de página:
+         #hero-root llega pre-renderizado en el build (scripts/prerender.mjs
+         reemplaza este div exacto — no cambiar sus atributos) y main.tsx lo
+         hidrata; #root recibe el resto de la app desde un chunk aparte.
+         display:contents mantiene al header sticky y a las secciones como
+         hijos directos del contenedor flex, igual que antes. -->
+    <!-- overflow-x: clip (no hidden): hidden convierte al contenedor en el
+         scroller del header sticky y el header dejaba de quedar fijo. Los
+         navegadores sin clip (Safari < 16) se quedan con hidden. -->
+    <div style="min-height:100dvh;width:100%;display:flex;flex-direction:column;overflow-x:hidden;overflow-x:clip">
+      <div id="hero-root" style="display:contents"></div>
+      <div id="root" style="display:contents"></div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

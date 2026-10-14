@@ -2,12 +2,13 @@ import { Router, type IRouter } from "express";
 import { getCatalog, getCatalogImage } from "../lib/catalog";
 import { getDisabledProducts } from "../lib/product-settings";
 import { logger } from "../lib/logger";
+import { compressJson } from "../middlewares/compress-json";
 
 const router: IRouter = Router();
 
 // GET /api/catalog — productos grabables de Odoo (precios, variantes, stock).
 // Público: es la misma información que muestra el ecommerce.
-router.get("/catalog", async (_req, res) => {
+router.get("/catalog", compressJson, async (_req, res) => {
   const catalog = await getCatalog();
   // Sin los productos deshabilitados en el panel interno. Si la base no
   // responde, se muestra el catálogo completo antes que dejar la tienda vacía.

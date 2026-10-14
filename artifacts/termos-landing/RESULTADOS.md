@@ -49,7 +49,7 @@ Verificado en local contra `server.mjs`: **10/10 OK**. Contra la producción act
 ## Las 3 cosas que NO hay que tocar (candado anti-regresión)
 
 1. **El run command del deployment.** Debe ser `pnpm --filter @workspace/termos-landing run start` (= `node server.mjs`). TODA la capa de performance de red (brotli, `Cache-Control: immutable`, llms.txt, la API de WhatsApp) vive en `server.mjs`; si el Publish vuelve a servir `dist/public` estático, se pierde compresión (455 KB crudos), caché, llms.txt y el envío de diseños — y Lighthouse cae ~20 puntos. Tras cada publish: `pnpm run check:prod` (10 ✓ o hay problema).
-2. **El patrón de CSS async + preloads del `<head>`** (`asyncCssPlugin` en vite.config.ts, preload del hero con `imagesrcset` idéntico al `<img>`, preload de inter-latin). Es lo que mantiene render-blocking en cero y el LCP image en prioridad alta. No agregar `<link rel="stylesheet">` directos ni scripts síncronos al head.
+2. ~~El patrón de CSS async~~ **Reemplazado en la Etapa D (2026-10-13)** por el pre-render del hero: ver `RESULTADOS-ETAPA-D.md`. El CSS ahora es render-blocking a propósito (el HTML del hero llega pintable y necesita sus estilos). Siguen vigentes: preload del LCP con `imagesrcset` idéntico al `<img>` y preloads de fuentes del `<head>`.
 3. **Los límites de carga diferida:** `React.lazy` por sección en `home.tsx` + `DeferUntilVisible` con rootMargin 200px móvil / 600px desktop. No importar el customizer (ni nada que dependa de three.js) de forma estática desde el entry, y no volver a subir el rootMargin móvil: con ~600px el chunk de 1,11 MB vuelve a bajar en el load inicial (así se generaban los "991 KiB sin usar").
 
 ## Paso pendiente (manual, panel de Replit)

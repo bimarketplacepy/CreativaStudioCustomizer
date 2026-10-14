@@ -20,10 +20,13 @@ export default function PricingEngraving() {
       >
         <div className="text-center mb-16">
           <p className="text-white/60 text-[11px] font-semibold uppercase tracking-[0.35em] mb-5">
-            Tarifas
+            Tarifas del grabado láser
           </p>
+          {/* Antes: "incluido en todos los planes" junto a un plan que cobra
+              justamente eso — se leía como si el grabado fuera gratis. */}
           <p className="text-white/50 text-sm font-light leading-relaxed">
-            {ENGRAVING_BASE} incluido en todos los planes. El valor de la pieza se cotiza aparte.
+            Es el precio del grabado y se suma al de la pieza, que ves en el personalizador.
+            Todos los planes incluyen {ENGRAVING_BASE.toLowerCase()}. ¿Traés tu propio termo o vaso? Pagás solo el grabado.
           </p>
         </div>
 

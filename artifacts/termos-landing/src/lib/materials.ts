@@ -1,5 +1,6 @@
 import type { ProductId } from "./products";
 import type { ObjectId } from "./objects";
+import { printSpecFor } from "./print-specs";
 
 export type MaterialId = "acero" | "inox" | "cuero" | "madera" | "boligrafos" | "cristal" | "plastico";
 
@@ -137,7 +138,8 @@ export function getMaterial(id: string): MaterialDef {
  * plastic and pens are all laser-engraving only. The guampa is engraving-only too.
  */
 export function allowsColorPrint(materialId: string, product?: MaterialProduct): boolean {
+  // Qué pieza entra en la Dacen F5 lo dice print-specs.ts (flag `dacen`).
   return (materialId === "acero" || materialId === "inox")
     && !!product?.drinkwareProductId
-    && product.drinkwareProductId !== "guampa";
+    && printSpecFor(product.drinkwareProductId)?.dacen === true;
 }

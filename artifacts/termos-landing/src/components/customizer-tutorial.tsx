@@ -277,11 +277,15 @@ export default function CustomizerTutorial() {
   useEffect(() => {
     if (!visible) return;
     document.body.style.overflow = "hidden";
+    // Foco al diálogo al abrir; al cerrar vuelve a donde estaba.
+    const prevFocus = document.activeElement as HTMLElement | null;
+    cardRef.current?.querySelector<HTMLElement>(".tuto-x")?.focus();
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") cerrar(); };
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
+      prevFocus?.focus?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -320,6 +324,10 @@ export default function CustomizerTutorial() {
       role="dialog"
       aria-modal="true"
       aria-label="Cómo funciona el personalizador"
+      // Queda montado (para la transición de cierre): cerrado, fuera del árbol
+      // de accesibilidad y del foco con el teclado.
+      aria-hidden={!visible}
+      inert={!visible}
       onClick={(e) => { if (e.target === e.currentTarget) cerrar(); }}
     >
       <style>{CSS}</style>

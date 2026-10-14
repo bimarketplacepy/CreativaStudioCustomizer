@@ -12,6 +12,7 @@ import {
 } from "../lib/order-images";
 import { buildProductionSvg } from "../lib/production-svg";
 import { stickerFileName, stickerProductionPng } from "../lib/production-sticker";
+import { orderMachine } from "../lib/machines";
 import { checkInternalKey, checkOrderImageToken, orderImageToken } from "../lib/internal-key";
 import { logger } from "../lib/logger";
 
@@ -44,9 +45,13 @@ async function generateProductionFile(
 ): Promise<string | null> {
   try {
     const ds = (order.designState ?? {}) as Record<string, unknown>;
-    // Stickers (sección Stickers de la landing): PNG transparente a tamaño
-    // real, el formato que se carga en la app de la eufyMake E1.
-    if (ds.kind === "sticker") {
+    // El archivo depende de la máquina (DACEN.md §4.1):
+    //  - eufyMake E1 (stickers): PNG transparente a tamaño real, el formato
+    //    que se carga en la app de la E1.
+    //  - Dacen F5: el PNG desenrollado llega en la fase 2; mientras tanto se
+    //    genera el SVG de siempre como referencia de ubicación y textos.
+    //  - Láser: SVG vectorial.
+    if (orderMachine(ds) === "eufy" && ds.kind === "sticker") {
       const png = stickerProductionPng(customImageDataUrl, ds.productionDpi);
       if (!png) return null;
       const name = `orders/${order.orderNumber}-produccion.png`;
@@ -139,7 +144,9 @@ router.post("/orders", rateLimit({ max: 10, windowMs: 60 * 60 * 1000 }), async (
         textColor: body.textColor ?? null,
         iconName: body.iconName ?? null,
         hasUploadedImage: body.hasUploadedImage ?? false,
-        designState: { ...body.designState, [TOKEN_FLAG]: true },
+        // `machine` normalizada (o inferida si la landing no la mandó), para
+        // que el panel filtre por máquina sin adivinar.
+        designState: { ...body.designState, machine: orderMachine(body.designState), [TOKEN_FLAG]: true },
       })
       .returning();
     if (!order) throw new Error("insert returned no row");

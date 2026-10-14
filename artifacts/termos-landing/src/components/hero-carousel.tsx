@@ -164,12 +164,13 @@ export default function HeroCarousel({ onImageChange }: { onImageChange?: (src: 
           </p>
         </div>
 
-        {/* Flechas */}
+        {/* Flechas. En celular van juntas arriba a la derecha: a media altura,
+            la de "siguiente" quedaba debajo del botón flotante de WhatsApp. */}
         <button
           type="button"
           aria-label="Anterior"
           onClick={() => { go(index - 1); noteInteraction(); }}
-          className="absolute left-3 top-1/2 -translate-y-1/2 grid h-11 w-11 place-items-center rounded-full bg-black/40 text-white/80 backdrop-blur-sm transition hover:bg-black/70 hover:text-white active:bg-black/70"
+          className="absolute right-[3.75rem] top-4 md:left-3 md:right-auto md:top-1/2 md:-translate-y-1/2 grid h-11 w-11 place-items-center rounded-full bg-black/40 text-white/80 backdrop-blur-sm transition hover:bg-black/70 hover:text-white active:bg-black/70"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
         </button>
@@ -177,7 +178,7 @@ export default function HeroCarousel({ onImageChange }: { onImageChange?: (src: 
           type="button"
           aria-label="Siguiente"
           onClick={() => { go(index + 1); noteInteraction(); }}
-          className="absolute right-3 top-1/2 -translate-y-1/2 grid h-11 w-11 place-items-center rounded-full bg-black/40 text-white/80 backdrop-blur-sm transition hover:bg-black/70 hover:text-white active:bg-black/70"
+          className="absolute right-3 top-4 md:top-1/2 md:-translate-y-1/2 grid h-11 w-11 place-items-center rounded-full bg-black/40 text-white/80 backdrop-blur-sm transition hover:bg-black/70 hover:text-white active:bg-black/70"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
         </button>

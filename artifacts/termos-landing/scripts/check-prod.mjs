@@ -53,6 +53,12 @@ try {
     ? ok(`CSS (${css}): ${(cssBr / 1024).toFixed(1)} KB brotli ≤ 40 KB`)
     : bad(`CSS ${(cssBr / 1024).toFixed(1)} KB brotli > presupuesto 40 KB`);
 
+  // Hero pre-renderizado (scripts/prerender.mjs): sin él la página vuelve a ser
+  // 100% client-side y el LCP espera al JS de entrada.
+  html.includes('<div id="hero-root" style="display:contents"><header')
+    ? ok("Hero pre-renderizado en index.html")
+    : bad("index.html sin el hero pre-renderizado (¿falló scripts/prerender.mjs?)");
+
   // Imagen más pesada del sitio ≤ 150 KB.
   let heaviest = { f: "", s: 0 };
   const walk = (dir) => {
@@ -97,7 +103,11 @@ if (!localOnly) {
 
   try {
     const html = await get("/");
-    const entryMatch = (await html.text()).match(/\/assets\/index-[\w-]+\.js/);
+    const htmlText = await html.text();
+    htmlText.includes('<div id="hero-root" style="display:contents"><header')
+      ? ok("Hero pre-renderizado en el HTML servido")
+      : bad("El HTML de producción no trae el hero pre-renderizado");
+    const entryMatch = htmlText.match(/\/assets\/index-[\w-]+\.js/);
     if (!entryMatch) bad("No se encontró el <script> del entry en el HTML");
     else {
       // fetch de Node descomprime solo; content-encoding queda en headers.

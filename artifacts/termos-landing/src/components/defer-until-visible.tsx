@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { isRevealed, onReveal } from "@/lib/section-reveal";
 
 /**
  * Renders its children only once the placeholder scrolls near the viewport.
@@ -30,6 +31,7 @@ export default function DeferUntilVisible({
   id,
   minHeight = "90vh",
   rootMargin,
+  revealable = false,
 }: {
   children: React.ReactNode;
   /** Anchor id kept on the always-present wrapper so in-page links (e.g.
@@ -37,9 +39,18 @@ export default function DeferUntilVisible({
   id?: string;
   minHeight?: string;
   rootMargin?: string;
+  /** Also mount when revealAllSections() fires (in-page nav to a section that
+   *  is not mounted yet — see lib/section-reveal.ts). Off for the customizer:
+   *  jumping past it must not pull in Three.js. */
+  revealable?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [show, setShow] = useState(false);
+  const [show, setShow] = useState(() => revealable && isRevealed());
+
+  useEffect(() => {
+    if (!revealable || show) return;
+    return onReveal(() => setShow(true));
+  }, [revealable, show]);
 
   useEffect(() => {
     if (show) return;

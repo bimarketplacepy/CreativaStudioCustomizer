@@ -315,6 +315,8 @@ export default function Stickers() {
             hasUploadedImage: true,
             designState: {
               kind: "sticker",
+              // Máquina de producción (DACEN.md §4.1): los stickers van a la eufyMake E1.
+              machine: "eufy",
               widthMm: Math.round(shape.widthMm * 10) / 10,
               heightMm: Math.round(shape.heightMm * 10) / 10,
               borderMm: STICKER_BORDER_MM,

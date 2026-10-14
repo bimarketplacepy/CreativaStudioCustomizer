@@ -1,6 +1,15 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import HeroCarousel from "@/components/hero-carousel";
 import { track } from "@/lib/analytics";
+import { scrollToSection } from "@/lib/section-reveal";
+
+const NAV_ITEMS = [
+  { label: "Inicio", id: "inicio" },
+  { label: "Personalizar", id: "customizer" },
+  { label: "Stickers", id: "stickers" },
+  { label: "Precios", id: "precios" },
+  { label: "Contacto", id: "contacto" },
+];
 
 /** Solid fallback shown before any carousel image is active. */
 const HERO_BASE = "#1A1614";
@@ -10,9 +19,18 @@ export default function Hero() {
   const [bgSrc, setBgSrc] = useState<string | null>(null);
   const handleImageChange = useCallback((src: string) => setBgSrc(src), []);
 
-  const scrollTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
-  };
+  // Stickers/Precios/Contacto se montan diferidas: scrollToSection las monta
+  // antes de scrollear si todavía no existen.
+  const scrollTo = scrollToSection;
+  // Menú del celular (en md+ el nav va en línea). Arranca cerrado: el hero se
+  // pre-renderiza y el primer render tiene que coincidir con el HTML.
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenuOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
   const scrollToCustomizer = () => {
     track("cta_click", { location: "hero" });
     scrollTo("customizer");
@@ -25,18 +43,18 @@ export default function Hero() {
         <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center">
           <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
             <img
-              src="/navbar-logo.webp"
+              src="/navbar-logo-v2.webp"
               alt="MarketPlace"
-              width={120}
-              height={32}
+              width={200}
+              height={40}
               decoding="async"
               className="h-5 sm:h-8 object-contain brightness-0 invert shrink-0 w-auto"
             />
             <span aria-hidden className="text-white/25 text-sm sm:text-lg font-light leading-none shrink-0">|</span>
             <img
-              src="/la-creativa-logo-new.webp"
+              src="/la-creativa-logo-96.webp"
               alt="Creativa Studio"
-              width={120}
+              width={32}
               height={32}
               decoding="async"
               className="h-5 sm:h-8 object-contain brightness-0 invert shrink-0 w-auto"
@@ -46,13 +64,7 @@ export default function Hero() {
             </span>
           </div>
           <nav className="hidden md:flex flex-1 justify-center items-center gap-8 text-xs text-white/60 uppercase tracking-widest font-medium">
-            {[
-              { label: "Inicio", id: "inicio" },
-              { label: "Personalizar", id: "customizer" },
-              { label: "Stickers", id: "stickers" },
-              { label: "Precios", id: "precios" },
-              { label: "Contacto", id: "contacto" },
-            ].map(item => (
+            {NAV_ITEMS.map(item => (
               <a
                 key={item.id}
                 href={`#${item.id}`}
@@ -63,7 +75,35 @@ export default function Hero() {
               </a>
             ))}
           </nav>
+          <button
+            type="button"
+            onClick={() => setMenuOpen(o => !o)}
+            aria-expanded={menuOpen}
+            aria-controls="mobile-nav"
+            aria-label={menuOpen ? "Cerrar menú" : "Abrir menú"}
+            className="md:hidden ml-auto -mr-1 inline-flex items-center justify-center w-11 h-11 text-white/80 hover:text-white"
+          >
+            <svg aria-hidden width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              {menuOpen
+                ? <path d="M6 6l12 12M18 6L6 18" />
+                : <path d="M4 7h16M4 12h16M4 17h16" />}
+            </svg>
+          </button>
         </div>
+        {menuOpen && (
+          <nav id="mobile-nav" className="md:hidden border-t border-white/10 bg-[#1A1614] px-3 pb-3">
+            {NAV_ITEMS.map(item => (
+              <a
+                key={item.id}
+                href={`#${item.id}`}
+                onClick={e => { e.preventDefault(); setMenuOpen(false); scrollTo(item.id); }}
+                className="flex items-center min-h-12 px-3 text-sm text-white/75 uppercase tracking-widest font-medium border-b border-white/5 last:border-0 hover:text-white"
+              >
+                {item.label}
+              </a>
+            ))}
+          </nav>
+        )}
       </header>
 
       {/* Hero — full bleed dark, editorial */}
@@ -102,7 +142,7 @@ export default function Hero() {
               <h1> is the LCP element on mobile, so it must paint the instant
               React commits, not fade in. */}
           <div className="flex-1">
-            <p className="text-white/70 text-[11px] uppercase tracking-[0.4em] mb-6 md:mb-10 font-medium">
+            <p className="text-white/70 text-[11px] uppercase tracking-[0.2em] md:tracking-[0.4em] mb-6 md:mb-10 font-medium">
               Creativa Studio · Personalización
             </p>
 

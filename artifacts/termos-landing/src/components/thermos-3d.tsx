@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo, useState, useDeferredValue, Suspense, Component, ReactNode } from "react";
+import React, { useRef, useEffect, useMemo, useState, useCallback, useDeferredValue, Suspense, Component, ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, PerspectiveCamera, useGLTF } from "@react-three/drei";
 import { StudioLighting } from "./studio-lighting";
@@ -515,7 +515,7 @@ function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
   textPlacement, artPlacement, colorPrint, textColor, engraveStyle, singleFace, editSingleFace, showGuides, frontFaceU, guideFace, glass,
   designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, snapToURef, renderNowRef, onReady,
-  autoSpin = false, rotationLocked = false,
+  autoSpin = false, rotationLocked = false, onMotionChange,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
@@ -532,6 +532,8 @@ function ThermosMesh({
   renderNowRef?: React.MutableRefObject<(() => void) | null>;
   onReady?: () => void;
   autoSpin?: boolean; rotationLocked?: boolean;
+  /** La pieza empezó (true) o terminó (false) de moverse: giro, arrastre, inercia. */
+  onMotionChange?: (moving: boolean) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
@@ -729,14 +731,19 @@ function ThermosMesh({
   // Mientras el cliente escribe, arrastra o prueba colores, las texturas se
   // arman en borrador (¼ de los píxeles, sin desenfoques); la versión completa
   // se arma una sola vez, cuando deja de tocar (~280 ms).
-  const [settled, setSettled] = useState(true);
-  const editStarted = useRef(false);
+  // Cada edición es una identidad nueva y el borrador se decide en el MISMO
+  // render que trae el cambio. (Antes un estado `settled` recién pasaba a false
+  // en un efecto: cada tecla armaba primero la versión completa, con los
+  // desenfoques, y después el borrador — el doble de trabajo, y el caro.)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const editKey = useMemo(() => ({}), [dText, dTextPlacement, dArtPlacement, artMask, imageSize, colorHex]);
+  const [settledKey, setSettledKey] = useState(editKey);
   useEffect(() => {
-    if (!editStarted.current) { editStarted.current = true; return; }
-    setSettled(false);
-    const t = setTimeout(() => setSettled(true), SETTLE_MS);
+    if (settledKey === editKey) return;
+    const t = setTimeout(() => setSettledKey(editKey), SETTLE_MS);
     return () => clearTimeout(t);
-  }, [dText, dTextPlacement, dArtPlacement, artMask, imageSize, colorHex]);
+  }, [editKey, settledKey]);
+  const settled = settledKey === editKey;
 
   // Steel/leather/wood body maps — skipped entirely for glass, which paints no
   // colour/roughness/metalness maps onto the clear body.
@@ -796,6 +803,17 @@ function ThermosMesh({
     // Toque = soltar cerca de donde se apoyó y rápido. Sirve para seleccionar
     // el diseño (o terminar la edición tocando fuera de él).
     let down: { x: number; y: number; t: number; id: number } | null = null;
+    // El arrastre del diseño se acumula y se entrega una vez por cuadro: cada
+    // entrega re-renderiza el personalizador entero (y re-mide el texto), y el
+    // puntero dispara eventos bastante más seguido que la pantalla.
+    let pendDu = 0, pendDv = 0, moveRaf = 0;
+    const flushMove = () => {
+      if (moveRaf) { cancelAnimationFrame(moveRaf); moveRaf = 0; }
+      if (!pendDu && !pendDv) return;
+      const du = pendDu, dv = pendDv;
+      pendDu = 0; pendDv = 0;
+      designRef.current.onDesignMove?.(du, dv);
+    };
     // El diseño no arranca a moverse hasta pasar este umbral: así un toque
     // para seleccionar o deseleccionar no lo corre de lugar.
     const DESIGN_SLOP = 5;
@@ -855,7 +873,9 @@ function ThermosMesh({
         const worldPerPx = (2 * dist * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2)) / Math.max(1, rect.height);
         const du = (dx * worldPerPx) / (2 * Math.PI * sl.maxR);
         const dv = (dy * worldPerPx) / Math.max(1e-6, sl.band[1] - sl.band[0]);
-        designRef.current.onDesignMove?.(du, dv);
+        pendDu += du;
+        pendDv += dv;
+        if (!moveRaf) moveRaf = requestAnimationFrame(() => { moveRaf = 0; flushMove(); });
         return;
       }
       velYaw.current   = dx / dt * 16;
@@ -888,6 +908,7 @@ function ThermosMesh({
 
     const onUp = (e: PointerEvent) => {
       const wasDesign = isDragging.current && dragMode.current === "design" && designMoving;
+      flushMove();
       if (wasDesign) designRef.current.onDesignDragEnd?.();
       const tap = !!down && e.type === "pointerup" && e.pointerId === down.id
         && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8
@@ -907,6 +928,7 @@ function ThermosMesh({
     // pointercancel: el sistema cortó el gesto (llamada, notificación…).
     canvas.addEventListener("pointercancel", onUp);
     return () => {
+      if (moveRaf) cancelAnimationFrame(moveRaf);
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);
@@ -957,9 +979,17 @@ function ThermosMesh({
   onReadyRef.current = onReady;
   useEffect(() => { onReadyRef.current?.(); }, [product.id]);
 
+  const motionRef = useRef({ moving: false, onMotionChange });
+  motionRef.current.onMotionChange = onMotionChange;
+  const reportMotion = (moving: boolean) => {
+    if (motionRef.current.moving === moving) return;
+    motionRef.current.moving = moving;
+    motionRef.current.onMotionChange?.(moving);
+  };
+
   useFrame((_, delta) => {
     if (!groupRef.current) return;
-    if (isDragging.current) return;
+    if (isDragging.current) { reportMotion(true); return; }
     // Con frameloop="demand" cada cuadro pide el siguiente solo mientras algo
     // se mueve (giro, inercia o vuelta a la vertical).
     let animating = false;
@@ -971,6 +1001,7 @@ function ThermosMesh({
       groupRef.current.rotation.x *= 0.95; // ease back upright
       velYaw.current = 0;
       velPitch.current = 0;
+      reportMotion(true);
       invalidate();
       return;
     }
@@ -1025,6 +1056,7 @@ function ThermosMesh({
       else groupRef.current.rotation.x = 0;
     }
 
+    reportMotion(animating);
     if (animating) invalidate();
   });
 
@@ -1442,11 +1474,50 @@ function FallbackCanvas({
   );
 }
 
+/**
+ * Sombra de contacto horneada: re-dibujarla en vivo cuesta un render extra de
+ * toda la escena (1024²) y cuatro pasadas de desenfoque POR CUADRO — ~⅓ del
+ * trabajo de GPU mientras se gira la pieza. Se congela mientras la pieza se
+ * mueve y se vuelve a hornear una vez cuando se detiene. Como el cuerpo es de
+ * revolución, durante el giro casi no cambia.
+ * (ContactShadows dibuja `frames` cuadros contados desde su último render: con
+ * memo, solo re-renderiza al cambiar `moving` o el producto/talla.)
+ */
+const SettledShadows = React.memo(function SettledShadows({ setMovingRef, position, scale }: {
+  setMovingRef: React.MutableRefObject<((moving: boolean) => void) | null>;
+  position: [number, number, number];
+  scale: number;
+}) {
+  const [moving, setMoving] = useState(false);
+  const invalidate = useThree(s => s.invalidate);
+  useEffect(() => {
+    setMovingRef.current = setMoving;
+    return () => { setMovingRef.current = null; };
+  }, [setMovingRef]);
+  // Al detenerse hace falta un cuadro para hornear (frameloop="demand").
+  useEffect(() => { if (!moving) invalidate(); }, [moving, invalidate]);
+  return (
+    <ContactShadows
+      position={position}
+      opacity={0.5}
+      scale={scale}
+      blur={2.6}
+      resolution={1024}
+      frames={moving ? 0 : 1}
+      far={4}
+      color="#000000"
+    />
+  );
+}, (a, b) => a.setMovingRef === b.setMovingRef && a.scale === b.scale
+  && a.position[0] === b.position[0] && a.position[1] === b.position[1] && a.position[2] === b.position[2]);
+
 function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props }: Thermos3DProps & {
   product: ProductDef; sil: Silhouette;
   onContextLost?: () => void; onContextRestored?: () => void;
 }) {
   const { shadowY } = fitCamera(sil);
+  const setShadowMovingRef = useRef<((moving: boolean) => void) | null>(null);
+  const onMotionChange = useCallback((moving: boolean) => setShadowMovingRef.current?.(moving), []);
   return (
     <Canvas
       // Cap the pixel ratio so high-DPI phones don't render 3–4× the pixels of a
@@ -1456,9 +1527,10 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
       // Solo se dibuja cuando algo cambia (giro, arrastre, diseño): quieto, el
       // visor no gasta batería ni CPU. ThermosMesh pide cuadros mientras anima.
       frameloop="demand"
-      // preserveDrawingBuffer keeps the last frame readable so we can capture a
-      // PNG of the finished piece (canvas.toDataURL) for the WhatsApp summary.
-      gl={{ antialias: true, alpha: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
+      // Sin preserveDrawingBuffer (obliga a copiar el buffer en cada cuadro, caro
+      // en GPUs de celular): la captura del resumen dibuja un cuadro con
+      // renderNowRef y lo lee en la misma tarea, cuando el buffer sigue vigente.
+      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
       // preventDefault on context loss lets the browser fire `contextrestored`
       // and R3F rebuild the scene instead of leaving a black canvas. We surface a
       // placeholder while lost and force a re-render once the context is back.
@@ -1509,22 +1581,15 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           onReady={props.onReady}
           autoSpin={props.autoSpin ?? false}
           rotationLocked={props.rotationLocked ?? false}
+          onMotionChange={onMotionChange}
         />
 
         {/* Single, stable ground shadow, anchored to the floor plane — no
-            real-time shadow map, so no self-shadow acne. On desktop it follows
-            the spin every frame; on phones it is baked once per product/size
-            (a full extra render per frame made dragging stutter). */}
-        <ContactShadows
-          key={LOW_PERF ? `${product.id}-${sil.scale}` : "live"}
+            real-time shadow map, so no self-shadow acne. */}
+        <SettledShadows
+          setMovingRef={setShadowMovingRef}
           position={[0, shadowY, 0]}
-          opacity={0.5}
           scale={Math.max(5, sil.maxR * 7)}
-          blur={2.6}
-          resolution={1024}
-          frames={LOW_PERF ? 1 : Infinity}
-          far={4}
-          color="#000000"
         />
       </Suspense>
 

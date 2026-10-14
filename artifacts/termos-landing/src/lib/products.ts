@@ -372,7 +372,7 @@ export const PRODUCTS: ProductDef[] = [
     id: "guampa",
     name: "Guampas",
     singular: "Guampa",
-    // Guampa Hydrate (artifacts/3D/Guampa.glb): vaso bajo y ancho, base
+    // Guampa Hydrate (artifacts/3D/Guampa-v1.glb): vaso bajo y ancho, base
     // redondeada, paredes casi rectas que se abren apenas hacia arriba y tapa
     // con pico. Perfil = radio del cuerpo medido sobre el .glb (m × 14,
     // centrado en 0,0587 m). Logo atrás (yawDeg 180).
