@@ -3,3 +3,10 @@
 
 # No need to store the pnpm store twice.
 .local
+
+# Cachés y perfiles temporales de navegadores headless (pruebas): no van al deploy.
+.config/chromium-headless
+.config/chromium
+.cache/ms-playwright
+.cache/chromium-headless
+.cache/pip

@@ -3249,15 +3249,14 @@ export default function Customizer() {
     </>
   );
 
-  // Mini-preview 3D pegajoso del wizard móvil (Paso 1 y Paso 2 "Estilo"): una
+  // Mini-preview 3D del wizard móvil (Paso 1 y Paso 2 "Estilo"): una
   // vista compacta del producto elegido que se actualiza en vivo. Los pasos del
   // wizard son mutuamente excluyentes, así que nunca hay dos canvas WebGL
   // montados a la vez (este o el grande del paso de Diseño, jamás ambos).
-  // top-16: debajo del header, que también es sticky (64px). Fondo opaco: el
-  // contenido que scrollea por detrás se transparentaba a través del panel
-  // (bg-secondary/30) y el termo parecía flotar sobre los controles.
+  // NO es sticky: en celular el visor pegado arriba seguía al scroll ("el termo
+  // se va para abajo") y tapaba los controles. Scrollea con la página.
   const renderMiniPreview = () => (
-    <div className="sticky top-16 z-30 bg-white pt-1 pb-0.5 [transform:translateZ(0)]">
+    <div className="relative bg-white pt-1 pb-0.5">
       <div className="relative isolate [transform:translateZ(0)] bg-secondary/30 rounded-2xl border border-border overflow-hidden shadow-lg shadow-black/5">
         {isGlass ? (
           <div className="absolute inset-0 rounded-2xl" style={{ background: "radial-gradient(circle at 50% 38%, #eef2f6 0%, #d3dae2 55%, #aeb8c4 100%)" }} />
@@ -3541,7 +3540,7 @@ export default function Customizer() {
             grabado vive ahora en el Paso 3, bajo "Texto Personalizado". */}
         {isMobile && isDrinkware && mobileStep === 2 && (
           <motion.div key="wiz-2" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-5 pb-28">
-            {/* Live mini-preview — the same compact, sticky 3D as Step 1, updating
+            {/* Live mini-preview — the same compact 3D as Step 1, updating
                 as the colour changes. Only ONE 3D canvas is ever mounted at a time
                 (the wizard steps are exclusive), so no second renderer. */}
             {renderMiniPreview()}
@@ -3557,16 +3556,15 @@ export default function Customizer() {
         <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 lg:gap-8 lg:items-start">
 
           {/* PREVIEW AREA */}
-          {/* On mobile the preview wrapper is sticky within the tall flex column,
-              so the live 3D stays pinned at the top while the editor scrolls
-              beneath it — same single canvas, no second WebGL context. */}
+          {/* En celular el visor NO es sticky: scrollea con la página (pegado
+              arriba seguía al scroll y tapaba el editor). Sticky solo en desktop. */}
           {/* Desktop con catálogo de la tienda: barra lateral a la izquierda del 3D. */}
           {shopMode && !isMobile && (
             <div className="w-full min-w-0 lg:col-span-3 lg:self-start">
               <ShopRail items={shopItems} value={shopKey} initialBrand={shopItem?.brand ?? shopBrands(shopItems)[0]} onPick={pickShopItem} />
             </div>
           )}
-          <div className="w-full min-w-0 lg:col-span-4 relative max-lg:sticky max-lg:top-16 max-lg:z-30 max-lg:bg-white max-lg:pt-1 max-lg:[transform:translateZ(0)] lg:self-start">
+          <div className="w-full min-w-0 lg:col-span-4 relative max-lg:bg-white max-lg:pt-1 lg:self-start">
             <div ref={previewPanelRef} className="lg:sticky lg:top-24 z-20 isolate [transform:translateZ(0)] bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[280px] md:min-h-[520px] max-lg:shadow-lg max-lg:shadow-black/5">
               {isGlass ? (
                 // Glass needs an environment to reflect and a graded backdrop to
