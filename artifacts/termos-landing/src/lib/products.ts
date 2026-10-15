@@ -36,18 +36,7 @@ export interface ProductDef {
    * the default rectangle would wedge its margins into a narrowing part of the
    * silhouette (e.g. the copa's bowl curving down into the stem).
    */
-  frontFace?: {
-    uHalfWidth?: number;
-    vCenter?: number;
-    vHeightFrac?: number;
-    /**
-     * Zonas grabables de la cara, de arriba hacia abajo, como [vMin, vMax] en
-     * fracción de la banda. Para cuerpos con un escalón (ej. el vaso con pico):
-     * el diseño puede ir arriba o abajo, pero nunca montado sobre el escalón.
-     * Con zonas, vCenter/vHeightFrac se ignoran.
-     */
-    zones?: [number, number][];
-  };
+  frontFace?: { uHalfWidth?: number; vCenter?: number; vHeightFrac?: number };
   /**
    * Caras donde se puede grabar el texto (ver FACES en face-area.ts). Se sacan
    * las que caen sobre la manija (u 0.75 = "left", u 0.25 = "right"). El dorso
@@ -565,10 +554,9 @@ export const PRODUCTS: ProductDef[] = [
       [0.596,  0.973],
     ],
     band: [-0.92, 0.90],
-    // Cara frontal a 90° de la manija (u 0.75), sin tocarla. Dos zonas: la parte
-    // superior recta y la parte inferior (más angosta), salteando el escalón del
-    // cuerpo (~50–68% de la banda) para que nada quede montado encima.
-    frontFace: { uHalfWidth: 0.16, zones: [[0.04, 0.5], [0.68, 0.96]] },
+    // Cara frontal a 90° de la manija (u 0.75), en la parte superior recta:
+    // el área no baja al escalón del cuerpo ni toca la manija.
+    frontFace: { uHalfWidth: 0.16, vCenter: 0.27, vHeightFrac: 0.46 },
     model: {
       url: "/models/forma-vaso-manija.glb?v=4",
       exactFor: ["Vaso con Pico y Agarre"],
@@ -603,8 +591,7 @@ export const PRODUCTS: ProductDef[] = [
       [0.596,  0.973],
     ],
     band: [-0.92, 0.90],
-    // Mismo cuerpo que el vaso con pico: zona de arriba y de abajo, sin el escalón.
-    frontFace: { uHalfWidth: 0.2, zones: [[0.04, 0.5], [0.68, 0.96]] },
+    frontFace: { uHalfWidth: 0.2, vCenter: 0.27, vHeightFrac: 0.46 },
     model: {
       url: "/models/vaso-hydrate.glb?v=1",
       unitsPerMeter: 12,

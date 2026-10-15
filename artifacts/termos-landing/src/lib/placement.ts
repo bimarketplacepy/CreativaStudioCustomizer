@@ -50,12 +50,6 @@ export interface Placement {
   lineHeight?: number;
   /** Cara grabada (solo texto; el arte va siempre al frente). Default: "front". */
   face?: FaceId;
-  /**
-   * Zona de la cara donde quedó (0 = arriba, 1 = abajo…), solo en productos con
-   * varias zonas (ver `frontFace.zones`). La pone el clamp; el archivo de
-   * producción la usa para avisarle al taller.
-   */
-  zone?: number;
 }
 
 // Text starts small (~45%): a full-size name overflows the little mobile preview,

@@ -7,7 +7,7 @@ import { getProduct, getSize, resampledProfile, type ProductDef } from "@/lib/pr
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, bandRange, vForY, type FaceId, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
 import { makeBodyMaps, makeGlassEngraving, type EngraveStyle, type TextMark } from "@/lib/engraving-maps";
-import { FRONT_FACE, faceConfigFor, frontAreaBounds } from "@/lib/face-area";
+import { FRONT_FACE, frontAreaBounds } from "@/lib/face-area";
 import { layoutText, fillLinesAligned, measureLinesWidth, LINE_HEIGHT } from "@/lib/engraving-text";
 
 class WebGLErrorBoundary extends Component<
@@ -93,12 +93,6 @@ interface Thermos3DProps {
   autoSpin?: boolean;
   /** Ignore manual rotation drags (used together with autoSpin while typing). */
   rotationLocked?: boolean;
-  /**
-   * Editor a pantalla completa (el visor no comparte el gesto con el scroll de
-   * la página): arrastrar sobre el diseño elegido lo mueve y arrastrar fuera
-   * gira la pieza, con mouse o con el dedo.
-   */
-  freeGestures?: boolean;
   /**
    * Imperative snap hook: the parent stores here a fn that rotates the piece so
    * the given texture-u faces the camera (upright, no inertia). Used before
@@ -476,7 +470,6 @@ function darken(hex: string, t: number): string {
  * closed line loop that hugs the body surface over the editable area, so the
  * customer sees exactly the box their design is trapped inside. Built straight
  * from the same `FRONT_FACE` config the clamp uses, so guide and limit agree.
- * En cuerpos con escalón hay un recuadro por zona (arriba y abajo).
  */
 function FrontFaceGuide({ sil, product, face }: { sil: Silhouette; product: ProductDef; face: FaceId }) {
   const object = useMemo(() => {
@@ -509,6 +502,13 @@ function FrontFaceGuide({ sil, product, face }: { sil: Silhouette; product: Prod
     };
 
     const NH = 28, NV = 12;
+    const verts: THREE.Vector3[] = [];
+    for (let i = 0; i <= NH; i++) verts.push(at(b.uMin + (b.uMax - b.uMin) * (i / NH), b.vMin));
+    for (let i = 1; i <= NV; i++) verts.push(at(b.uMax, b.vMin + (b.vMax - b.vMin) * (i / NV)));
+    for (let i = 1; i <= NH; i++) verts.push(at(b.uMax - (b.uMax - b.uMin) * (i / NH), b.vMax));
+    for (let i = 1; i < NV; i++) verts.push(at(b.uMin, b.vMax - (b.vMax - b.vMin) * (i / NV)));
+
+    const geo = new THREE.BufferGeometry().setFromPoints(verts);
     const mat = new THREE.LineDashedMaterial({
       color: "#C1121F",
       dashSize: 0.05 * sil.scale,
@@ -517,23 +517,14 @@ function FrontFaceGuide({ sil, product, face }: { sil: Silhouette; product: Prod
       opacity: 0.85,
       depthWrite: false,
     });
-    const group = new THREE.Group();
-    for (const z of faceConfigFor(product).zones) {
-      const verts: THREE.Vector3[] = [];
-      for (let i = 0; i <= NH; i++) verts.push(at(b.uMin + (b.uMax - b.uMin) * (i / NH), z.vMin));
-      for (let i = 1; i <= NV; i++) verts.push(at(b.uMax, z.vMin + (z.vMax - z.vMin) * (i / NV)));
-      for (let i = 1; i <= NH; i++) verts.push(at(b.uMax - (b.uMax - b.uMin) * (i / NH), z.vMax));
-      for (let i = 1; i < NV; i++) verts.push(at(b.uMin, z.vMax - (z.vMax - z.vMin) * (i / NV)));
-      const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(verts), mat);
-      line.computeLineDistances();
-      group.add(line);
-    }
-    return group;
+    const line = new THREE.LineLoop(geo, mat);
+    line.computeLineDistances();
+    return line;
   }, [sil, product, face]);
 
   useEffect(() => () => {
-    object.children.forEach(c => (c as THREE.LineLoop).geometry.dispose());
-    ((object.children[0] as THREE.LineLoop | undefined)?.material as THREE.Material | undefined)?.dispose();
+    object.geometry.dispose();
+    (object.material as THREE.Material).dispose();
   }, [object]);
 
   return <primitive object={object} />;
@@ -543,7 +534,7 @@ function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
   textPlacement, artPlacement, extraTexts, colorPrint, textColor, engraveStyle, singleFace, editSingleFace, showGuides, frontFaceU, guideFace, hideLogo = false, glass,
   designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, snapToURef, renderNowRef, onReady,
-  autoSpin = false, rotationLocked = false, freeGestures = false, onMotionChange, arModelRef,
+  autoSpin = false, rotationLocked = false, onMotionChange, arModelRef,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
@@ -560,7 +551,7 @@ function ThermosMesh({
   snapToURef?: React.MutableRefObject<((u: number) => void) | null>;
   renderNowRef?: React.MutableRefObject<(() => void) | null>;
   onReady?: () => void;
-  autoSpin?: boolean; rotationLocked?: boolean; freeGestures?: boolean;
+  autoSpin?: boolean; rotationLocked?: boolean;
   /** La pieza empezó (true) o terminó (false) de moverse: giro, arrastre, inercia. */
   onMotionChange?: (moving: boolean) => void;
   arModelRef?: Thermos3DProps["arModelRef"];
@@ -580,8 +571,8 @@ function ThermosMesh({
 
   // Latest design-drag inputs, read inside the (stable) pointer listeners so we
   // don't re-attach them every render when the callbacks change identity.
-  const designRef = useRef({ designActive, editSingleFace, rotationLocked, freeGestures, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, sil, product });
-  designRef.current = { designActive, editSingleFace, rotationLocked, freeGestures, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, sil, product };
+  const designRef = useRef({ designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, sil, product });
+  designRef.current = { designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, sil, product };
 
   const bodyGeo = useMemo(() => {
     const geo = new THREE.LatheGeometry(sil.points, 128);
@@ -891,12 +882,10 @@ function ThermosMesh({
       const editing = d.designActive && d.editSingleFace;
       // Chrome dispara pointerdown ANTES que touchstart: se calcula acá también.
       if (editing && e.pointerType !== "mouse") touchOnDesign = onDesignAt(e);
-      // Editor a pantalla completa: fuera del diseño elegido, el gesto gira.
-      const offDesign = editing && (e.pointerType === "mouse" ? d.freeGestures && !onDesignAt(e) : !touchOnDesign);
       // Editando, un dedo fuera del diseño no gira (la cara queda de frente):
       // ese gesto es solo el scroll de la página.
-      if (offDesign && !d.freeGestures) return;
-      const mode = editing && !offDesign ? "design" : "rotate";
+      if (editing && e.pointerType !== "mouse" && !touchOnDesign) return;
+      const mode = editing ? "design" : "rotate";
       // Envolvente 360° while typing: manual rotation is locked (the piece is
       // auto-spinning); ignore the gesture entirely until the input blurs.
       if (mode === "rotate" && d.rotationLocked) return;
@@ -1647,7 +1636,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
       // scrollea tocando fuera del visor.
       // pan-y: el desliz vertical scrollea la página; un dedo apoyado sobre el
       // diseño en edición lo cancela en el touchstart (ThermosMesh).
-      style={{ background: "transparent", cursor: "grab", touchAction: props.freeGestures ? "none" : "pan-y" }}
+      style={{ background: "transparent", cursor: "grab", touchAction: "pan-y" }}
     >
       <Rig sil={sil} />
       {/* 0.5: con las luces direccionales de abajo, más reflejo lava los colores
@@ -1689,7 +1678,6 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           onReady={props.onReady}
           autoSpin={props.autoSpin ?? false}
           rotationLocked={props.rotationLocked ?? false}
-          freeGestures={props.freeGestures ?? false}
           onMotionChange={onMotionChange}
           arModelRef={props.arModelRef}
         />

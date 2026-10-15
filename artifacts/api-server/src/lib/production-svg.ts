@@ -34,8 +34,7 @@ const FRONT_FACE = { uMin: 0.28, uMax: 0.72, vMin: 0.08, vMax: 0.92 } as const;
 const FACES: Record<string, { label: string; offset: number }> = {
   front: { label: "FRENTE", offset: 0 },
   left: { label: "COSTADO IZQUIERDO", offset: 0.25 },
-  // En los modelos con logo de la marca, el dorso es el lado del logo.
-  back: { label: "DORSO (lado del logo de la marca)", offset: 0.5 },
+  back: { label: "DORSO", offset: 0.5 },
   right: { label: "COSTADO DERECHO", offset: -0.25 },
 };
 
@@ -63,8 +62,6 @@ interface PlacementLike {
   orientation?: string;
   /** Cara del cuerpo (front/left/back/right); sin valor = frente. */
   face?: string;
-  /** Zona del cuerpo en productos con escalón (0 = arriba, 1 = abajo); sin valor = única. */
-  zone?: number;
 }
 
 export interface ProductionInput {
@@ -386,16 +383,10 @@ export async function buildProductionSvg(input: ProductionInput): Promise<string
     if ((p.layout ?? "auto") === "wrap360") {
       warnings.push(`${label[0]!.toUpperCase()}${label.slice(1)} envolvente 360°: en este archivo va como una sola línea; envolver alrededor del cuerpo.`);
     } else {
-      warnFace(label, p);
+      const face = FACES[p.face ?? "front"];
+      if (face && face.offset !== 0) warnings.push(`${label[0]!.toUpperCase()}${label.slice(1)} en el ${face.label} (no en el frente).`);
     }
   };
-  /** Aviso para el taller cuando el elemento no va en el frente o va en la parte de abajo. */
-  function warnFace(label: string, p: PlacementLike | null | undefined) {
-    const Label = `${label[0]!.toUpperCase()}${label.slice(1)}`;
-    const face = FACES[p?.face ?? "front"];
-    if (face && face.offset !== 0) warnings.push(`${Label} en el ${face.label}, no en el frente.`);
-    if (typeof p?.zone === "number" && p.zone > 0) warnings.push(`${Label} en la PARTE DE ABAJO del cuerpo (debajo del escalón), no en la de arriba.`);
-  }
   await addText(input.text, input.fontId, input.textPlacement, "texto", "texto");
   await addText(input.text2, input.text2FontId, input.text2Placement, "texto-2", "texto 2");
 
@@ -425,7 +416,6 @@ export async function buildProductionSvg(input: ProductionInput): Promise<string
       `    ${iconBody}`,
       `  </g>`,
     );
-    warnFace("ícono", input.artPlacement);
   }
 
   // ── Logo/foto del cliente, embebido en máxima resolución disponible ──
@@ -441,7 +431,6 @@ export async function buildProductionSvg(input: ProductionInput): Promise<string
       `  <!-- LOGO RASTER - revisar/vectorizar manualmente si es grabado láser -->`,
       `  <image id="logo-cliente" x="${round(cx - box / 2)}" y="${round(cy - box / 2)}" width="${round(box)}" height="${round(box)}" preserveAspectRatio="xMidYMid meet" href="${dataUrl}"/>`,
     );
-    warnFace("logo/foto del cliente", input.artPlacement);
     if (mode === "laser") warnings.push("Incluye logo/foto raster: vectorizar antes de grabar a láser.");
   }
 

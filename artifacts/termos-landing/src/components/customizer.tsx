@@ -16,9 +16,8 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
   WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
   ChevronUp, Crosshair, CirclePlay, Orbit, Link2, MessageCircle, MapPin, HandCoins,
-  Undo2, Trash2, Search, ScanEye, Pencil, Maximize2,
+  Undo2, Trash2, Search, ScanEye,
 } from "lucide-react";
-import { createPortal } from "react-dom";
 import Thermos3D from "./thermos-3d";
 // El creador de stickers baja recién al elegir el modo "Stickers".
 const StickerCreator = React.lazy(() => import("./stickers"));
@@ -38,7 +37,6 @@ import {
 } from "@/lib/engraving-maps";
 import {
   padToPlacement, placementToPad, engraveFacesFor, faceCenterU, faceLabel,
-  faceAreaCenter, faceConfigFor, vInNextZone,
   clampPlacementToFrontArea, type MarkHalfExtents,
 } from "@/lib/face-area";
 import {
@@ -59,8 +57,7 @@ import {
   useCatalog, viewSizeId, type CatalogSection, type ShopItem,
 } from "@/lib/odoo-catalog";
 import { track } from "@/lib/analytics";
-import { AiPhraseIdeas, useAiStatus } from "./ai-tools";
-import { FontPicker, QuickStart, ScaleSlider, Segmented, ToolTray, useVisualViewport, type Tool } from "./designer-ui";
+import { AiPhraseIdeas } from "./ai-tools";
 import type { PhraseIdea } from "@/lib/ai";
 import { dataUrlToJpeg, downloadDataUrl } from "@/lib/share";
 import { useCreateOrder, type CreateOrderRequest } from "@workspace/api-client-react";
@@ -665,9 +662,8 @@ const PAD_BASE = 0.15; // element half-size as a fraction of the pad, at scale 1
  */
 function DesignEditBar({ kindLabel, onSmaller, onBigger, onCenter, onUndo, onDelete, onDone }: {
   kindLabel: string;
-  /** Sin − / + en el editor por capas: el tamaño va solo en su slider. */
-  onSmaller?: () => void;
-  onBigger?: () => void;
+  onSmaller: () => void;
+  onBigger: () => void;
   onCenter: () => void;
   onUndo: (() => void) | null;
   onDelete: () => void;
@@ -680,8 +676,8 @@ function DesignEditBar({ kindLabel, onSmaller, onBigger, onCenter, onUndo, onDel
         Editando {kindLabel} · arrastralo sobre el producto
       </span>
       <div className="flex items-center gap-1 rounded-xl bg-white border border-border shadow-sm p-1">
-        {onSmaller && <button type="button" aria-label="Achicar" title="Achicar" className={btn} onClick={onSmaller}><Minus className="w-4 h-4" /></button>}
-        {onBigger && <button type="button" aria-label="Agrandar" title="Agrandar" className={btn} onClick={onBigger}><Plus className="w-4 h-4" /></button>}
+        <button type="button" aria-label="Achicar" title="Achicar" className={btn} onClick={onSmaller}><Minus className="w-4 h-4" /></button>
+        <button type="button" aria-label="Agrandar" title="Agrandar" className={btn} onClick={onBigger}><Plus className="w-4 h-4" /></button>
         <button type="button" aria-label="Centrar" title="Centrar" className={btn} onClick={onCenter}><Crosshair className="w-4 h-4" /></button>
         <button type="button" aria-label="Deshacer" title="Deshacer" className={btn} onClick={onUndo ?? undefined} disabled={!onUndo}><Undo2 className="w-4 h-4" /></button>
         <button type="button" aria-label="Borrar" title="Borrar" className={btn} onClick={onDelete}><Trash2 className="w-4 h-4" /></button>
@@ -1188,12 +1184,9 @@ function TextColorPicker({ value, onChange }: { value: string; onChange: (hex: s
 
 /** Multi-line engraving text field: a textarea with a newline-aware char cap
  *  (line breaks don't count) so "Saltos manuales" works without eating budget. */
-function EngravingTextField({ text, onText, layout, onFocusChange, limitNotice, placeholder = "Tu nombre o texto", autoFocus, rows = 2 }: {
+function EngravingTextField({ text, onText, layout, onFocusChange, limitNotice, placeholder = "Tu nombre o texto" }: {
   text: string;
   placeholder?: string;
-  /** Abre el teclado al aparecer (herramienta "Editar" del celular); selecciona el texto de ejemplo. */
-  autoFocus?: boolean;
-  rows?: number;
   onText: (t: string) => void;
   layout: TextLayout | undefined;
   /** Focus tracking (drives the Envolvente 360° auto-rotation while typing). */
@@ -1206,11 +1199,10 @@ function EngravingTextField({ text, onText, layout, onFocusChange, limitNotice, 
       <Textarea
         value={text}
         onChange={(e) => onText(capEngravingText(e.target.value))}
-        onFocus={(e) => { onFocusChange?.(true); if (autoFocus) e.currentTarget.select(); }}
+        onFocus={() => onFocusChange?.(true)}
         onBlur={() => onFocusChange?.(false)}
         placeholder={placeholder}
-        autoFocus={autoFocus}
-        rows={rows}
+        rows={2}
         className="text-base text-center border-border focus-visible:ring-primary resize-none leading-snug"
       />
       <div className="flex items-center justify-between mt-1.5 gap-2">
@@ -1346,31 +1338,27 @@ function ExtraEngravingFields({ lid, base, onLid, onBase }: {
 }
 
 /** Cara del cuerpo donde va un elemento (frente, lado del logo, costados): solo las que ofrece el producto. */
-/**
- * Dónde va el elemento (frente, lado del logo, costado), arriba del visor 3D:
- * la ubicación es algo que se ve en la pieza, así que se elige ahí y no en cada
- * pestaña. Edita el elemento activo (o el de la pestaña abierta).
- */
-function FaceSelector({ faces, value, onChange, product, label }: {
+function FaceSelector({ faces, value, onChange, product, label = "Ubicación del texto" }: {
   faces: FaceId[];
   value: FaceId;
   onChange: (f: FaceId) => void;
   product: ProductDef;
-  /** Qué elemento se ubica ("Texto", "Ícono"…). */
-  label: string;
+  label?: string;
 }) {
   return (
-    <div className="flex items-center gap-2 max-w-full" role="group" aria-label={`Ubicación: ${label}`}>
-      <span className="text-[11px] text-muted-foreground whitespace-nowrap">{label} en</span>
-      <div className="flex items-center gap-0.5 rounded-full bg-white/90 border border-border p-0.5 shadow-sm overflow-x-auto">
+    <div>
+      <Label className="text-xs text-muted-foreground mb-2 block">{label}</Label>
+      <div className="flex flex-wrap gap-2" role="group" aria-label={label}>
         {faces.map(f => (
           <button
             key={f}
             type="button"
             aria-pressed={value === f}
             onClick={() => onChange(f)}
-            className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
-              value === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+            className={`flex-1 min-w-[5.5rem] p-2.5 border rounded-lg text-sm font-medium transition-all active:scale-[0.97] ${
+              value === f
+                ? "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30"
+                : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
             }`}
           >
             {faceLabel(product, f)}
@@ -1545,11 +1533,11 @@ export default function Customizer() {
   // below. On ≥md it goes back to the roomier desktop sizing.
   const isMobile = useIsMobile();
 
-  // Pasos del personalizador. Drinkware: Pieza · Diseño · Enviar, en celular y
-  // en escritorio (primero la pieza, después el diseño). Objetos planos y
-  // bolígrafos, solo en celular: Producto · Diseño. El estado vive acá, así ir y
-  // volver entre pasos nunca pierde nada.
-  const [step, setStep] = useState(1);
+  // Mobile wizard: the flow is split into steps on phones. Drinkware gets the
+  // full four-step flow (Producto · Estilo · Diseño · Resumen); simpler products
+  // (flat objects, pens) collapse to two (Producto · Diseño). State is
+  // centralised here, so stepping back and forth never loses anything.
+  const [mobileStep, setMobileStep] = useState(1);
   // "Stickers" (eufyMake E1) vive acá mismo, como otro modo del personalizador.
   const [mode, setMode] = useState<"products" | "stickers">("products");
 
@@ -1764,6 +1752,8 @@ export default function Customizer() {
   const [iconId, setIconId] = useState<string | null>(null);
   const selectedIcon = ENGRAVING_ICONS.find(i => i.id === iconId) ?? null;
   const [simpleKind, setSimpleKind] = useState<KindId>("text");
+  // Controlled so we can move off the "Imagen" tab when it's hidden.
+  const [drinkTab, setDrinkTab] = useState("color");
 
   const baseColor = COLORS.find(c => c.id === color) || COLORS[0];
   // El inoxidable natural no se pinta: gris acero fijo, ignora la paleta.
@@ -1776,20 +1766,21 @@ export default function Customizer() {
   const activePlan = ENGRAVING_PLANS.find(p => p.id === plan) || ENGRAVING_PLANS[0];
   const MaterialGlyph = MATERIAL_ICON[material.icon] ?? Box;
 
-  // ── Pasos (derivados del tipo de producto) ──────────────────────────────────
+  // ── Mobile wizard step model (derived from the product kind) ───────────────
   const wizardLabels = isDrinkware
-    ? ["Pieza", "Diseño", "Enviar"]
+    ? ["Producto", "Estilo", "Diseño", "Resumen"]
     : ["Producto", "Diseño"];
-  const designStepIndex = 2;
+  const designStepIndex = isDrinkware ? 3 : 2;
+  const isDesignStep = isMobile && mobileStep === designStepIndex;
 
   const goToStep = (n: number) => {
-    setStep(n);
+    setMobileStep(n);
     track("customizer_step", { step: n, step_name: wizardLabels[n - 1] });
   };
 
   // Keep the step in range if the product kind changes the step count.
   React.useEffect(() => {
-    setStep(s => Math.min(s, wizardLabels.length));
+    setMobileStep(s => Math.min(s, wizardLabels.length));
   }, [wizardLabels.length]);
 
   // Menú / footer / #stickers: abrir en el modo pedido (ver section-reveal.ts).
@@ -1815,7 +1806,7 @@ export default function Customizer() {
       const dp = getProduct(mp.drinkwareProductId);
       setSize(dp.sizes[1]?.id ?? dp.sizes[0].id);
     }
-    setStep(designStepIndex);
+    setMobileStep(mp.drinkwareProductId ? 3 : 2);
     track("customizer_preset", { material: m.id, product: mp.id });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
@@ -1838,7 +1829,7 @@ export default function Customizer() {
         const dp = getProduct(mp.drinkwareProductId);
         setSize(dp.sizes.some(x => x.id === d.sizeId) ? d.sizeId : (dp.sizes[1]?.id ?? dp.sizes[0].id));
       }
-      setStep(designStepIndex);
+      setMobileStep(mp?.drinkwareProductId ? 3 : 2);
     }
     if (COLORS.some(c => c.id === d.colorId)) setColor(d.colorId);
     setCustomHex(isHex(d.customHex) ? d.customHex : null);
@@ -1863,6 +1854,7 @@ export default function Customizer() {
     setText2Open(!!t2);
     if (FONTS.some(f => f.id === d.text2FontId)) setText2Font(d.text2FontId!);
     if (d.text2Placement && typeof d.text2Placement === "object") setText2Placement({ ...TEXT2_DEFAULT_PLACEMENT, ...d.text2Placement });
+    setDrinkTab("text");
     clearSharedDesign();
     track("design_link_open");
   }, []);
@@ -1890,6 +1882,11 @@ export default function Customizer() {
     document.body.classList.toggle("wa-fab-hidden", isMobile && customizerInView);
     return () => document.body.classList.remove("wa-fab-hidden");
   }, [isMobile, customizerInView]);
+
+  // "Color" is not a tab on mobile (it's Step 2), so never leave it selected.
+  React.useEffect(() => {
+    if (isMobile && drinkTab === "color") setDrinkTab("text");
+  }, [isMobile, drinkTab]);
 
   // ── Progressive plan inference ─────────────────────────────────────────────
   // Infer the plan from what was designed (logo/photo ⇒ logo, icon ⇒ drawing,
@@ -1985,13 +1982,12 @@ export default function Customizer() {
   const textLayout = React.useMemo(
     () => computeFaceTextLayout(
       product,
-      { text, fontFamily: textFontFamily, colorPrint: isColorPrint, orientation: textPlacement.orientation, align: textPlacement.align, layout: textPlacement.layout, lineHeight: textPlacement.lineHeight, v: textPlacement.v },
+      { text, fontFamily: textFontFamily, colorPrint: isColorPrint, orientation: textPlacement.orientation, align: textPlacement.align, layout: textPlacement.layout, lineHeight: textPlacement.lineHeight },
       textPlacement.scale,
       singleFace,
     ),
-    // v solo importa por la zona (cuerpos con escalón): se recalcula al cambiar de zona.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [product, text, textFontFamily, isColorPrint, textPlacement.orientation, textPlacement.align, textPlacement.layout, textPlacement.lineHeight, textPlacement.scale, textPlacement.zone, singleFace, fontTick],
+    [product, text, textFontFamily, isColorPrint, textPlacement.orientation, textPlacement.align, textPlacement.layout, textPlacement.lineHeight, textPlacement.scale, singleFace, fontTick],
   );
 
   // ── "Envolvente 360°" — anti-encime ────────────────────────────────────────
@@ -2091,11 +2087,6 @@ export default function Customizer() {
   const hasText2 = !!text2.trim();
   const hasArt = !!artUrl && artImageSize !== "none";
   const [selected, setSelected] = useState<DesignKind | null>(null);
-  // Capa que muestra el panel de opciones (o la bandeja del celular). A
-  // diferencia de `selected` (que además mueve el diseño sobre el 3D), queda
-  // puesta aunque la capa todavía esté vacía: "+ Texto" abre el campo antes de
-  // que exista el texto.
-  const [focusKind, setFocusKind] = useState<DesignKind | null>(null);
   const activeDesignKind: DesignKind | null =
     selected === "text" && hasText ? "text"
     : selected === "text2" && hasText2 ? "text2"
@@ -2169,22 +2160,12 @@ export default function Customizer() {
     if (guidesTimer.current) clearTimeout(guidesTimer.current);
     guidesTimer.current = setTimeout(() => setGuidesActive(false), 1100);
   }, []);
-  // Arrastre en cuerpos con varias zonas: v "deseado" acumulado durante el
-  // arrastre. El clamp deja al elemento en su zona; con este v el dedo puede
-  // seguir bajando por el escalón y, pasada la mitad, el elemento salta a la
-  // otra zona (si se acumulara sobre el v ya encuadrado, nunca cruzaría).
-  const dragVRef = useRef<number | null>(null);
   const beginDesignDrag = React.useCallback(() => {
-    dragVRef.current = null;
     if (guidesTimer.current) { clearTimeout(guidesTimer.current); guidesTimer.current = null; }
     setGuidesActive(true);
     setHistory(h => [...h.slice(-29), snapshotRef.current]);
   }, []);
-  const endDesignDrag = React.useCallback(() => { dragVRef.current = null; flashGuides(); }, [flashGuides]);
-  const multiZone = faceConfigFor(product).zones.length > 1;
-  const activePlacementRef = useRef<Placement | null>(null);
-  activePlacementRef.current =
-    activeDesignKind === "text" ? textPlacement : activeDesignKind === "text2" ? text2Placement : activeDesignKind === "art" ? artPlacement : null;
+  const endDesignDrag = React.useCallback(() => { flashGuides(); }, [flashGuides]);
 
   // Move the active mark by a delta in pad space (0..1 across the front-face
   // rectangle). Shared by the drag-on-3D and the floating d-pad. In single-face
@@ -2193,7 +2174,7 @@ export default function Customizer() {
   const moveActivePlacement = React.useCallback((dPadX: number, dPadY: number) => {
     // `sf`: modo una-cara del elemento que se mueve — el texto según su
     // disposición, el arte siempre.
-    const apply = (p: Placement, clampFn: (q: Placement) => Placement, sf: boolean, halfV: number): Placement => {
+    const apply = (p: Placement, clampFn: (q: Placement) => Placement, sf: boolean): Placement => {
       // Flat blanks (billetera, tabla, caja…): the whole face is the canvas, so
       // u/v walk it edge to edge — corners included. The face renderer
       // (drawPlaced in engraving-face.ts) already stops the mark's bounding box
@@ -2211,34 +2192,27 @@ export default function Customizer() {
           product,
           p.face,
         );
-        const next = clampFn({ ...p, u: np.u, v: np.v });
-        // Trabado contra el borde de su zona (cuerpo con escalón): la flecha lo
-        // pasa a la zona vecina.
-        if (dPadY !== 0 && Math.abs(next.v - p.v) < 1e-4) {
-          const v2 = vInNextZone(product, p.v, halfV, dPadY > 0 ? 1 : -1);
-          if (v2 !== null) return clampFn({ ...next, v: v2 });
-        }
-        return next;
+        return clampFn({ ...p, u: np.u, v: np.v });
       }
       let u = p.u + dPadX; u -= Math.floor(u);
       const v = Math.max(0, Math.min(1, p.v + dPadY));
       return { ...p, u, v };
     };
-    if (activeDesignKind === "text") setTextPlacement(p => apply(p, clampTextP, singleFace, textExtents.halfV));
-    else if (activeDesignKind === "text2") setText2Placement(p => apply(p, clampText2P, singleFace, text2Extents.halfV));
-    else if (activeDesignKind === "art") setArtPlacement(p => apply(p, clampArtP, true, artExtents.halfV));
-  }, [singleFace, is3DObject, product, activeDesignKind, clampTextP, clampText2P, clampArtP, textExtents.halfV, text2Extents.halfV, artExtents.halfV]);
+    if (activeDesignKind === "text") setTextPlacement(p => apply(p, clampTextP, singleFace));
+    else if (activeDesignKind === "text2") setText2Placement(p => apply(p, clampText2P, singleFace));
+    else if (activeDesignKind === "art") setArtPlacement(p => apply(p, clampArtP, true));
+  }, [singleFace, is3DObject, product, activeDesignKind, clampTextP, clampText2P, clampArtP]);
 
   const centerActivePlacement = React.useCallback(() => {
     // Face centre for flat blanks; centre of the front-face rectangle (same
     // u, product-tuned v centre, run through the clamp) for drinkware.
-    const c = is3DObject ? { u: 0.5, v: 0.5 } : faceAreaCenter(product);
+    const c = is3DObject ? { u: 0.5, v: 0.5 } : padToPlacement(0.5, 0.5, product);
     const clampT = is3DObject ? (p: Placement) => p : clampTextP;
     const clampA = is3DObject ? (p: Placement) => p : clampArtP;
     // El texto se centra en su propia cara (frente, dorso o costado).
-    const ct = is3DObject ? c : faceAreaCenter(product, textPlacement.face);
-    const c2 = is3DObject ? c : faceAreaCenter(product, text2Placement.face);
-    const ca = is3DObject ? c : faceAreaCenter(product, artPlacement.face);
+    const ct = is3DObject ? c : padToPlacement(0.5, 0.5, product, textPlacement.face);
+    const c2 = is3DObject ? c : padToPlacement(0.5, 0.5, product, text2Placement.face);
+    const ca = is3DObject ? c : padToPlacement(0.5, 0.5, product, artPlacement.face);
     if (activeDesignKind === "text") setTextPlacement(p => clampT({ ...p, u: ct.u, v: ct.v }));
     // Texto 2: centrado solo en horizontal (arriba/abajo lo elige el cliente).
     else if (activeDesignKind === "text2") setText2Placement(p => (is3DObject ? p : singleFace ? clampText2P({ ...p, u: c2.u }) : { ...p, u: c2.u }));
@@ -2255,22 +2229,15 @@ export default function Customizer() {
   // Drinkware: el visor ya convierte el arrastre 1:1 a u (vuelta) y v (banda),
   // así el diseño queda pegado al dedo. En una cara se re-encuadra en el área.
   const onDesignMoveUV = React.useCallback((du: number, dv: number) => {
-    let vWanted: number | null = null;
-    if (multiZone) {
-      const zs = faceConfigFor(product).zones;
-      const base = dragVRef.current ?? activePlacementRef.current?.v ?? zs[0].vMin;
-      vWanted = Math.max(zs[0].vMin, Math.min(zs[zs.length - 1].vMax, base + dv));
-      dragVRef.current = vWanted;
-    }
     const apply = (p: Placement, clampFn: (q: Placement) => Placement, sf: boolean): Placement => {
-      if (sf) return clampFn({ ...p, u: p.u + du, v: vWanted ?? p.v + dv });
+      if (sf) return clampFn({ ...p, u: p.u + du, v: p.v + dv });
       let u = p.u + du; u -= Math.floor(u);
       return { ...p, u, v: Math.max(0, Math.min(1, p.v + dv)) };
     };
     if (activeDesignKind === "text") setTextPlacement(p => apply(p, clampTextP, singleFace));
     else if (activeDesignKind === "text2") setText2Placement(p => apply(p, clampText2P, singleFace));
     else if (activeDesignKind === "art") setArtPlacement(p => apply(p, clampArtP, true));
-  }, [activeDesignKind, clampTextP, clampText2P, clampArtP, singleFace, multiZone, product]);
+  }, [activeDesignKind, clampTextP, clampText2P, clampArtP, singleFace]);
 
   // ── Deshacer ────────────────────────────────────────────────────────────────
   // Una foto del diseño antes de cada acción (arrastre, tamaño, centrar,
@@ -2320,6 +2287,8 @@ export default function Customizer() {
   const thermosRenderRef = useRef<(() => void) | null>(null);
   // "Ver en AR": copia de la pieza del visor grande (ver ArViewButton).
   const thermosArRef = useRef<(() => { object: import("three").Object3D; metersPerUnit: number } | null) | null>(null);
+  // Sube cuando el visor terminó de montar la pieza (re-dispara la captura).
+  const [viewerReady, setViewerReady] = useState(0);
 
   // u que debe quedar de frente: el centro de la cara frontal en "una cara", o
   // la posición real del texto cuando el modo de edición vigente es libre (el
@@ -2340,7 +2309,6 @@ export default function Customizer() {
   // ── Seleccionar / terminar ──────────────────────────────────────────────────
   const selectDesign = React.useCallback((kind: DesignKind, source: string) => {
     setSelected(kind);
-    setFocusKind(kind);
     setUndoDeleteUntil(0);
     // La pieza gira para mostrar de frente lo que se va a editar.
     thermosSnapRef.current?.(
@@ -2399,9 +2367,7 @@ export default function Customizer() {
       if (has && over(p, ext)) { if (activeDesignKind !== k) selectDesign(k, "tap"); return; }
     }
     if (activeDesignKind) finishEditing();
-    // En el celular la bandeja de herramientas es de la capa elegida: se cierra.
-    if (isMobile) setFocusKind(null);
-  }, [hasText, hasText2, hasArt, textPlacement, text2Placement, artPlacement, textExtents, text2Extents, artExtents, activeDesignKind, selectDesign, finishEditing, isMobile]);
+  }, [hasText, hasText2, hasArt, textPlacement, text2Placement, artPlacement, textExtents, text2Extents, artExtents, activeDesignKind, selectDesign, finishEditing]);
 
   /** ¿El dedo se apoyó sobre el diseño en edición? (mismo margen que el toque). */
   const isOverActiveDesign = React.useCallback((hit: { u: number; v: number }) => {
@@ -2434,7 +2400,6 @@ export default function Customizer() {
     else if (activeDesignKind === "text2") { setText2(""); setText2Open(false); }
     else if (activeDesignKind === "art") { if (iconId) setIconId(null); else setCustomImage(null); }
     setSelected(null);
-    setFocusKind(null);
     setUndoDeleteUntil(Date.now() + 6000);
     track("design_delete", { kind: activeDesignKind ?? "" });
   };
@@ -2448,7 +2413,7 @@ export default function Customizer() {
     pushHistory();
     // Va en la misma cara que el texto 1 (frente, lado del logo o costado).
     const face = hasText && singleFace ? textFace : "front";
-    const c = faceAreaCenter(product, face);
+    const c = padToPlacement(0.5, 0.5, product, face);
     const nextToText1 = hasText && singleFace;
     const gap = textExtents.halfV + 0.07;
     let main = textPlacement;
@@ -2492,187 +2457,16 @@ export default function Customizer() {
     setText2("");
     setText2Open(false);
     if (selected === "text2") setSelected(null);
-    if (focusKind === "text2") setFocusKind(null);
     if (text2) setUndoDeleteUntil(Date.now() + 6000);
     track("text2_remove");
   };
   const editLabel = activeDesignKind === "text" ? (hasText2 ? "el texto 1" : "el texto")
     : activeDesignKind === "text2" ? "el texto 2"
     : iconId ? "el ícono" : "la imagen";
-  // Sin editar: el botón entra a la capa enfocada (o a la que haya).
+  // Sin editar: el botón entra al elemento de la pestaña abierta (o al que haya).
   const idleEditKind: DesignKind | null =
-    focusKind === "art" && hasArt ? "art"
-    : focusKind === "text2" && hasText2 ? "text2"
+    (drinkTab === "icons" || drinkTab === "media") ? (hasArt ? "art" : hasText ? "text" : hasText2 ? "text2" : null)
     : hasText ? "text" : hasText2 ? "text2" : hasArt ? "art" : null;
-
-  // Ubicación arriba del visor: la del elemento que se está editando, o la del
-  // que corresponde a la pestaña abierta. Nada si el producto tiene una sola cara
-  // o el texto envuelve el cuerpo (Envolvente 360°).
-  const faceKind: DesignKind | null = activeDesignKind ?? focusKind ?? idleEditKind;
-  const faceControl =
-    is3DObject || textFaces.length < 2 ? null
-    : faceKind === "text" && hasText && singleFace ? { label: hasText2 ? "Texto 1" : "Texto", value: textFace, onChange: selectTextFace }
-    : faceKind === "text2" && hasText2 && singleFace ? { label: "Texto 2", value: text2Face, onChange: selectText2Face }
-    : faceKind === "art" && hasArt ? { label: selectedIcon ? "Ícono" : "Imagen", value: artFace, onChange: selectArtFace }
-    : null;
-
-  // ── Editor por capas (drinkware) ────────────────────────────────────────────
-  // Cada cosa que se graba es una capa: Texto, Texto 2 y el arte (un ícono o una
-  // imagen). El panel de opciones (escritorio) o la bandeja de herramientas
-  // (celular) muestran solo lo de la capa enfocada.
-  const panelKind: DesignKind | null = activeDesignKind ?? focusKind;
-  // El arte es un solo lugar: ícono o imagen. Antes de elegir, manda qué se agregó.
-  const [artAddMode, setArtAddMode] = useState<"icon" | "image">("icon");
-  const artMode: "icon" | "image" = selectedIcon ? "icon" : customImage ? "image" : artAddMode;
-  // Herramienta abierta en el celular (una fila de opciones arriba de la bandeja).
-  type ToolId = "edit" | "font" | "size" | "place" | "more" | "icon" | "image" | "ai";
-  // La herramienta pertenece a una capa: al cambiar de capa se cierra sola.
-  const [toolState, setToolState] = useState<{ kind: DesignKind | null; id: ToolId } | null>(null);
-  const tool: ToolId | null = toolState && toolState.kind === panelKind ? toolState.id : null;
-  const setTool = (id: ToolId | null, kind: DesignKind | null = panelKind) => setToolState(id ? { kind, id } : null);
-  const [addOpen, setAddOpen] = useState(false);
-  const zonesOfFace = faceConfigFor(product).zones;
-
-  /** "+ Texto": el texto principal si no hay; si no, el Texto 2. */
-  const addText = () => {
-    setAddOpen(false);
-    if (!hasText) {
-      setSelected(null);
-      setFocusKind("text");
-      setPendingSelect({ kind: "text", tool: "edit" });
-    } else if (!hasText2 && !isWrap360) {
-      if (!text2Open) openText2();
-      setSelected(null);
-      setFocusKind("text2");
-      setPendingSelect({ kind: "text2", tool: "edit" });
-    } else {
-      selectDesign(hasText2 ? "text2" : "text", "add");
-    }
-    track("layer_add", { kind: "text" });
-  };
-  const addArt = (mode: "icon" | "image") => {
-    setAddOpen(false);
-    setArtAddMode(mode);
-    if (hasArt) selectDesign("art", "add");
-    else { setSelected(null); setFocusKind("art"); }
-    setPendingSelect({ kind: "art", tool: mode });
-    track("layer_add", { kind: mode });
-  };
-
-  // Elegir una capa (y una herramienta) después del render que la crea: los
-  // efectos de "recién creado" seleccionan lo último que apareció, y acá se
-  // impone lo que pidió el cliente (ej. un diseño rápido abre el texto).
-  const [pendingSelect, setPendingSelect] = useState<{ kind: DesignKind; tool: ToolId | null } | null>(null);
-  React.useEffect(() => {
-    if (!pendingSelect || pendingText2 !== null) return;
-    const { kind, tool: t } = pendingSelect;
-    const exists = kind === "text" ? hasText : kind === "text2" ? hasText2 : hasArt;
-    if (exists) selectDesign(kind, "pending");
-    else setFocusKind(kind);
-    setTool(t, kind);
-    setPendingSelect(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingSelect, pendingText2, hasText, hasText2, hasArt]);
-
-  // ── Diseños rápidos ──
-  // Arman las capas ya ubicadas con un texto de ejemplo, que queda marcado:
-  // si el cliente lo envía sin cambiarlo, se le avisa antes.
-  const sampleRef = useRef<{ text: string | null; text2: string | null }>({ text: null, text2: null });
-  const sampleLeft = (!!sampleRef.current.text && text.trim() === sampleRef.current.text)
-    || (!!sampleRef.current.text2 && text2.trim() === sampleRef.current.text2);
-  type TemplateId = "nombre" | "nombre-fecha" | "empresa" | "frase-icono" | "logo";
-  const applyTemplate = (id: TemplateId) => {
-    track("template_apply", { template: id, product: productId });
-    if (id === "logo") { addArt("image"); return; }
-    pushHistory();
-    const c = faceAreaCenter(product, "front");
-    const z0 = zonesOfFace[0];
-    const zLast = zonesOfFace[zonesOfFace.length - 1];
-    let textV = c.v;
-    if (id === "frase-icono") {
-      // Frase arriba, ícono abajo (en la zona de abajo si el cuerpo tiene escalón).
-      if (!multiZone) textV = z0.vMin + (z0.vMax - z0.vMin) * 0.3;
-      // Lugar del ícono: la zona de abajo entera, o el 40% inferior del área.
-      const slotMin = multiZone ? zLast.vMin : z0.vMin + (z0.vMax - z0.vMin) * 0.6;
-      const slotMax = multiZone ? zLast.vMax : z0.vMax;
-      const artV = (slotMin + slotMax) / 2;
-      // Tamaño para que entre en ese lugar (si no, el encuadre lo subiría arriba).
-      const heart = { ...DEFAULT_ART_PLACEMENT, face: "front" as const, u: c.u, v: artV, scale: 1 };
-      const half1 = markHalfExtents(product, { kind: "art", imageSize: "large", artW: 256, artH: 256 }, heart, true).halfV;
-      const scale = half1 > 0 ? Math.max(0.3, Math.min(0.7, (0.8 * (slotMax - slotMin)) / (2 * half1))) : 0.5;
-      setIconId("heart");
-      setCustomImage(null);
-      setArtPlacement({ ...heart, scale });
-    }
-    const sample = id === "empresa" ? "TU EMPRESA" : id === "frase-icono" ? "Tu frase" : "Tu nombre";
-    handleEngravingText(sample);
-    setTextPlacement(clampTextP({ ...DEFAULT_TEXT_PLACEMENT, face: "front", u: c.u, v: textV }));
-    sampleRef.current = { text: sample, text2: null };
-    if (id === "nombre-fecha") {
-      setPendingText2(new Date().toLocaleDateString("es-PY", { day: "2-digit", month: "2-digit", year: "numeric" }));
-    } else if (id === "empresa") {
-      setPendingText2("Nombre y apellido");
-      sampleRef.current.text2 = "Nombre y apellido";
-    }
-    setPendingSelect({ kind: "text", tool: "edit" });
-  };
-  const templates: { id: TemplateId; title: string; sample: string }[] = [
-    { id: "nombre", title: "Un nombre", sample: "María" },
-    { id: "nombre-fecha", title: "Nombre + fecha", sample: "Juan · 15/10/2026" },
-    { id: "frase-icono", title: "Frase + ícono", sample: "Para la mejor mamá ♥" },
-    ...(canUploadImage
-      ? [{ id: "logo" as const, title: "Logo o foto", sample: "Subí tu imagen" }]
-      : [{ id: "empresa" as const, title: "Empresa + empleado", sample: "ACME · Laura Gómez" }]),
-  ];
-
-  // ── Zona (cuerpos con escalón) ──
-  const zoneOf = (p: Placement) => p.zone ?? 0;
-  const activePlacement = activeDesignKind === "text" ? textPlacement : activeDesignKind === "text2" ? text2Placement : activeDesignKind === "art" ? artPlacement : null;
-  const activeZone = activePlacement ? zoneOf(activePlacement) : null;
-  /** Lleva la capa activa al centro de una zona (arriba / abajo). */
-  const moveActiveToZone = (zi: number) => {
-    const z = zonesOfFace[zi];
-    if (!z || !activeDesignKind) return;
-    pushHistory();
-    const v = (z.vMin + z.vMax) / 2;
-    if (activeDesignKind === "text") applyTextPlacement({ ...textPlacement, v });
-    else if (activeDesignKind === "text2") applyText2Placement({ ...text2Placement, v });
-    else applyArtPlacement({ ...artPlacement, v });
-    flashGuides();
-    track("zone_select", { kind: activeDesignKind, zone: zi });
-  };
-  // Al cruzar de zona arrastrando: vibración corta y un aviso sobre el visor.
-  const [zoneToast, setZoneToast] = useState<string | null>(null);
-  const prevZoneRef = useRef<number | null>(activeZone);
-  React.useEffect(() => {
-    const prev = prevZoneRef.current;
-    prevZoneRef.current = activeZone;
-    if (!multiZone || prev === null || activeZone === null || prev === activeZone || dragVRef.current === null) return;
-    try { navigator.vibrate?.(12); } catch { /* sin vibración */ }
-    setZoneToast(activeZone > 0 ? "Zona de abajo" : "Zona de arriba");
-    const t = setTimeout(() => setZoneToast(null), 1200);
-    return () => clearTimeout(t);
-  }, [activeZone, multiZone]);
-
-  /** Dónde quedó una capa, en palabras: "Frente · arriba". */
-  const whereLabel = (p: Placement, kind: DesignKind) => {
-    if (kind !== "art" && isWrap360 && kind === "text") return "Envolvente 360°";
-    const face = kind === "text" ? textFace : kind === "text2" ? text2Face : artFace;
-    const zone = multiZone ? (zoneOf(p) > 0 ? " · abajo" : " · arriba") : "";
-    return `${faceLabel(product, face)}${zone}`;
-  };
-  const layers: { kind: DesignKind; label: string; where: string; Icon: React.ComponentType<{ className?: string }> }[] = [
-    ...(hasText || focusKind === "text" ? [{ kind: "text" as const, label: text.trim().replace(/\n/g, " ") || "Texto nuevo", where: whereLabel(textPlacement, "text"), Icon: Type }] : []),
-    ...(hasText2 || (text2Open && focusKind === "text2") ? [{ kind: "text2" as const, label: text2.trim() || "Texto 2", where: whereLabel(text2Placement, "text2"), Icon: Type }] : []),
-    ...(hasArt || focusKind === "art"
-      ? [{ kind: "art" as const, label: selectedIcon?.name ?? (customImage ? "Imagen" : artMode === "image" ? "Imagen nueva" : "Ícono nuevo"), where: whereLabel(artPlacement, "art"), Icon: artMode === "image" ? ImageIcon : Shapes }]
-      : []),
-  ];
-  const focusLayer = (kind: DesignKind) => {
-    const exists = kind === "text" ? hasText : kind === "text2" ? hasText2 : hasArt;
-    if (exists) selectDesign(kind, "layer");
-    else { setSelected(null); setFocusKind(kind); }
-  };
 
   // ── Preview capture ─────────────────────────────────────────────────────────
   // Grab a PNG of the live 3D canvas (the termo draws a fresh frame right before
@@ -2722,11 +2516,51 @@ export default function Customizer() {
     downloadDataUrl(img, "mi-diseno.png");
   };
 
-  // La foto del resumen se toma al pasar al paso Enviar (y al pedir/descargar).
-  const summaryThumb = previewImg;
+  // Miniatura del resumen en escritorio (en móvil el resumen es otro paso y se
+  // captura al entrar). Barata a propósito: copia a resolución nativa y PNG
+  // codificado con toBlob, que el navegador hace fuera del hilo principal.
+  const [liveThumb, setLiveThumb] = useState<string | null>(null);
+  React.useEffect(() => {
+    if (isMobile) return;
+    let cancelled = false;
+    let idle: number | null = null;
+    const t = setTimeout(() => {
+      const run = () => {
+        const canvas = previewPanelRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
+        if (!canvas || !canvas.width || !canvas.height) return;
+        try {
+          thermosRenderRef.current?.();
+          const off = document.createElement("canvas");
+          off.width = canvas.width; off.height = canvas.height;
+          off.getContext("2d")?.drawImage(canvas, 0, 0);
+          off.toBlob(blob => {
+            if (cancelled || !blob) return;
+            const url = URL.createObjectURL(blob);
+            setLiveThumb(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
+          }, "image/png");
+        } catch { /* sin miniatura; el resumen se arma igual */ }
+      };
+      if (typeof window.requestIdleCallback === "function") idle = window.requestIdleCallback(run, { timeout: 2000 });
+      else run();
+    }, 1200);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+      if (idle !== null && typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(idle);
+    };
+  }, [
+    isDrinkware, is3DObject, productId, viewSize, activeColorHex,
+    finish, text, font, iconId, artUrl, textColor, effectiveTechnique, isGlass,
+    singleFace, textPlacement, artPlacement, isMobile, viewerReady,
+  ]);
+  React.useEffect(() => () => { setLiveThumb(prev => { if (prev) URL.revokeObjectURL(prev); return null; }); }, []);
+  // En escritorio la miniatura en vivo sigue al diseño; la captura puntual
+  // (descarga, pedido) puede haber quedado vieja si se siguió editando.
+  const summaryThumb = isMobile ? previewImg : liveThumb ?? previewImg;
   const clearPreviews = () => {
     setPreviewImg(null);
     previewImgRef.current = null;
+    setLiveThumb(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
   };
 
   const handleSelectColor = (id: string) => {
@@ -2754,6 +2588,7 @@ export default function Customizer() {
     if (id !== "acero" && id !== "inox") {
       setCustomImage(null);
       setPlan(ENGRAVING_PLANS[0].id);
+      setDrinkTab(t => (t === "media" ? "color" : t));
     }
     // Acabado/color coherentes con el material. Todo producto arranca en Mate
     // por defecto; cuero, cristal e inox fijan su propio acabado.
@@ -2894,13 +2729,12 @@ export default function Customizer() {
     const trimmedText = text.trim();
     const trimmedText2 = text2.trim();
     if (trimmedText) rows.push([trimmedText2 ? "Texto 1" : "Texto", `${trimmedText} (${activeFont.name})`]);
-    // En cuerpos con escalón la ubicación suma la altura ("Frente · abajo").
-    if (trimmedText && isDrinkware && !isWrap360 && (textFaces.length > 1 || multiZone)) rows.push(["Ubicación del texto", whereLabel(textPlacement, "text")]);
+    if (trimmedText && isDrinkware && !isWrap360 && textFaces.length > 1) rows.push(["Ubicación del texto", faceLabel(product, textFace)]);
     if (trimmedText2) rows.push(["Texto 2", `${trimmedText2} (${activeFont2.name})`]);
-    if (trimmedText2 && isDrinkware && (text2Face !== textFace || multiZone)) rows.push(["Ubicación del texto 2", whereLabel(text2Placement, "text2")]);
+    if (trimmedText2 && isDrinkware && text2Face !== textFace) rows.push(["Ubicación del texto 2", faceLabel(product, text2Face)]);
     if (selectedIcon) rows.push(["Ícono", selectedIcon.name]);
     else if (customImage) rows.push(["Logo/foto adjunta", "Sí"]);
-    if (hasArt && isDrinkware && (artFace !== "front" || multiZone)) rows.push([selectedIcon ? "Ubicación del ícono" : "Ubicación de la imagen", whereLabel(artPlacement, "art")]);
+    if (hasArt && isDrinkware && artFace !== "front") rows.push([selectedIcon ? "Ubicación del ícono" : "Ubicación de la imagen", faceLabel(product, artFace)]);
     if (extraLidText !== null) rows.push(["Grabado en tapa", extraLidText || "Sí (texto a definir)"]);
     if (extraBaseText !== null) rows.push(["Grabado en base", extraBaseText || "Sí (texto a definir)"]);
     return rows;
@@ -3036,10 +2870,9 @@ export default function Customizer() {
 
   const handleOrder = async (force = false) => {
     if (isOrdered || isPreparing || isSoldOut) return;
-    // Sin nada para grabar, o con el texto de ejemplo de un diseño rápido:
-    // avisar antes (puede ser a propósito, ej. "quiero asesoramiento"), así que
-    // "Enviar igual" sigue disponible.
-    if ((isEmptyDesign || sampleLeft) && !force) {
+    // Sin nada para grabar: avisar antes (puede ser a propósito, ej. "quiero
+    // asesoramiento"), así que "Enviar igual" sigue disponible.
+    if (isEmptyDesign && !force) {
       setEmptyWarning(true);
       track("order_empty_warning");
       return;
@@ -3513,17 +3346,13 @@ export default function Customizer() {
         <p className="text-xs text-muted-foreground mt-0.5">{estimate.note}.</p>
       </div>
 
-      {emptyWarning && (isEmptyDesign || sampleLeft) && (
+      {emptyWarning && isEmptyDesign && (
         <div data-empty-warning className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 space-y-2 scroll-mb-28" role="alert">
-          <p>
-            {isEmptyDesign
-              ? "Todavía no agregaste texto, ícono ni imagen para grabar. ¿Querés enviarlo igual y lo definimos por WhatsApp?"
-              : "Tu diseño todavía tiene el texto de ejemplo. ¿Querés cambiarlo o enviarlo igual y lo definimos por WhatsApp?"}
-          </p>
+          <p>Todavía no agregaste texto, ícono ni imagen para grabar. ¿Querés enviarlo igual y lo definimos por WhatsApp?</p>
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => { setEmptyWarning(false); if (isDrinkware && step !== designStepIndex) goToStep(designStepIndex); }}
+              onClick={() => setEmptyWarning(false)}
               className="min-h-10 px-3 rounded-lg border border-amber-300 bg-white text-xs font-semibold"
             >
               Seguir diseñando
@@ -3696,12 +3525,10 @@ export default function Customizer() {
   // Paso 4 — Resumen: imagen del diseño + detalle legible + envío por WhatsApp.
   // (Sin planes ni precios: eso vive en la sección "Tarifas".) Los campos salen
   // de orderFields(), la misma fuente que arma el mensaje de WhatsApp.
-  // `withThumb`: en celular el resumen es otro paso y lleva la foto; en
-  // escritorio el visor 3D ya está al lado.
-  const renderDrinkSummary = (withThumb = true) => (
+  const renderDrinkSummary = () => (
     <div className="space-y-4">
       {/* Imagen de vista previa del diseño final, capturada del 3D. */}
-      {withThumb && summaryThumb && (
+      {summaryThumb && (
         <div>
           <Label className="text-sm font-medium mb-2 block">Vista de tu diseño</Label>
           <div className="rounded-xl border border-border bg-secondary/30 p-2 flex justify-center">
@@ -3726,892 +3553,76 @@ export default function Customizer() {
         </dl>
       </div>
 
-      {/* Extras con precio: no van en el editor, se suman acá. */}
-      {extraEngraving && (
-        <ExtraEngravingFields lid={extraLid} base={extraBase} onLid={setExtraLid} onBase={setExtraBase} />
-      )}
-
       {renderOrderActions()}
     </div>
   );
 
-  // ── Editor por capas: acciones ─────────────────────────────────────────────
-  /** Borra una capa (con "Deshacer" unos segundos). */
-  const deleteLayer = (kind: DesignKind) => {
-    pushHistory();
-    if (kind === "text") setText("");
-    else if (kind === "text2") { setText2(""); setText2Open(false); }
-    else { setIconId(null); setCustomImage(null); }
-    setSelected(null);
-    setFocusKind(null);
-    setTool(null);
-    setUndoDeleteUntil(Date.now() + 6000);
-    track("design_delete", { kind });
-  };
-  // El tipo de arte que muestra el panel sigue a lo que hay puesto.
-  React.useEffect(() => { if (selectedIcon) setArtAddMode("icon"); }, [selectedIcon]);
-  React.useEffect(() => { if (customImage) setArtAddMode("image"); }, [customImage]);
-
-  /** Del diseño al paso Enviar: sin selección, el área personalizada de frente y la foto del resumen. */
-  const goToSend = () => {
-    if (activeDesignKind) finishEditing();
-    setFocusKind(null);
-    setTool(null);
-    thermosSnapRef.current?.(captureFaceU);
-    setTimeout(() => {
-      const img = capturePreview();
-      if (img) { setPreviewImg(img); previewImgRef.current = img; }
-      goToStep(3);
-    }, 150);
-  };
-
-  const aiStatus = useAiStatus();
-  /** Invalida el modelo AR preparado cuando cambia el diseño. */
-  const arDesignKey = [productId, viewSize, activeColorHex, finish, text, font, text2, text2Font, JSON.stringify(text2Placement), iconId, artUrl?.length ?? 0, textColor, effectiveTechnique, singleFace, JSON.stringify(textPlacement), JSON.stringify(artPlacement)].join("|");
-  const priceLabel = estimate.price ?? "A cotizar";
-  const pieceSummary = [
-    isOwnProduct ? `${orderProductName} (lo traés vos)` : odooProduct?.name ?? product.singular,
-    orderSizeName,
-    isGlass ? "Cristal" : activeColorName,
-    activeTechnique.name,
-  ].filter(Boolean).join(" · ");
-
-  // ── Celular: editor a pantalla completa ────────────────────────────────────
-  // En el paso Diseño la página no scrollea: el vaso arriba y las herramientas
-  // abajo, al alcance del pulgar. Va en un portal (fuera de los contenedores con
-  // transform) y se ajusta al área visible cuando se abre el teclado.
-  const overlayOpen = isMobile && isDrinkware && mode === "products" && step === designStepIndex;
-  const vv = useVisualViewport(overlayOpen);
-  const keyboardOpen = !!vv && typeof window !== "undefined" && window.innerHeight - vv.height > 120;
-  React.useEffect(() => {
-    if (!overlayOpen) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
-  }, [overlayOpen]);
-  // "Atrás" del celular: primero cierra la herramienta o el menú abierto; si no
-  // hay nada abierto, vuelve al paso Pieza (en vez de salir de la página).
-  const sheetOpenRef = useRef(false);
-  sheetOpenRef.current = !!tool || addOpen;
-  React.useEffect(() => {
-    if (!overlayOpen) return;
-    window.history.pushState({ csEditor: 1 }, "");
-    const onPop = () => {
-      if (sheetOpenRef.current) {
-        setTool(null);
-        setAddOpen(false);
-        window.history.pushState({ csEditor: 1 }, "");
-        return;
-      }
-      goToStep(1);
-    };
-    window.addEventListener("popstate", onPop);
-    return () => {
-      window.removeEventListener("popstate", onPop);
-      // Se salió con un botón: sacar la entrada que se agregó al abrir.
-      if ((window.history.state as { csEditor?: number } | null)?.csEditor) window.history.back();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [overlayOpen]);
-
-  /** Thermos3D del editor (escritorio y celular): mismo visor, editable solo en el paso Diseño. */
-  const renderEditorThermos = (editable: boolean) => (
-    <Thermos3D
-      colorHex={activeColorHex}
-      finish={finish}
-      text={text}
-      fontClass=""
-      fontStyle={activeFont.style}
-      productId={productId}
-      sizeId={viewSize}
-      customImageUrl={artUrl}
-      imageSize={artImageSize}
-      textPlacement={textPlacement}
-      extraTexts={extraTextMarks}
-      artPlacement={artPlacement}
-      colorPrint={effectiveTechnique === "color"}
-      textColor={textColor}
-      engraveStyle={drinkwareEngraveStyle}
-      singleFace={singleFace}
-      editSingleFace={editSingleFace}
-      showGuides={editable && guidesActive}
-      frontFaceU={designFaceU}
-      guideFace={activeDesignKind === "art" ? artFace : activeDesignKind === "text2" ? text2Face : textFace}
-      hideLogo={designOnLogoSide}
-      glass={isGlass}
-      designActive={editable && designActive}
-      onDesignMove={onDesignMoveUV}
-      onDesignDragStart={beginDesignDrag}
-      onDesignDragEnd={endDesignDrag}
-      onTap={editable ? handleViewerTap : undefined}
-      isOverDesign={isOverActiveDesign}
-      snapToURef={thermosSnapRef}
-      renderNowRef={thermosRenderRef}
-      arModelRef={thermosArRef}
-      autoSpin={wrapSpin}
-      rotationLocked={wrapSpin}
-      freeGestures
-    />
-  );
-
-  /** Fondo del visor: degradé para el cristal, un tinte del color de la pieza para el resto. */
-  const renderViewerBackdrop = () => isGlass ? (
-    <div className="absolute inset-0" style={{ background: "radial-gradient(circle at 50% 38%, #eef2f6 0%, #d3dae2 55%, #aeb8c4 100%)" }} />
-  ) : (
-    <div className="absolute inset-0 opacity-[0.07] transition-colors duration-500" style={{ backgroundColor: activeColorHex }} />
-  );
-
-  const renderOrderedOverlay = () => (
-    <AnimatePresence>
-      {isOrdered && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.4 }}
-          className="absolute inset-0 bg-[#1A1614]/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-8 text-center rounded-2xl"
-        >
-          <div className="w-16 h-16 rounded-full bg-[#8B1A2F] text-white flex items-center justify-center mb-6 ring-1 ring-white/20">
-            <Check className="w-8 h-8" strokeWidth={1.75} />
+  return (
+    <section ref={sectionRef} className="py-12 md:py-16 px-4 sm:px-6 bg-white border-b border-border">
+      <div className="max-w-7xl mx-auto">
+        {/* Header — compact on mobile (the long copy is desktop-only). */}
+        <div className="mb-6 md:mb-10">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <p className="text-[#8B1A2F] text-[11px] font-semibold uppercase tracking-[0.3em]">
+              El personalizador
+            </p>
+            {/* Subtle replay of the onboarding demo (customizer-tutorial.tsx
+                listens for this event; works even after "No volver a mostrar"). */}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event("tuto:abrir"))}
+              className="inline-flex items-center gap-1.5 min-h-11 py-2 text-xs text-muted-foreground hover:text-primary active:text-primary transition-colors shrink-0"
+            >
+              <CirclePlay className="w-4 h-4" />
+              <span className="underline underline-offset-4 decoration-border hover:decoration-current">
+                Ver cómo funciona
+              </span>
+            </button>
           </div>
-          <h3 className="font-serif font-light text-2xl md:text-3xl text-white mb-2">Tu pieza está lista.</h3>
-          <p className="text-sm text-white/60 font-light max-w-xs leading-relaxed">
-            Te abrimos WhatsApp para continuar con tu pedido. Enviá el mensaje y coordinamos los detalles.
+          <h2 className="font-serif font-light text-3xl md:text-5xl text-[#1A1614] mb-4 leading-[1.1]">
+            Creá tu pieza
+          </h2>
+          <p className={`hidden ${mode === "products" ? "md:block" : ""} text-[#5f574d] font-light text-lg max-w-xl leading-relaxed`}>
+            Elegí el material, luego el producto, y refinalo a tu gusto. El diseño final lo coordinamos
+            con vos por WhatsApp.
           </p>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
+        </div>
 
-  // ── Paso Pieza: material, producto, tamaño, color y técnica ────────────────
-  const renderMaterialPicker = () => (
-    <div>
-      <Label className="text-sm font-medium text-foreground mb-3 block">Material</Label>
-      <div className="grid grid-cols-3 gap-2">
-        {MATERIALS.map(m => {
-          const Icon = MATERIAL_ICON[m.icon] ?? Box;
-          const active = materialId === m.id;
-          return (
+        <div role="tablist" aria-label="Qué querés crear" className="mb-6 md:mb-8 inline-flex w-full sm:w-auto rounded-xl border border-border bg-secondary/40 p-1">
+          {([
+            { id: "products", label: <><span className="sm:hidden">Termos y más</span><span className="hidden sm:inline">Termos, vasos y más</span></> },
+            { id: "stickers", label: "Stickers" },
+          ] as const).map(t => (
             <button
-              key={m.id}
+              key={t.id}
               type="button"
-              onClick={() => handleSelectMaterial(m.id)}
-              title={m.desc}
-              aria-pressed={active}
-              className={`p-3 border rounded-xl flex flex-col items-center justify-center gap-1.5 transition-all ${active ? activeCard : idleCard}`}
+              role="tab"
+              aria-selected={mode === t.id}
+              onClick={() => {
+                if (mode === t.id) return;
+                setMode(t.id);
+                track("customizer_mode", { mode: t.id });
+              }}
+              className={`flex-1 sm:flex-none min-h-11 px-5 rounded-lg text-sm font-medium transition-colors ${mode === t.id ? "bg-white text-[#8B1A2F] shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >
-              <Icon className="w-6 h-6" />
-              <span className="font-medium text-xs text-center leading-tight">{m.name}</span>
+              {t.label}
             </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-
-  const renderProductPicker = () => (
-    <div className="space-y-3">
-      <Label className="text-sm font-medium text-foreground block">Producto</Label>
-      {shopMode ? (
-        <div className="h-[26rem] flex flex-col [&>aside]:flex-1 [&>aside]:min-h-0">
-          <ShopRail items={shopItems} value={shopKey} initialBrand={shopItem?.brand ?? shopBrands(shopItems)[0]} onPick={pickShopItem} />
-        </div>
-      ) : (
-        <div className="grid grid-cols-3 xl:grid-cols-4 gap-2">
-          {material.products.map(p => {
-            const active = materialProductId === p.id;
-            const dp = p.drinkwareProductId ? getProduct(p.drinkwareProductId) : null;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => handleSelectMaterialProduct(p.id)}
-                title={p.desc}
-                aria-pressed={active}
-                className={`p-2.5 border rounded-xl flex flex-col items-center justify-end gap-1.5 transition-all ${active ? activeCard : idleCard}`}
-              >
-                {dp ? <ProductGlyph product={dp} className="h-14 w-full" /> : <MaterialGlyph className="w-8 h-8" />}
-                <span className="font-medium text-xs text-center leading-tight">{p.name}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-      {approxNote && <p className="text-xs text-muted-foreground">{approxNote}</p>}
-      {!shopMode && renderOdooModel()}
-    </div>
-  );
-
-  /** Precio + botón para pasar al diseño (fin del paso Pieza en escritorio). */
-  const renderPieceFooter = () => (
-    <div className="flex flex-wrap items-center justify-between gap-3 pt-5 border-t border-border">
-      <div>
-        <p className="text-xs text-muted-foreground">{estimate.total ? "Total estimado" : "Precio de la pieza"}</p>
-        <p className="font-serif text-xl tabular-nums">{priceLabel}</p>
-      </div>
-      <Button onClick={() => goToStep(designStepIndex)} disabled={isSoldOut} size="lg" className="min-h-12 px-6">
-        Diseñar <ChevronRight className="w-4 h-4" />
-      </Button>
-    </div>
-  );
-
-  const renderPiecePanel = () => (
-    <div className="bg-white rounded-2xl border border-border p-5 lg:p-6 space-y-6">
-      <div className="grid xl:grid-cols-2 gap-6">
-        <div className="space-y-6 min-w-0">
-          {renderMaterialPicker()}
-          {renderProductPicker()}
-        </div>
-        <div className="space-y-6 min-w-0">
-          {renderOwnProduct()}
-          {renderDrinkSize()}
-          {renderDrinkColor()}
-          {renderDrinkTechnique()}
-        </div>
-      </div>
-      {renderPieceFooter()}
-    </div>
-  );
-
-  /** La pieza elegida en una línea, con "Cambiar" (pasos Diseño y Enviar en escritorio). */
-  const renderPieceBar = () => (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-secondary/30 px-4 py-2.5">
-      <p className="text-sm text-foreground min-w-0">
-        <Check className="inline w-4 h-4 text-primary mr-1.5 -mt-0.5" />
-        {pieceSummary}
-      </p>
-      <button type="button" onClick={() => goToStep(1)} className="text-sm font-medium text-primary hover:underline">
-        Cambiar
-      </button>
-    </div>
-  );
-
-  /** Pasos del escritorio: se puede volver a cualquiera. */
-  const renderDesktopSteps = () => (
-    <ol className="flex flex-wrap items-center gap-2 text-sm" aria-label="Pasos">
-      {wizardLabels.map((label, i) => {
-        const n = i + 1;
-        const state = n === step ? "cur" : n < step ? "done" : "todo";
-        return (
-          <li key={label} className="flex items-center gap-2">
-            {i > 0 && <span className="w-6 h-px bg-border" aria-hidden />}
-            <button
-              type="button"
-              onClick={() => (n === 3 && step === 2 ? goToSend() : goToStep(n))}
-              aria-current={state === "cur" ? "step" : undefined}
-              className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 transition-colors ${
-                state === "cur" ? "bg-primary text-primary-foreground font-semibold" : state === "done" ? "text-primary hover:bg-[#f5eaec]" : "text-muted-foreground hover:bg-secondary"
-              }`}
-            >
-              <span className="tabular-nums">{state === "done" ? "✓" : n}</span> {label}
-            </button>
-          </li>
-        );
-      })}
-    </ol>
-  );
-
-  // ── Paso Diseño: capas ─────────────────────────────────────────────────────
-  const canAddText = !hasText || (!hasText2 && !isWrap360);
-  const renderAddButtons = () => (
-    <div className="grid gap-1">
-      {[
-        { id: "text", label: hasText ? "Otro texto" : "Texto", Icon: Type, onClick: addText, disabled: !canAddText, hint: hasText && effectiveTechnique === "laser" ? `+ ${formatGs(PRICING.laser.extraText)}` : null },
-        { id: "icon", label: "Ícono", Icon: Shapes, onClick: () => addArt("icon"), disabled: false, hint: null },
-        ...(canUploadImage ? [{ id: "image", label: "Imagen", Icon: ImageIcon, onClick: () => addArt("image"), disabled: false, hint: null }] : []),
-      ].map(b => (
-        <button
-          key={b.id}
-          type="button"
-          onClick={b.onClick}
-          disabled={b.disabled}
-          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-primary hover:bg-[#f5eaec] disabled:text-muted-foreground disabled:hover:bg-transparent disabled:cursor-not-allowed text-left"
-        >
-          <Plus className="w-4 h-4" /> {b.label}
-          {b.hint && <span className="ml-auto text-xs font-normal text-muted-foreground">{b.hint}</span>}
-        </button>
-      ))}
-      {aiStatus?.phrases && (
-        <button
-          type="button"
-          onClick={() => { setFocusKind("text"); setSelected(hasText ? "text" : null); setTool("ai", "text"); track("layer_add", { kind: "ai" }); }}
-          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-primary hover:bg-[#f5eaec] text-left"
-        >
-          <Sparkles className="w-4 h-4" /> Ideas con IA
-        </button>
-      )}
-    </div>
-  );
-
-  const renderLayersPanel = () => (
-    <div className="bg-white rounded-2xl border border-border p-4 space-y-4">
-      <p className="text-sm font-semibold">Capas</p>
-      {layers.length ? (
-        <ul className="space-y-1">
-          {layers.map(l => {
-            const on = panelKind === l.kind;
-            return (
-              <li key={l.kind}>
-                <button
-                  type="button"
-                  onClick={() => focusLayer(l.kind)}
-                  aria-pressed={on}
-                  className={`w-full flex items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-colors ${on ? "border-primary bg-[#f5eaec]" : "border-transparent hover:bg-secondary/50"}`}
-                >
-                  <l.Icon className={`w-4 h-4 shrink-0 ${on ? "text-primary" : "text-muted-foreground"}`} />
-                  <span className="min-w-0">
-                    <span className={`block truncate text-sm font-medium ${on ? "text-primary" : "text-foreground"}`}>{l.label}</span>
-                    <span className="block text-[11px] text-muted-foreground">{l.where}</span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <p className="text-sm text-muted-foreground">Tu diseño está vacío. Agregá algo o empezá con un diseño rápido.</p>
-      )}
-      <div className="pt-3 border-t border-dashed border-border">{renderAddButtons()}</div>
-      {isEmptyDesign && (
-        <div className="pt-3 border-t border-border space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Diseños rápidos</p>
-          <QuickStart options={templates.map(t => ({ ...t, onPick: () => applyTemplate(t.id) }))} />
-        </div>
-      )}
-    </div>
-  );
-
-  // ── Paso Diseño: opciones de la capa enfocada ──────────────────────────────
-  const textOf = (k: "text" | "text2") => k === "text"
-    ? { value: text, onText: handleEngravingText, placement: textPlacement, apply: applyTextPlacement, font, setFont, max: Math.min(TEXT_SCALE_MAX, wrapMaxScale), present: hasText }
-    : { value: text2, onText: setText2, placement: text2Placement, apply: applyText2Placement, font: text2Font, setFont: setText2Font, max: TEXT_SCALE_MAX, present: hasText2 };
-
-  /** Más opciones del texto: orientación, disposición, alineación, interlineado y color UV. */
-  const renderTextMore = (k: "text" | "text2") => {
-    const t = textOf(k);
-    return (
-      <div className="space-y-5">
-        <OrientationToggle
-          value={t.placement.orientation}
-          onChange={(o) => t.apply({ ...t.placement, orientation: o })}
-          verticalDisabledReason={k === "text" && isWrap360 ? "El texto envolvente 360° va en horizontal alrededor del cuerpo" : undefined}
-        />
-        <TextDispositionToolbar
-          placement={t.placement}
-          onChange={t.apply}
-          wrapDisabledReason={k === "text2" ? "Solo el texto principal puede envolver el producto." : undefined}
-        />
-        {isColorPrint && <TextColorPicker value={textColor} onChange={setTextColor} />}
-      </div>
-    );
-  };
-
-  const renderTextProps = (k: "text" | "text2") => {
-    const t = textOf(k);
-    return (
-      <div className="space-y-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold">{k === "text" ? (hasText2 ? "Texto 1" : "Texto") : "Texto 2"}</p>
-            {k === "text2" && effectiveTechnique === "laser" && (
-              <p className="text-xs text-muted-foreground">Segundo texto · {formatGs(PRICING.laser.extraText)} más</p>
-            )}
-          </div>
-          {(t.present || (k === "text2" && text2Open)) && (
-            <button type="button" onClick={() => deleteLayer(k)} aria-label={`Borrar ${k === "text" ? "el texto" : "el texto 2"}`} className="shrink-0 w-9 h-9 grid place-items-center rounded-full border border-border text-muted-foreground hover:text-red-700 hover:border-red-200">
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-        <div>
-          <EngravingTextField
-            text={t.value}
-            onText={t.onText}
-            layout={t.placement.layout}
-            onFocusChange={k === "text" ? setTextFieldFocused : undefined}
-            limitNotice={k === "text" && wrapLimitHit ? "El texto alcanzó el máximo para envolver el producto." : null}
-            placeholder={k === "text" ? undefined : "Segundo texto (ej. nombre del empleado)"}
-          />
-          {k === "text" && <AiPhraseIdeas key={tool === "ai" ? "ai-open" : "ai"} product={product.singular} twoLines={text2Open} onPick={pickPhraseIdea} defaultOpen={tool === "ai"} />}
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground mb-2">Letra</p>
-          <FontPicker fonts={FONTS} value={t.font} onChange={t.setFont} sampleText={t.value} />
-        </div>
-        <div>
-          <ScaleSlider label="Tamaño" value={t.placement.scale} min={TEXT_SCALE_MIN} max={t.max} onChange={(sc) => t.apply({ ...t.placement, scale: sc })} />
-          {k === "text" && textLayout.shrunk && (
-            <p className="text-xs text-primary/90 flex items-center gap-1.5 rounded-lg bg-[#f5eaec] border border-primary/20 px-3 py-2 mt-2">
-              <Info className="w-3.5 h-3.5 shrink-0" /> Tamaño ajustado para que entre en el área.
-            </p>
-          )}
-        </div>
-        <AdvancedOptions label="Más opciones">{renderTextMore(k)}</AdvancedOptions>
-      </div>
-    );
-  };
-
-  const renderArtPicker = () => artMode === "icon" ? (
-    <IconPicker value={iconId} onChange={handlePickIcon} />
-  ) : (
-    <ImageUpload imageSize="large" value={customImage} onChange={handleUploadImage} aiStyle={effectiveTechnique === "color" ? "color" : "laser"} />
-  );
-
-  const renderArtProps = () => (
-    <div className="space-y-5">
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-semibold">{artMode === "icon" ? "Ícono" : "Logo o foto"}</p>
-        {hasArt && (
-          <button type="button" onClick={() => deleteLayer("art")} aria-label="Borrar" className="shrink-0 w-9 h-9 grid place-items-center rounded-full border border-border text-muted-foreground hover:text-red-700 hover:border-red-200">
-            <Trash2 className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-      {canUploadImage && (
-        <Segmented
-          label="Tipo de arte"
-          options={[{ id: "icon", label: "Ícono" }, { id: "image", label: "Logo o foto" }]}
-          value={artMode}
-          onChange={(m) => setArtAddMode(m === "image" ? "image" : "icon")}
-        />
-      )}
-      {renderArtPicker()}
-      {hasArt && (
-        <ScaleSlider label="Tamaño" value={artPlacement.scale} min={0.3} max={1.5} onChange={(sc) => applyArtPlacement({ ...artPlacement, scale: sc })} />
-      )}
-      {hasArt && (
-        <AdvancedOptions label="Más opciones">
-          <OrientationToggle value={artPlacement.orientation} onChange={(o) => applyArtPlacement({ ...artPlacement, orientation: o })} />
-        </AdvancedOptions>
-      )}
-      {canUploadImage && <p className="text-xs text-muted-foreground">Va un ícono o una imagen por pieza: elegir uno reemplaza al otro.</p>}
-    </div>
-  );
-
-  const renderPropsPanel = () => (
-    <div className="bg-white rounded-2xl border border-border p-5">
-      {panelKind === "text" || panelKind === "text2" ? renderTextProps(panelKind)
-        : panelKind === "art" ? renderArtProps()
-        : (
-          <div className="space-y-4">
-            <p className="text-sm font-semibold">Opciones</p>
-            <p className="text-sm text-muted-foreground">
-              {layers.length ? "Elegí una capa a la izquierda, o tocá tu diseño sobre el producto." : "Agregá un texto, un ícono o una imagen para empezar."}
-            </p>
-            {isEmptyDesign && <QuickStart options={templates.map(t => ({ ...t, onPick: () => applyTemplate(t.id) }))} />}
-          </div>
-        )}
-    </div>
-  );
-
-  // ── Paso Enviar ────────────────────────────────────────────────────────────
-  const renderSendPanel = () => (
-    <div className="bg-white rounded-2xl border border-border p-5 lg:p-6 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-serif text-2xl text-foreground">Revisá y enviá</h3>
-        <button type="button" onClick={() => goToStep(designStepIndex)} className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
-          <ChevronLeft className="w-4 h-4" /> Volver al diseño
-        </button>
-      </div>
-      {renderDrinkSummary(false)}
-    </div>
-  );
-
-  /** Visor del escritorio: el mismo en los tres pasos (no se vuelve a montar). */
-  const renderDesktopViewer = () => (
-    <div ref={previewPanelRef} className="relative isolate [transform:translateZ(0)] bg-secondary/30 rounded-2xl border border-border overflow-hidden">
-      {renderViewerBackdrop()}
-      <div className="relative z-10 flex flex-col items-center gap-2 w-full">
-        {step === designStepIndex && faceControl && (
-          <div className="w-full flex justify-center px-3 pt-3 -mb-1">
-            <FaceSelector faces={textFaces} product={product} {...faceControl} />
-          </div>
-        )}
-        <div className="relative w-full" style={{ height: 480 + Math.round((activeSize.scale - 0.84) * 200) }}>
-          {renderEditorThermos(step === designStepIndex)}
-          {zoneToast && (
-            <span className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-foreground/85 px-3 py-1 text-xs font-medium text-background">{zoneToast}</span>
-          )}
-        </div>
-        <div className="-mt-1 mb-4 min-h-6 flex flex-col items-center gap-1.5">
-          {step !== designStepIndex ? (
-            <div className="flex flex-col items-center gap-2">
-              <p className="text-xs text-muted-foreground">Arrastrá para girar</p>
-              <ArViewButton getModel={() => thermosArRef.current?.() ?? null} designKey={arDesignKey} />
-            </div>
-          ) : wrapSpin ? (
-            <p className="text-xs text-muted-foreground">Girando para mostrar el texto envolvente…</p>
-          ) : designActive ? (
-            <DesignEditBar
-              kindLabel={editLabel}
-              onCenter={centerWithHistory}
-              onUndo={history.length ? undo : null}
-              onDelete={deleteActive}
-              onDone={finishEditing}
-            />
-          ) : (
-            <>
-              <p className="text-xs text-muted-foreground">
-                {idleEditKind ? "Arrastrá para girar · tocá tu diseño para moverlo" : "Arrastrá para girar"}
-              </p>
-              <div className="flex flex-wrap items-start justify-center gap-2">
-                <DesignIdleActions
-                  onEdit={idleEditKind ? () => selectDesign(idleEditKind, "button") : null}
-                  onUndoDelete={undoDeleteUntil ? () => { setUndoDeleteUntil(0); undo(); } : null}
-                />
-                <ArViewButton getModel={() => thermosArRef.current?.() ?? null} designKey={arDesignKey} />
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-      {renderOrderedOverlay()}
-    </div>
-  );
-
-  const renderDesktopDrinkware = () => (
-    <div className="space-y-5">
-      {renderDesktopSteps()}
-      {step > 1 && renderPieceBar()}
-      <div className="grid lg:grid-cols-12 gap-6 lg:gap-8 items-start">
-        <div className={step === designStepIndex ? "lg:col-span-3 lg:sticky lg:top-24 min-w-0" : "hidden"}>{renderLayersPanel()}</div>
-        <div className="lg:col-span-5 lg:sticky lg:top-24 min-w-0">{renderDesktopViewer()}</div>
-        <div className={`${step === designStepIndex ? "lg:col-span-4" : "lg:col-span-7"} min-w-0`}>
-          {step === 1 ? renderPiecePanel() : step === designStepIndex ? renderPropsPanel() : renderSendPanel()}
-        </div>
-      </div>
-      {step === designStepIndex && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-white px-5 py-4">
-          <div>
-            <p className="text-xs text-muted-foreground">{estimate.total ? "Total estimado" : "Precio estimado"}</p>
-            <p className="font-serif text-xl tabular-nums">{priceLabel}</p>
-          </div>
-          <Button onClick={goToSend} size="lg" className="min-h-12 px-6">
-            Revisar y enviar <ChevronRight className="w-4 h-4" />
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-
-  // ── Celular ────────────────────────────────────────────────────────────────
-  const renderMobilePiece = () => (
-    <motion.div key="wiz-piece" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-6 pb-28">
-      {renderMiniPreview()}
-      <div className="space-y-7">
-        <MaterialChips materials={MATERIALS} value={materialId} onChange={handleSelectMaterial} />
-        {shopMode && shopItem ? (
-          <div>
-            <ShopProductCard item={shopItem} detail={shopDetail} onChange={() => setShopSheetOpen(true)} />
-            {approxNote && <p className="text-xs text-muted-foreground mt-3">{approxNote}</p>}
-            <ShopSheet open={shopSheetOpen} onOpenChange={setShopSheetOpen} items={shopItems} value={shopKey} initialBrand={shopItem.brand} onPick={pickShopItem} />
-          </div>
-        ) : (
-          <>
-            <ProductChips material={material} value={materialProductId} onChange={handleSelectMaterialProduct} />
-            {renderOdooModel()}
-          </>
-        )}
-        {renderOwnProduct()}
-        {renderDrinkSize()}
-        {renderDrinkColor()}
-        {renderDrinkTechnique()}
-      </div>
-    </motion.div>
-  );
-
-  const toggleTool = (t: ToolId) => setTool(tool === t ? null : t);
-  /** Herramientas de la capa enfocada (fila fija de abajo). */
-  const toolsFor = (k: DesignKind): Tool[] => k === "art" ? [
-    { id: "pick", label: artMode === "image" ? "Imagen" : "Ícono", icon: artMode === "image" ? ImageIcon : Shapes, active: tool === artMode, onClick: () => toggleTool(artMode) },
-    { id: "size", label: "Tamaño", icon: Maximize2, active: tool === "size", onClick: () => toggleTool("size") },
-    { id: "place", label: "Lugar", icon: Move, active: tool === "place", onClick: () => toggleTool("place") },
-    { id: "center", label: "Centrar", icon: Crosshair, onClick: centerWithHistory },
-    { id: "delete", label: "Borrar", icon: Trash2, danger: true, onClick: () => deleteLayer("art") },
-  ] : [
-    { id: "edit", label: "Editar", icon: Pencil, active: tool === "edit", onClick: () => toggleTool("edit") },
-    { id: "font", label: "Letra", icon: Type, active: tool === "font", onClick: () => toggleTool("font") },
-    { id: "size", label: "Tamaño", icon: Maximize2, active: tool === "size", onClick: () => toggleTool("size") },
-    { id: "place", label: "Lugar", icon: Move, active: tool === "place", onClick: () => toggleTool("place") },
-    { id: "more", label: "Más", icon: Settings2, active: tool === "more", onClick: () => toggleTool("more") },
-    { id: "delete", label: "Borrar", icon: Trash2, danger: true, onClick: () => deleteLayer(k) },
-  ];
-
-  /** Lugar: cara (frente, lado del logo, costado) y, en cuerpos con escalón, arriba / abajo. */
-  const renderPlaceTool = (k: DesignKind) => {
-    const face = k === "text" ? textFace : k === "text2" ? text2Face : artFace;
-    const onFace = k === "text" ? selectTextFace : k === "text2" ? selectText2Face : selectArtFace;
-    const p = k === "text" ? textPlacement : k === "text2" ? text2Placement : artPlacement;
-    const wraps = k === "text" && isWrap360;
-    return (
-      <div className="space-y-3">
-        {wraps ? (
-          <p className="text-sm text-muted-foreground">El texto envuelve todo el contorno: no tiene una cara.</p>
-        ) : textFaces.length > 1 && (
-          <Segmented label="Cara" options={textFaces.map(f => ({ id: f, label: faceLabel(product, f) }))} value={face} onChange={onFace} />
-        )}
-        {multiZone && !wraps && (
-          <Segmented
-            label="Altura"
-            options={zonesOfFace.map((_, i) => ({ id: String(i), label: i === 0 ? "Arriba" : "Abajo" }))}
-            value={String(zoneOf(p))}
-            onChange={(z) => moveActiveToZone(Number(z))}
-          />
-        )}
-        {!wraps && (
-          <button type="button" onClick={centerWithHistory} className="inline-flex items-center gap-1.5 text-sm font-medium text-primary">
-            <Crosshair className="w-4 h-4" /> Centrar
-          </button>
-        )}
-      </div>
-    );
-  };
-
-  const renderToolPanel = (k: DesignKind) => {
-    if (tool === "font" && k !== "art") {
-      const t = textOf(k);
-      return <FontPicker variant="strip" fonts={FONTS} value={t.font} onChange={t.setFont} sampleText={t.value} />;
-    }
-    if (tool === "size") {
-      if (k === "art") return <ScaleSlider label="Tamaño" value={artPlacement.scale} min={0.3} max={1.5} onChange={(sc) => applyArtPlacement({ ...artPlacement, scale: sc })} />;
-      const t = textOf(k);
-      return <ScaleSlider label="Tamaño" value={t.placement.scale} min={TEXT_SCALE_MIN} max={t.max} onChange={(sc) => t.apply({ ...t.placement, scale: sc })} />;
-    }
-    if (tool === "place") return renderPlaceTool(k);
-    if (tool === "more" && k !== "art") return renderTextMore(k);
-    if ((tool === "icon" || tool === "image") && k === "art") return renderArtPicker();
-    if (tool === "ai") return <AiPhraseIdeas product={product.singular} twoLines={text2Open} onPick={(idea) => { pickPhraseIdea(idea); setTool(null); }} defaultOpen />;
-    return null;
-  };
-
-  /** Barra de texto pegada arriba del teclado (herramienta "Editar"). */
-  const renderMobileTextEditor = (k: "text" | "text2") => {
-    const t = textOf(k);
-    return (
-      <div className="px-3 pt-2.5 pb-2 space-y-1">
-        <div className="flex items-start gap-2">
-          <div className="flex-1 min-w-0 [&_textarea]:min-h-0 [&_textarea]:py-2">
-            <EngravingTextField
-              text={t.value}
-              onText={t.onText}
-              layout={t.placement.layout}
-              onFocusChange={k === "text" ? setTextFieldFocused : undefined}
-              limitNotice={k === "text" && wrapLimitHit ? "El texto alcanzó el máximo para envolver el producto." : null}
-              placeholder={k === "text" ? "Escribí tu texto" : "Segundo texto"}
-              autoFocus
-              rows={1}
-            />
-          </div>
-          <button type="button" onClick={() => setTool(null)} className="shrink-0 h-11 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-semibold active:scale-95 transition">
-            Listo
-          </button>
-        </div>
-        {k === "text" && aiStatus?.phrases && !keyboardOpen && (
-          <button type="button" onClick={() => setTool("ai")} className="inline-flex items-center gap-1.5 text-sm font-medium text-primary">
-            <Sparkles className="w-4 h-4" /> Pedir ideas a la IA
-          </button>
-        )}
-      </div>
-    );
-  };
-
-  /** Fila de capas: tocar una la elige; "+" agrega; "Listo" suelta la capa. */
-  const renderLayerChips = () => (
-    <div className="flex items-center gap-1.5">
-      <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none]">
-        {layers.map(l => {
-          const on = panelKind === l.kind;
-          return (
-            <button
-              key={l.kind}
-              type="button"
-              onClick={() => focusLayer(l.kind)}
-              aria-pressed={on}
-              className={`shrink-0 max-w-[10rem] inline-flex items-center gap-1.5 min-h-10 rounded-full border px-3 text-sm transition-colors ${on ? "border-primary bg-[#f5eaec] text-primary font-semibold" : "border-border text-foreground"}`}
-            >
-              <l.Icon className="w-4 h-4 shrink-0" /> <span className="truncate">{l.label}</span>
-            </button>
-          );
-        })}
-        <button
-          type="button"
-          onClick={() => setAddOpen(o => !o)}
-          aria-expanded={addOpen}
-          aria-label="Agregar"
-          className={`shrink-0 inline-flex items-center gap-1 min-h-10 rounded-full px-3 text-sm font-semibold ${addOpen ? "bg-primary text-primary-foreground" : "bg-[#f5eaec] text-primary"}`}
-        >
-          <Plus className="w-4 h-4" /> {layers.length ? "" : "Agregar"}
-        </button>
-      </div>
-      {panelKind && (
-        <button
-          type="button"
-          onClick={() => { finishEditing(); setFocusKind(null); setTool(null); }}
-          className="shrink-0 inline-flex items-center gap-1 min-h-10 rounded-full bg-primary px-3.5 text-sm font-semibold text-primary-foreground"
-        >
-          <Check className="w-4 h-4" /> Listo
-        </button>
-      )}
-    </div>
-  );
-
-  const renderMobileAddMenu = () => (
-    <div className="grid grid-cols-2 gap-2">
-      {[
-        { id: "text", label: hasText ? "Otro texto" : "Texto", Icon: Type, onClick: addText, disabled: !canAddText },
-        { id: "icon", label: "Ícono", Icon: Shapes, onClick: () => addArt("icon"), disabled: false },
-        ...(canUploadImage ? [{ id: "image", label: "Logo o foto", Icon: ImageIcon, onClick: () => addArt("image"), disabled: false }] : []),
-        ...(aiStatus?.phrases ? [{ id: "ai", label: "Ideas con IA", Icon: Sparkles, onClick: () => { setAddOpen(false); setFocusKind("text"); setSelected(hasText ? "text" : null); setTool("ai", "text"); }, disabled: false }] : []),
-      ].map(b => (
-        <button key={b.id} type="button" onClick={b.onClick} disabled={b.disabled} className="min-h-12 flex items-center gap-2 rounded-xl border border-border px-3 text-sm font-medium text-foreground disabled:opacity-40">
-          <b.Icon className="w-4 h-4 text-primary" /> {b.label}
-        </button>
-      ))}
-    </div>
-  );
-
-  const renderMobileBottom = () => {
-    // Escribiendo: solo el campo y "Listo" (el vaso sigue a la vista arriba).
-    if ((panelKind === "text" || panelKind === "text2") && tool === "edit") return renderMobileTextEditor(panelKind);
-    return (
-      <div className="px-3 pt-2.5 space-y-2.5">
-        {(layers.length > 0 || addOpen) && renderLayerChips()}
-        {addOpen ? renderMobileAddMenu()
-          : panelKind ? (
-            <>
-              {tool && <div className="max-h-[38vh] overflow-y-auto overscroll-contain -mx-3 px-3 py-1">{renderToolPanel(panelKind)}</div>}
-              <ToolTray tools={toolsFor(panelKind)} />
-            </>
-          ) : isEmptyDesign ? (
-            <div className="space-y-2.5 pb-1">
-              <p className="text-base font-semibold">¿Qué querés grabar?</p>
-              <QuickStart options={templates.map(t => ({ ...t, onPick: () => applyTemplate(t.id) }))} />
-              <div className="flex items-center justify-between">
-                {aiStatus?.phrases ? (
-                  <button type="button" onClick={() => { setFocusKind("text"); setTool("ai", "text"); }} className="inline-flex items-center gap-1.5 min-h-10 text-sm font-medium text-primary">
-                    <Sparkles className="w-4 h-4" /> Pedir ideas a la IA
-                  </button>
-                ) : <span />}
-                <button type="button" onClick={addText} className="min-h-10 text-sm text-muted-foreground">Empezar de cero</button>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-center text-muted-foreground">Tocá algo para editarlo · arrastrá el vaso para girarlo</p>
-          )}
-        {!panelKind && !addOpen && (
-          <div className="flex items-center gap-3 pt-1 pb-2.5">
-            <button type="button" onClick={() => goToStep(1)} className="inline-flex items-center gap-1 min-h-11 px-3 rounded-full border border-border text-sm font-medium text-muted-foreground">
-              <ChevronLeft className="w-4 h-4" /> Pieza
-            </button>
-            <span className="ml-auto text-sm font-semibold tabular-nums">{priceLabel}</span>
-            <button type="button" onClick={goToSend} className="inline-flex items-center gap-1 min-h-11 px-5 rounded-full bg-primary text-primary-foreground text-sm font-semibold active:scale-[0.98] transition-transform">
-              Siguiente <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderMobileEditor = () => typeof document === "undefined" ? null : createPortal(
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Editor de tu diseño"
-      className="fixed inset-x-0 top-0 z-[70] flex flex-col bg-white"
-      style={{ height: vv ? vv.height : "100dvh", transform: vv?.top ? `translateY(${vv.top}px)` : undefined }}
-    >
-      {/* Arriba: lo que solo se mira (paso, pieza, precio). */}
-      <div className="shrink-0 px-4 pb-2 space-y-2 border-b border-border" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
-        <div className="flex gap-1.5" aria-label={`Paso ${step} de ${wizardLabels.length}: ${wizardLabels[step - 1]}`}>
-          {wizardLabels.map((l, i) => (
-            <div key={l} className="flex-1">
-              <div className={`h-1 rounded-full ${i < step ? "bg-primary" : "bg-border"}`} />
-              <p className={`mt-1 text-[10px] ${i + 1 === step ? "text-primary font-semibold" : "text-muted-foreground"}`}>{i + 1 < step ? `${l} ✓` : l}</p>
-            </div>
           ))}
         </div>
-        {!keyboardOpen && (
-          <button type="button" onClick={() => goToStep(1)} className="max-w-full inline-flex items-center gap-1.5 rounded-full bg-[#f5eaec] px-3 py-1.5 text-xs font-semibold text-primary">
-            <span className="truncate">{pieceSummary}</span> <Pencil className="w-3 h-3 shrink-0" />
-          </button>
-        )}
-      </div>
 
-      {/* Medio: el vaso. Arrastrar el diseño lo mueve; arrastrar fuera gira la pieza. */}
-      <div ref={previewPanelRef} className="relative flex-1 min-h-0 bg-secondary/30 overflow-hidden isolate">
-        {renderViewerBackdrop()}
-        <div className="absolute inset-0 z-10">{renderEditorThermos(true)}</div>
-        {zoneToast && (
-          <span className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-full bg-foreground/85 px-3 py-1 text-xs font-medium text-background">{zoneToast}</span>
-        )}
-        {wrapSpin && (
-          <span className="pointer-events-none absolute inset-x-0 bottom-2 z-20 text-center text-xs text-muted-foreground">Girando para mostrar el texto envolvente…</span>
-        )}
-        {undoDeleteUntil > 0 && !panelKind && (
-          <button
-            type="button"
-            onClick={() => { setUndoDeleteUntil(0); undo(); }}
-            className="absolute left-1/2 bottom-3 z-20 -translate-x-1/2 h-10 px-4 inline-flex items-center gap-1.5 rounded-full bg-foreground text-background text-sm font-medium shadow-sm"
-          >
-            <Undo2 className="w-4 h-4" /> Deshacer borrado
-          </button>
-        )}
-      </div>
-
-      {/* Abajo, al alcance del pulgar: capas, herramientas y avanzar. */}
-      <div className="shrink-0 border-t border-border bg-white" style={{ paddingBottom: keyboardOpen ? 0 : "env(safe-area-inset-bottom)" }}>
-        {renderMobileBottom()}
-      </div>
-    </div>,
-    document.body,
-  );
-
-  const renderMobileDrinkware = () => (
-    <>
-      {step !== designStepIndex && <WizardProgress step={step} labels={wizardLabels} />}
-      {step === 1 && renderMobilePiece()}
-      {step === designStepIndex && (
-        // El editor va a pantalla completa; acá queda un lugar para volver.
-        <div className="min-h-[50vh] flex items-center justify-center">
-          <Button variant="outline" onClick={() => goToStep(designStepIndex)}>Abrir el editor</Button>
-        </div>
-      )}
-      {overlayOpen && renderMobileEditor()}
-      {step === 3 && (
-        <motion.div key="wiz-send" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-4 pb-28">
-          <p className="text-sm text-muted-foreground">Revisá tu diseño y envialo por WhatsApp. Coordinamos los detalles al instante.</p>
-          {renderDrinkSummary(true)}
-        </motion.div>
-      )}
-      {customizerInView && step !== designStepIndex && (
-        <WizardNav
-          step={step}
-          total={wizardLabels.length}
-          onBack={() => goToStep(Math.max(1, step - 1))}
-          onNext={() => goToStep(step + 1)}
-          nextLabel="Diseñar"
-          final={{
-            label: isPreparing
-              ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando tu pedido...</>
-              : isOrdered
-                ? (lastOrderNumber ? `Pedido ${lastOrderNumber} ✓` : "Abriendo WhatsApp...")
-                : isSoldOut ? "Agotado" : <><MessageCircle className="w-4 h-4" /> Enviar por WhatsApp · {priceLabel}</>,
-            onClick: () => handleOrder(),
-            disabled: isOrdered || isPreparing || isSoldOut,
-          }}
-        />
-      )}
-    </>
-  );
-
-  const renderDrinkwareFlow = () => (isMobile ? renderMobileDrinkware() : renderDesktopDrinkware());
-
-  // ── Flujo de objetos planos y bolígrafos ────────────────────────────────────
-  // (El drinkware usa el editor por capas: renderDrinkwareFlow.)
-  const renderLegacyFlow = () => (
+        {mode === "stickers" ? (
+          <div>
+            <p className="text-[#5f574d] font-light text-sm md:text-base max-w-2xl leading-relaxed mb-6 md:mb-8">
+              Stickers impresos a todo color, con acabado brillante o con relieve que se siente al tacto.
+              Se pegan en termos, botellas, notebooks, celulares o packaging, y resisten agua y roce.
+            </p>
+            <React.Suspense fallback={<div className="min-h-[60vh] flex items-center justify-center text-sm text-muted-foreground">Cargando stickers…</div>}>
+              <StickerCreator />
+            </React.Suspense>
+          </div>
+        ) : (
         <>
-        {isMobile && <WizardProgress step={step} labels={wizardLabels} />}
+        {isMobile && <WizardProgress step={mobileStep} labels={wizardLabels} />}
 
         {/* Desktop: material + product as the original card grids. On mobile these
             are replaced by the Step 1 chip pickers below. */}
@@ -4695,7 +3706,7 @@ export default function Customizer() {
         )}
 
         {/* Mobile Step 1 — Producto: material + product as scrollable chips. */}
-        {isMobile && step === 1 && (
+        {isMobile && mobileStep === 1 && (
           <motion.div key="wiz-1" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-6 pb-28">
             {/* Vista 3D en vivo del producto elegido — se actualiza al cambiar
                 material/producto, así se ve qué se está eligiendo. */}
@@ -4727,9 +3738,21 @@ export default function Customizer() {
           </motion.div>
         )}
 
+        {/* Mobile Step 2 — Color base del producto (drinkware only). La técnica de
+            grabado vive ahora en el Paso 3, bajo "Texto Personalizado". */}
+        {isMobile && isDrinkware && mobileStep === 2 && (
+          <motion.div key="wiz-2" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-5 pb-28">
+            {/* Live mini-preview — the same compact 3D as Step 1, updating
+                as the colour changes. Only ONE 3D canvas is ever mounted at a time
+                (the wizard steps are exclusive), so no second renderer. */}
+            {renderMiniPreview()}
+            {renderDrinkSize()}
+            {renderDrinkColor()}
+          </motion.div>
+        )}
 
         {/* Design step — 3D preview + editor. Step 3 on drinkware, Step 2 otherwise. */}
-        {(!isMobile || step === designStepIndex) && (
+        {(!isMobile || mobileStep === designStepIndex) && (
         <div className={isMobile ? "pb-28" : undefined}>
         {/* STEP 3 — CUSTOMIZE */}
         <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 lg:gap-8 lg:items-start">
@@ -4760,7 +3783,105 @@ export default function Customizer() {
                 />
               )}
 
-              {is3DObject && activeObject ? (
+              {isDrinkware ? (
+                <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
+                  {/* 3D Canvas — taller for bigger sizes; compact on phones */}
+                  <div className="relative w-full" style={{ height: (isMobile ? 300 : 480) + Math.round((activeSize.scale - 0.84) * (isMobile ? 110 : 200)) }}>
+                    <Thermos3D
+                      colorHex={activeColorHex}
+                      finish={finish}
+                      text={text}
+                      fontClass=""
+                      fontStyle={activeFont.style}
+                      productId={productId}
+                      sizeId={viewSize}
+                      customImageUrl={artUrl}
+                      imageSize={artImageSize}
+                      textPlacement={textPlacement}
+                      extraTexts={extraTextMarks}
+                      artPlacement={artPlacement}
+                      colorPrint={effectiveTechnique === "color"}
+                      textColor={textColor}
+                      engraveStyle={drinkwareEngraveStyle}
+                      singleFace={singleFace}
+                      editSingleFace={editSingleFace}
+                      showGuides={guidesActive}
+                      frontFaceU={designFaceU}
+                      guideFace={activeDesignKind === "art" ? artFace : activeDesignKind === "text2" ? text2Face : textFace}
+                      hideLogo={designOnLogoSide}
+                      glass={isGlass}
+                      designActive={designActive}
+                      onDesignMove={onDesignMoveUV}
+                      onDesignDragStart={beginDesignDrag}
+                      onDesignDragEnd={endDesignDrag}
+                      onTap={handleViewerTap}
+                      isOverDesign={isOverActiveDesign}
+                      snapToURef={thermosSnapRef}
+                      renderNowRef={thermosRenderRef}
+                      arModelRef={thermosArRef}
+                      onReady={() => setViewerReady(n => n + 1)}
+                      autoSpin={wrapSpin}
+                      rotationLocked={wrapSpin}
+                    />
+                  </div>
+
+                  {/* Debajo del visor (no encima): la barra nunca tapa la pieza. */}
+                  <div className="-mt-1 mb-2 min-h-6 flex flex-col items-center gap-1.5">
+                    {wrapSpin ? (
+                      <p className="text-xs text-muted-foreground">Girando para mostrar el texto envolvente…</p>
+                    ) : designActive ? (
+                      <DesignEditBar
+                        kindLabel={editLabel}
+                        onSmaller={() => resizeActive(-0.1)}
+                        onBigger={() => resizeActive(0.1)}
+                        onCenter={centerWithHistory}
+                        onUndo={history.length ? undo : null}
+                        onDelete={deleteActive}
+                        onDone={finishEditing}
+                      />
+                    ) : (
+                      <>
+                        <p className="text-xs text-muted-foreground">
+                          {idleEditKind ? "Arrastrá para girar · tocá tu diseño para moverlo" : "Arrastrá para girar"}
+                        </p>
+                        <div className="flex flex-wrap items-start justify-center gap-2">
+                          <DesignIdleActions
+                            onEdit={idleEditKind ? () => selectDesign(idleEditKind, "button") : null}
+                            onUndoDelete={undoDeleteUntil ? () => { setUndoDeleteUntil(0); undo(); } : null}
+                          />
+                          <ArViewButton
+                            getModel={() => thermosArRef.current?.() ?? null}
+                            designKey={[productId, viewSize, activeColorHex, finish, text, font, text2, text2Font, JSON.stringify(text2Placement), iconId, artUrl?.length ?? 0, textColor, effectiveTechnique, singleFace, JSON.stringify(textPlacement), JSON.stringify(artPlacement)].join("|")}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Summary badges — hidden on mobile to keep the sticky preview compact. */}
+                  <div className="hidden md:flex flex-wrap gap-2 justify-center px-4 pb-4">
+                    <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground">
+                      {odooProduct?.name ?? product.singular}
+                    </span>
+                    <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground flex items-center gap-1">
+                      {isGlass ? (
+                        <>
+                          <span className="w-2 h-2 rounded-full inline-block border border-border bg-gradient-to-br from-white to-secondary" />
+                          Cristal transparente
+                        </>
+                      ) : (
+                        <>
+                          <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: activeColorHex }} />
+                          {activeColorName}
+                        </>
+                      )}
+                    </span>
+                    <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground">
+                      {activeTechnique.name}
+                    </span>
+                  </div>
+                </div>
+              ) : is3DObject && activeObject ? (
                 <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
                   <div className="relative w-full" style={{ height: isMobile ? 300 : 460 }}>
                     <Object3D
@@ -4877,7 +3998,254 @@ export default function Customizer() {
 
           {/* CONTROLS AREA */}
           <div className={`w-full min-w-0 ${shopMode && !isMobile ? "lg:col-span-5" : "lg:col-span-8"} bg-white rounded-2xl border border-border`}>
-            {is3DObject && activeObject ? (
+            {isDrinkware ? (
+              <Tabs value={drinkTab} onValueChange={setDrinkTab} className="w-full">
+                <div className="px-4 sm:px-6 pt-4 pb-1">
+                  <TabsList className="w-full flex gap-1 bg-secondary/50 rounded-xl p-1 h-auto">
+                    {/* On mobile "Color" moves to the Estilo step. All segments are
+                        equal-width and always visible — no arrows, no scroll. */}
+                    {!isMobile && (
+                    <TabsTrigger value="color" className={SEG_TAB}>
+                      <Palette className="w-4 h-4 shrink-0" /> <span className="truncate">Color</span>
+                    </TabsTrigger>
+                    )}
+                    <TabsTrigger value="text" className={SEG_TAB}>
+                      <Type className="w-4 h-4 shrink-0" /> <span className="truncate">Texto</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="icons" className={SEG_TAB}>
+                      <Shapes className="w-4 h-4 shrink-0" /> <span className="truncate">Íconos</span>
+                    </TabsTrigger>
+                    {canUploadImage && (
+                      <TabsTrigger value="media" className={SEG_TAB}>
+                        <ImageIcon className="w-4 h-4 shrink-0" /> <span className="truncate">Imagen</span>
+                      </TabsTrigger>
+                    )}
+                  </TabsList>
+                </div>
+
+                <div className="p-4 sm:p-5 min-h-[280px]">
+                  {/* COLOR TAB (desktop editor; on mobile colour lives in Step 2 "Estilo") */}
+                  {!isMobile && (
+                  <TabsContent value="color" className="mt-0 space-y-5">
+                    {renderDrinkSize()}
+                    {renderDrinkColor()}
+                  </TabsContent>
+                  )}
+
+                  {/* TEXT TAB */}
+                  <TabsContent value="text" className="mt-0 space-y-5">
+                    {/* BÁSICO — escribir, elegir técnica de grabado y orientación. */}
+                    <div className="space-y-4">
+                      <div>
+                        <Label className="text-sm font-medium text-foreground mb-3 block">Texto Personalizado</Label>
+                        <EngravingTextField
+                          text={text}
+                          onText={handleEngravingText}
+                          layout={textPlacement.layout}
+                          onFocusChange={setTextFieldFocused}
+                          limitNotice={wrapLimitHit ? "El texto alcanzó el máximo para envolver el producto." : null}
+                        />
+                        <AiPhraseIdeas product={product.singular} twoLines={text2Open} onPick={pickPhraseIdea} />
+                      </div>
+
+                      {/* Técnica de grabado — global (afecta texto, ícono e imagen).
+                          En impresión UV aparece el color del texto/diseño; en láser
+                          el diseño queda monocromático. */}
+                      {renderDrinkTechnique()}
+                      {isColorPrint && (
+                        <TextColorPicker value={textColor} onChange={setTextColor} />
+                      )}
+
+                      {/* Orientación del texto (al final de los controles de Texto). */}
+                      <OrientationToggle
+                        value={textPlacement.orientation}
+                        onChange={(o) => applyTextPlacement({ ...textPlacement, orientation: o })}
+                        verticalDisabledReason={isWrap360 ? "El texto envolvente 360° va en horizontal alrededor del cuerpo" : undefined}
+                      />
+                      {/* Dónde va el texto: frente, dorso o costado (el Envolvente 360°
+                          ya rodea todo el cuerpo). */}
+                      {!isWrap360 && textFaces.length > 1 && (
+                        <FaceSelector faces={textFaces} value={textFace} onChange={selectTextFace} product={product} />
+                      )}
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium text-foreground mb-3 block">Elegí tu tipografía</Label>
+                      <FontCarousel fonts={FONTS} value={font} onChange={setFont} sampleText={text} />
+                    </div>
+
+                    <div>
+                      <TextSizeSlider
+                        scale={textPlacement.scale}
+                        onScale={(s) => applyTextPlacement({ ...textPlacement, scale: s })}
+                        maxScale={isWrap360 ? wrapMaxScale : undefined}
+                      />
+                      {textLayout.shrunk && (
+                        <p className="text-xs text-primary/90 flex items-center gap-1.5 rounded-lg bg-[#f5eaec] border border-primary/20 px-3 py-2 mt-2">
+                          <Info className="w-3.5 h-3.5 shrink-0" />
+                          Tamaño ajustado automáticamente para que entre en el área.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* AVANZADO — oculto hasta que se necesite. Los defaults (una cara,
+                        centrado, automático, interlineado normal, horizontal) ya dan un
+                        resultado lindo sin abrir esto. */}
+                    <AdvancedOptions>
+                      <div>
+                        <TextDispositionToolbar placement={textPlacement} onChange={applyTextPlacement} />
+                      </div>
+                    </AdvancedOptions>
+
+                    {/* Texto 2: otro texto con su propia fuente, tamaño y lugar. */}
+                    {(text2Open || !isWrap360) && (text2Open ? (
+                      <div className="rounded-xl border border-border bg-secondary/30 px-4 py-3 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">Texto 2</p>
+                            <p className="text-xs text-muted-foreground">
+                              Ej.: la empresa arriba y el nombre del empleado abajo. Tocalo sobre el {product.singular.toLowerCase()} para moverlo.
+                              {effectiveTechnique === "laser" && <> {formatGs(PRICING.laser.extraText)} más.</>}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={removeText2}
+                            aria-label="Quitar el texto 2"
+                            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div>
+                          <EngravingTextField
+                            text={text2}
+                            onText={setText2}
+                            layout="auto"
+                            placeholder="Segundo texto (ej. nombre del empleado)"
+                          />
+                        </div>
+                        {singleFace && textFaces.length > 1 && (
+                          <FaceSelector faces={textFaces} value={text2Face} onChange={selectText2Face} product={product} label="Ubicación del texto 2" />
+                        )}
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-2 block">Tipografía del texto 2</Label>
+                          <FontCarousel fonts={FONTS} value={text2Font} onChange={setText2Font} sampleText={text2 || "Texto 2"} />
+                        </div>
+                        <TextSizeSlider
+                          scale={text2Placement.scale}
+                          onScale={(sc) => applyText2Placement({ ...text2Placement, scale: sc })}
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={openText2}
+                        className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-3 text-sm font-medium text-foreground hover:border-primary/40 hover:bg-secondary/50 active:scale-[0.99] transition-all"
+                      >
+                        <Plus className="w-4 h-4 text-primary" />
+                        Agregar otro texto
+                        {effectiveTechnique === "laser" && (
+                          <span className="text-xs font-normal text-muted-foreground">+ {formatGs(PRICING.laser.extraText)}</span>
+                        )}
+                      </button>
+                    ))}
+
+                    {extraEngraving && (
+                      <ExtraEngravingFields lid={extraLid} base={extraBase} onLid={setExtraLid} onBase={setExtraBase} />
+                    )}
+                  </TabsContent>
+
+                  {/* ICONS TAB */}
+                  <TabsContent value="icons" className="mt-0 space-y-5">
+                    <div>
+                      <Label className="text-sm font-medium text-foreground mb-1 block">Elegí un ícono</Label>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Sumá un ícono a tu {product.singular.toLowerCase()}. Tocá de nuevo para quitarlo.
+                      </p>
+                      <IconPicker value={iconId} onChange={handlePickIcon} />
+                    </div>
+
+                    {selectedIcon && textFaces.length > 1 && (
+                      <FaceSelector faces={textFaces} value={artFace} onChange={selectArtFace} product={product} label="Ubicación del ícono" />
+                    )}
+
+                    {/* Tamaño/orientación del ícono, sólo cuando hay uno elegido. */}
+                    {selectedIcon && (
+                    <AdvancedOptions>
+                      <div>
+                        <Label className="text-sm font-medium text-foreground mb-1 block">Tamaño y orientación del ícono</Label>
+                        <p className="text-xs text-muted-foreground mb-3">
+                          Arrastrá el ícono sobre el {product.singular.toLowerCase()} para ubicarlo, o usá el control de posición del visor. Acá ajustás su tamaño.
+                        </p>
+                        <PlacementControls
+                          value={artPlacement}
+                          onChange={applyArtPlacement}
+                          withSize
+                          singleFace={singleFace}
+                          frontExtents={artExtents}
+                          areaAspect={faceAreaAspect}
+                        />
+                      </div>
+                    </AdvancedOptions>
+                    )}
+                  </TabsContent>
+
+                  {/* LOGO / PHOTO TAB — stainless steel only */}
+                  {canUploadImage && (
+                  <TabsContent value="media" className="mt-0 space-y-5">
+                    <div>
+                      <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Subí tu logo o tu foto: se imprime a todo color (impresión UV) sobre el {product.singular.toLowerCase()}. Podés dejarla con fondo o quitárselo.
+                      </p>
+
+                      {/* Antes se exigía un plan "con imagen", pero el plan se deduce
+                          de lo diseñado (sin imagen = "solo nombres"): era circular y
+                          bloqueaba la subida. Ahora se sube directo y el plan pasa a
+                          "logo" solo; el tamaño sale de ese plan. */}
+                      <ImageUpload
+                        imageSize="large"
+                        value={customImage}
+                        onChange={handleUploadImage}
+                        aiStyle={effectiveTechnique === "color" ? "color" : "laser"}
+                      />
+
+                      {customImage && textFaces.length > 1 && (
+                        <div className="pt-4 mt-4 border-t border-border">
+                          <FaceSelector faces={textFaces} value={artFace} onChange={selectArtFace} product={product} label="Ubicación de la imagen" />
+                        </div>
+                      )}
+
+                      {customImage && (
+                        <div className="pt-4 mt-4 border-t border-border">
+                          <Label className="text-sm font-medium text-foreground mb-1 block">Orientación de la imagen</Label>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            Arrastrá la imagen sobre el {product.singular.toLowerCase()} para ubicarla, o usá el control de posición del visor.
+                          </p>
+                          <PlacementControls
+                            value={artPlacement}
+                            onChange={applyArtPlacement}
+                            singleFace={singleFace}
+                            frontExtents={artExtents}
+                            areaAspect={faceAreaAspect}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+                  )}
+                </div>
+
+                {/* PLAN + ORDER — desktop only; on mobile this is Step 4 (Resumen).
+                    La técnica de grabado vive ahora en el tab Texto (Paso 3). */}
+                {!isMobile && (
+                <div className="px-6 pb-6 pt-4 border-t border-border space-y-4">
+                  {renderDrinkSummary()}
+                </div>
+                )}
+              </Tabs>
+            ) : is3DObject && activeObject ? (
               /* MODELLED BLANK — laser-only personalization (wood, leather, acrylic, plastic, bare steel, pens) */
               <Tabs key={activeObject.id} defaultValue="text" className="w-full">
                 <div className="px-4 sm:px-6 pt-4 pb-1">
@@ -5173,33 +4541,42 @@ export default function Customizer() {
         </div>
         )}
 
+        {/* Mobile Step 4 — Resumen (drinkware only): inferred plan + price + WhatsApp. */}
+        {isMobile && isDrinkware && mobileStep === 4 && (
+          <motion.div key="wiz-4" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-4 pb-28">
+            <p className="text-sm text-muted-foreground">
+              Revisá tu diseño y envialo por WhatsApp. Coordinamos los detalles al instante.
+            </p>
+            {renderDrinkSummary()}
+          </motion.div>
+        )}
 
         {/* Solo con el personalizador en pantalla: si no, la barra fija quedaba
             flotando sobre el hero, Tarifas, la Galería y el footer. */}
         {isMobile && customizerInView && (
           <WizardNav
-            step={step}
+            step={mobileStep}
             total={wizardLabels.length}
-            onBack={() => goToStep(Math.max(1, step - 1))}
+            onBack={() => goToStep(Math.max(1, mobileStep - 1))}
             onNext={() => {
               // Leaving the design step: swing the personalized area to face the
               // camera, wait for the repaint, THEN snapshot the live canvas — so
               // the Step 4 image always shows the design completely, no matter
               // how the user left the piece rotated.
-              if (step === designStepIndex) {
+              if (mobileStep === designStepIndex) {
                 // Terminar la edición: sin guías ni selección en la foto.
                 if (activeDesignKind) finishEditing();
                 thermosSnapRef.current?.(captureFaceU);
                 setTimeout(() => {
                   const img = capturePreview();
                   if (img) { setPreviewImg(img); previewImgRef.current = img; }
-                  goToStep(Math.min(wizardLabels.length, step + 1));
+                  goToStep(Math.min(wizardLabels.length, mobileStep + 1));
                 }, 150);
                 return;
               }
-              goToStep(Math.min(wizardLabels.length, step + 1));
+              goToStep(Math.min(wizardLabels.length, mobileStep + 1));
             }}
-            nextLabel={step === designStepIndex ? "Continuar" : step === 1 ? "Diseñar" : "Siguiente"}
+            nextLabel={mobileStep === designStepIndex ? "Continuar" : mobileStep === 1 ? "Diseñar" : "Siguiente"}
             final={{
               label: isPreparing
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando tu pedido...</>
@@ -5211,75 +4588,6 @@ export default function Customizer() {
             }}
           />
         )}
-        </>
-  );
-
-  return (
-    <section ref={sectionRef} className="py-12 md:py-16 px-4 sm:px-6 bg-white border-b border-border">
-      <div className="max-w-7xl mx-auto">
-        {/* Header — compact on mobile (the long copy is desktop-only). */}
-        <div className="mb-6 md:mb-10">
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <p className="text-[#8B1A2F] text-[11px] font-semibold uppercase tracking-[0.3em]">
-              El personalizador
-            </p>
-            {/* Subtle replay of the onboarding demo (customizer-tutorial.tsx
-                listens for this event; works even after "No volver a mostrar"). */}
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new Event("tuto:abrir"))}
-              className="inline-flex items-center gap-1.5 min-h-11 py-2 text-xs text-muted-foreground hover:text-primary active:text-primary transition-colors shrink-0"
-            >
-              <CirclePlay className="w-4 h-4" />
-              <span className="underline underline-offset-4 decoration-border hover:decoration-current">
-                Ver cómo funciona
-              </span>
-            </button>
-          </div>
-          <h2 className="font-serif font-light text-3xl md:text-5xl text-[#1A1614] mb-4 leading-[1.1]">
-            Creá tu pieza
-          </h2>
-          <p className={`hidden ${mode === "products" ? "md:block" : ""} text-[#5f574d] font-light text-lg max-w-xl leading-relaxed`}>
-            Elegí el material, luego el producto, y refinalo a tu gusto. El diseño final lo coordinamos
-            con vos por WhatsApp.
-          </p>
-        </div>
-
-        <div role="tablist" aria-label="Qué querés crear" className="mb-6 md:mb-8 inline-flex w-full sm:w-auto rounded-xl border border-border bg-secondary/40 p-1">
-          {([
-            { id: "products", label: <><span className="sm:hidden">Termos y más</span><span className="hidden sm:inline">Termos, vasos y más</span></> },
-            { id: "stickers", label: "Stickers" },
-          ] as const).map(t => (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={mode === t.id}
-              onClick={() => {
-                if (mode === t.id) return;
-                setMode(t.id);
-                track("customizer_mode", { mode: t.id });
-              }}
-              className={`flex-1 sm:flex-none min-h-11 px-5 rounded-lg text-sm font-medium transition-colors ${mode === t.id ? "bg-white text-[#8B1A2F] shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {mode === "stickers" ? (
-          <div>
-            <p className="text-[#5f574d] font-light text-sm md:text-base max-w-2xl leading-relaxed mb-6 md:mb-8">
-              Stickers impresos a todo color, con acabado brillante o con relieve que se siente al tacto.
-              Se pegan en termos, botellas, notebooks, celulares o packaging, y resisten agua y roce.
-            </p>
-            <React.Suspense fallback={<div className="min-h-[60vh] flex items-center justify-center text-sm text-muted-foreground">Cargando stickers…</div>}>
-              <StickerCreator />
-            </React.Suspense>
-          </div>
-        ) : (
-        <>
-        {isDrinkware ? renderDrinkwareFlow() : renderLegacyFlow()}
 
         </>
         )}
