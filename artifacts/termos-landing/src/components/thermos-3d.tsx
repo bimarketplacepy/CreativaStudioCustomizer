@@ -7,7 +7,7 @@ import { getProduct, getSize, resampledProfile, type ProductDef } from "@/lib/pr
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, bandRange, vForY, type FaceId, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
 import { makeBodyMaps, makeGlassEngraving, type EngraveStyle, type TextMark } from "@/lib/engraving-maps";
-import { FRONT_FACE, frontAreaBounds } from "@/lib/face-area";
+import { FRONT_FACE, faceConfigFor, frontAreaBounds } from "@/lib/face-area";
 import { layoutText, fillLinesAligned, measureLinesWidth, LINE_HEIGHT } from "@/lib/engraving-text";
 
 class WebGLErrorBoundary extends Component<
@@ -470,6 +470,7 @@ function darken(hex: string, t: number): string {
  * closed line loop that hugs the body surface over the editable area, so the
  * customer sees exactly the box their design is trapped inside. Built straight
  * from the same `FRONT_FACE` config the clamp uses, so guide and limit agree.
+ * En cuerpos con escalón hay un recuadro por zona (arriba y abajo).
  */
 function FrontFaceGuide({ sil, product, face }: { sil: Silhouette; product: ProductDef; face: FaceId }) {
   const object = useMemo(() => {
@@ -502,13 +503,6 @@ function FrontFaceGuide({ sil, product, face }: { sil: Silhouette; product: Prod
     };
 
     const NH = 28, NV = 12;
-    const verts: THREE.Vector3[] = [];
-    for (let i = 0; i <= NH; i++) verts.push(at(b.uMin + (b.uMax - b.uMin) * (i / NH), b.vMin));
-    for (let i = 1; i <= NV; i++) verts.push(at(b.uMax, b.vMin + (b.vMax - b.vMin) * (i / NV)));
-    for (let i = 1; i <= NH; i++) verts.push(at(b.uMax - (b.uMax - b.uMin) * (i / NH), b.vMax));
-    for (let i = 1; i < NV; i++) verts.push(at(b.uMin, b.vMax - (b.vMax - b.vMin) * (i / NV)));
-
-    const geo = new THREE.BufferGeometry().setFromPoints(verts);
     const mat = new THREE.LineDashedMaterial({
       color: "#C1121F",
       dashSize: 0.05 * sil.scale,
@@ -517,14 +511,23 @@ function FrontFaceGuide({ sil, product, face }: { sil: Silhouette; product: Prod
       opacity: 0.85,
       depthWrite: false,
     });
-    const line = new THREE.LineLoop(geo, mat);
-    line.computeLineDistances();
-    return line;
+    const group = new THREE.Group();
+    for (const z of faceConfigFor(product).zones) {
+      const verts: THREE.Vector3[] = [];
+      for (let i = 0; i <= NH; i++) verts.push(at(b.uMin + (b.uMax - b.uMin) * (i / NH), z.vMin));
+      for (let i = 1; i <= NV; i++) verts.push(at(b.uMax, z.vMin + (z.vMax - z.vMin) * (i / NV)));
+      for (let i = 1; i <= NH; i++) verts.push(at(b.uMax - (b.uMax - b.uMin) * (i / NH), z.vMax));
+      for (let i = 1; i < NV; i++) verts.push(at(b.uMin, z.vMax - (z.vMax - z.vMin) * (i / NV)));
+      const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(verts), mat);
+      line.computeLineDistances();
+      group.add(line);
+    }
+    return group;
   }, [sil, product, face]);
 
   useEffect(() => () => {
-    object.geometry.dispose();
-    (object.material as THREE.Material).dispose();
+    object.children.forEach(c => (c as THREE.LineLoop).geometry.dispose());
+    ((object.children[0] as THREE.LineLoop | undefined)?.material as THREE.Material | undefined)?.dispose();
   }, [object]);
 
   return <primitive object={object} />;

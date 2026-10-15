@@ -7,7 +7,7 @@ import {
 import {
   layoutText, fillLinesAligned, measureLinesWidth, measureLinesBox, fitText,
 } from "./engraving-text";
-import { FACES, faceConfigFor, nearU, type MarkHalfExtents } from "./face-area";
+import { FACES, faceConfigFor, nearU, pickZone, zoneWidthScale, type MarkHalfExtents } from "./face-area";
 
 /** Text wraps once a row passes this fraction of the wrap-around circumference. */
 const TEXT_WRAP_FRAC = 0.5;
@@ -63,7 +63,10 @@ export function bandMetrics(product: ProductDef, W: number, H: number) {
   const vPxPerUnit = (botPx - topPx) / (product.band[1] - product.band[0]);
   // Resolved single-face area for THIS product (copa overrides the default) so
   // every consumer of the metrics clamps against the same rectangle.
-  return { topPx, botPx, aspect: vPxPerUnit / hPxPerUnit, face: faceConfigFor(product) };
+  const face = faceConfigFor(product);
+  // Ensanche horizontal de cada zona (1 salvo en cuerpos con escalón).
+  const zoneScale = face.zones.map((_, i) => zoneWidthScale(product, i));
+  return { topPx, botPx, aspect: vPxPerUnit / hPxPerUnit, face, zoneScale };
 }
 
 type BandMetrics = ReturnType<typeof bandMetrics>;
@@ -86,9 +89,13 @@ function drawPlaced(
 ) {
   const rot = p.orientation === "vertical" ? -Math.PI / 2 : 0;
   const boundHalfH = (rot ? halfW : halfH) * m.aspect;
+  const bandH = m.botPx - m.topPx;
+  // En una cara con varias zonas: la zona del elemento y su ensanche (ver zoneWidthScale).
+  const zone = singleFace ? pickZone(m.face, p.v, boundHalfH / bandH) : 0;
+  const widen = singleFace ? m.zoneScale[zone] ?? 1 : 1;
   // Horizontal half-extent in circumference pixels (swaps with vertical when the
   // mark is turned on its side).
-  const boundHalfW = rot ? halfH : halfW;
+  const boundHalfW = (rot ? halfH : halfW) * widen;
 
   let cx = ((p.u % 1) + 1) % 1 * W;
   let cy = clamp(m.topPx + (m.botPx - m.topPx) * p.v, m.topPx + boundHalfH, m.botPx - boundHalfH);
@@ -99,8 +106,8 @@ function drawPlaced(
   // El dorso (centro en u 1.0) cruza la costura: u se lleva junto a su centro y
   // el dibujo repetido en ±W lo completa del otro lado.
   if (singleFace) {
-    const bandH = m.botPx - m.topPx;
     const f = m.face;
+    const z = f.zones[zone];
     const c = f.uCenter + FACES[p.face ?? "front"].offset;
     cx = clamp(
       nearU(p.u, c) * W,
@@ -109,15 +116,15 @@ function drawPlaced(
     );
     cy = clamp(
       cy,
-      m.topPx + bandH * (f.vCenter - f.vHeightFrac / 2) + boundHalfH,
-      m.topPx + bandH * (f.vCenter + f.vHeightFrac / 2) - boundHalfH,
+      m.topPx + bandH * z.vMin + boundHalfH,
+      m.topPx + bandH * z.vMax - boundHalfH,
     );
   }
 
   for (const dx of [-W, 0, W]) {
     ctx.save();
     ctx.translate(cx + dx, cy);
-    ctx.scale(1, m.aspect);
+    ctx.scale(widen, m.aspect);
     ctx.rotate(rot);
     render();
     ctx.restore();
@@ -313,6 +320,8 @@ export function computeFaceTextLayout(
     align?: TextAlign;
     layout?: TextLayout;
     lineHeight?: number;
+    /** v del elemento: elige la zona contra la que se ajusta (cuerpos con escalón). */
+    v?: number;
   },
   scale: number,
   singleFace: boolean,
@@ -355,8 +364,12 @@ export function computeFaceTextLayout(
     // Room for the block in square px. Turning the text vertical swaps which
     // area dimension constrains the block's own width vs. height.
     const pad = 1 - 2 * m.face.textPadFrac;
-    const areaWcyl = 2 * m.face.uHalfWidth * W;                // circumference px
-    const areaHcyl = m.face.vHeightFrac * (m.botPx - m.topPx); // texture px
+    // Se ajusta a la zona donde está (la de arriba si no se sabe). En una zona
+    // más angosta el bloque se dibuja ensanchado, así que entra menos ancho.
+    const zi = pickZone(m.face, opts.v ?? m.face.zones[0].vMin);
+    const z = m.face.zones[zi];
+    const areaWcyl = (2 * m.face.uHalfWidth * W) / (m.zoneScale[zi] ?? 1); // circumference px
+    const areaHcyl = (z.vMax - z.vMin) * (m.botPx - m.topPx); // texture px
     const areaHsq = areaHcyl / m.aspect;                          // square px
     const availW = (rot ? areaHsq : areaWcyl) * pad;
     const availH = (rot ? areaWcyl : areaHsq) * pad;
@@ -457,7 +470,7 @@ export function drawColorLayer(ctx: CanvasRenderingContext2D, product: ProductDe
     const p = t.placement;
     const L = computeFaceTextLayout(
       product,
-      { text: t.text, fontFamily: ff, colorPrint: true, orientation: p.orientation, align: p.align, layout: p.layout, lineHeight: p.lineHeight },
+      { text: t.text, fontFamily: ff, colorPrint: true, orientation: p.orientation, align: p.align, layout: p.layout, lineHeight: p.lineHeight, v: p.v },
       p.scale,
       singleFace,
     );
@@ -713,7 +726,7 @@ export function markHalfExtents(
     if (spec.text) {
       const L = computeFaceTextLayout(
         product,
-        { text: spec.text, fontFamily: spec.fontFamily, colorPrint: spec.colorPrint, orientation: placement.orientation, align: placement.align, layout: placement.layout, lineHeight: placement.lineHeight },
+        { text: spec.text, fontFamily: spec.fontFamily, colorPrint: spec.colorPrint, orientation: placement.orientation, align: placement.align, layout: placement.layout, lineHeight: placement.lineHeight, v: placement.v },
         placement.scale,
         singleFace,
       );
@@ -728,11 +741,14 @@ export function markHalfExtents(
   }
 
   const rot = placement.orientation === "vertical";
-  const horizHalfPx = rot ? halfHpx : halfWpx;
   const vertHalfPx = (rot ? halfWpx : halfHpx) * m.aspect;
+  const halfV = vertHalfPx / (m.botPx - m.topPx);
+  // Mismo ensanche por zona que drawPlaced, para que el clamp y el dibujo coincidan.
+  const widen = singleFace ? m.zoneScale[pickZone(m.face, placement.v, halfV)] ?? 1 : 1;
+  const horizHalfPx = (rot ? halfHpx : halfWpx) * widen;
   return {
     halfU: horizHalfPx / W,
-    halfV: vertHalfPx / (m.botPx - m.topPx),
+    halfV,
   };
 }
 
@@ -783,7 +799,7 @@ function drawEngravingMark(
     const p = t.placement;
     const L = computeFaceTextLayout(
       product,
-      { text: t.text, fontFamily: ff, colorPrint: false, orientation: p.orientation, align: p.align, layout: p.layout, lineHeight: p.lineHeight },
+      { text: t.text, fontFamily: ff, colorPrint: false, orientation: p.orientation, align: p.align, layout: p.layout, lineHeight: p.lineHeight, v: p.v },
       p.scale,
       singleFace,
     );

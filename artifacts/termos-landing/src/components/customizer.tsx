@@ -37,6 +37,7 @@ import {
 } from "@/lib/engraving-maps";
 import {
   padToPlacement, placementToPad, engraveFacesFor, faceCenterU, faceLabel,
+  faceAreaCenter, faceConfigFor, vInNextZone,
   clampPlacementToFrontArea, type MarkHalfExtents,
 } from "@/lib/face-area";
 import {
@@ -1338,27 +1339,31 @@ function ExtraEngravingFields({ lid, base, onLid, onBase }: {
 }
 
 /** Cara del cuerpo donde va un elemento (frente, lado del logo, costados): solo las que ofrece el producto. */
-function FaceSelector({ faces, value, onChange, product, label = "Ubicación del texto" }: {
+/**
+ * Dónde va el elemento (frente, lado del logo, costado), arriba del visor 3D:
+ * la ubicación es algo que se ve en la pieza, así que se elige ahí y no en cada
+ * pestaña. Edita el elemento activo (o el de la pestaña abierta).
+ */
+function FaceSelector({ faces, value, onChange, product, label }: {
   faces: FaceId[];
   value: FaceId;
   onChange: (f: FaceId) => void;
   product: ProductDef;
-  label?: string;
+  /** Qué elemento se ubica ("Texto", "Ícono"…). */
+  label: string;
 }) {
   return (
-    <div>
-      <Label className="text-xs text-muted-foreground mb-2 block">{label}</Label>
-      <div className="flex flex-wrap gap-2" role="group" aria-label={label}>
+    <div className="flex items-center gap-2 max-w-full" role="group" aria-label={`Ubicación: ${label}`}>
+      <span className="text-[11px] text-muted-foreground whitespace-nowrap">{label} en</span>
+      <div className="flex items-center gap-0.5 rounded-full bg-white/90 border border-border p-0.5 shadow-sm overflow-x-auto">
         {faces.map(f => (
           <button
             key={f}
             type="button"
             aria-pressed={value === f}
             onClick={() => onChange(f)}
-            className={`flex-1 min-w-[5.5rem] p-2.5 border rounded-lg text-sm font-medium transition-all active:scale-[0.97] ${
-              value === f
-                ? "border-primary bg-[#f5eaec] text-primary ring-1 ring-primary/30"
-                : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
+            className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
+              value === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary"
             }`}
           >
             {faceLabel(product, f)}
@@ -1982,12 +1987,13 @@ export default function Customizer() {
   const textLayout = React.useMemo(
     () => computeFaceTextLayout(
       product,
-      { text, fontFamily: textFontFamily, colorPrint: isColorPrint, orientation: textPlacement.orientation, align: textPlacement.align, layout: textPlacement.layout, lineHeight: textPlacement.lineHeight },
+      { text, fontFamily: textFontFamily, colorPrint: isColorPrint, orientation: textPlacement.orientation, align: textPlacement.align, layout: textPlacement.layout, lineHeight: textPlacement.lineHeight, v: textPlacement.v },
       textPlacement.scale,
       singleFace,
     ),
+    // v solo importa por la zona (cuerpos con escalón): se recalcula al cambiar de zona.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [product, text, textFontFamily, isColorPrint, textPlacement.orientation, textPlacement.align, textPlacement.layout, textPlacement.lineHeight, textPlacement.scale, singleFace, fontTick],
+    [product, text, textFontFamily, isColorPrint, textPlacement.orientation, textPlacement.align, textPlacement.layout, textPlacement.lineHeight, textPlacement.scale, textPlacement.zone, singleFace, fontTick],
   );
 
   // ── "Envolvente 360°" — anti-encime ────────────────────────────────────────
@@ -2160,12 +2166,22 @@ export default function Customizer() {
     if (guidesTimer.current) clearTimeout(guidesTimer.current);
     guidesTimer.current = setTimeout(() => setGuidesActive(false), 1100);
   }, []);
+  // Arrastre en cuerpos con varias zonas: v "deseado" acumulado durante el
+  // arrastre. El clamp deja al elemento en su zona; con este v el dedo puede
+  // seguir bajando por el escalón y, pasada la mitad, el elemento salta a la
+  // otra zona (si se acumulara sobre el v ya encuadrado, nunca cruzaría).
+  const dragVRef = useRef<number | null>(null);
   const beginDesignDrag = React.useCallback(() => {
+    dragVRef.current = null;
     if (guidesTimer.current) { clearTimeout(guidesTimer.current); guidesTimer.current = null; }
     setGuidesActive(true);
     setHistory(h => [...h.slice(-29), snapshotRef.current]);
   }, []);
-  const endDesignDrag = React.useCallback(() => { flashGuides(); }, [flashGuides]);
+  const endDesignDrag = React.useCallback(() => { dragVRef.current = null; flashGuides(); }, [flashGuides]);
+  const multiZone = faceConfigFor(product).zones.length > 1;
+  const activePlacementRef = useRef<Placement | null>(null);
+  activePlacementRef.current =
+    activeDesignKind === "text" ? textPlacement : activeDesignKind === "text2" ? text2Placement : activeDesignKind === "art" ? artPlacement : null;
 
   // Move the active mark by a delta in pad space (0..1 across the front-face
   // rectangle). Shared by the drag-on-3D and the floating d-pad. In single-face
@@ -2174,7 +2190,7 @@ export default function Customizer() {
   const moveActivePlacement = React.useCallback((dPadX: number, dPadY: number) => {
     // `sf`: modo una-cara del elemento que se mueve — el texto según su
     // disposición, el arte siempre.
-    const apply = (p: Placement, clampFn: (q: Placement) => Placement, sf: boolean): Placement => {
+    const apply = (p: Placement, clampFn: (q: Placement) => Placement, sf: boolean, halfV: number): Placement => {
       // Flat blanks (billetera, tabla, caja…): the whole face is the canvas, so
       // u/v walk it edge to edge — corners included. The face renderer
       // (drawPlaced in engraving-face.ts) already stops the mark's bounding box
@@ -2192,27 +2208,34 @@ export default function Customizer() {
           product,
           p.face,
         );
-        return clampFn({ ...p, u: np.u, v: np.v });
+        const next = clampFn({ ...p, u: np.u, v: np.v });
+        // Trabado contra el borde de su zona (cuerpo con escalón): la flecha lo
+        // pasa a la zona vecina.
+        if (dPadY !== 0 && Math.abs(next.v - p.v) < 1e-4) {
+          const v2 = vInNextZone(product, p.v, halfV, dPadY > 0 ? 1 : -1);
+          if (v2 !== null) return clampFn({ ...next, v: v2 });
+        }
+        return next;
       }
       let u = p.u + dPadX; u -= Math.floor(u);
       const v = Math.max(0, Math.min(1, p.v + dPadY));
       return { ...p, u, v };
     };
-    if (activeDesignKind === "text") setTextPlacement(p => apply(p, clampTextP, singleFace));
-    else if (activeDesignKind === "text2") setText2Placement(p => apply(p, clampText2P, singleFace));
-    else if (activeDesignKind === "art") setArtPlacement(p => apply(p, clampArtP, true));
-  }, [singleFace, is3DObject, product, activeDesignKind, clampTextP, clampText2P, clampArtP]);
+    if (activeDesignKind === "text") setTextPlacement(p => apply(p, clampTextP, singleFace, textExtents.halfV));
+    else if (activeDesignKind === "text2") setText2Placement(p => apply(p, clampText2P, singleFace, text2Extents.halfV));
+    else if (activeDesignKind === "art") setArtPlacement(p => apply(p, clampArtP, true, artExtents.halfV));
+  }, [singleFace, is3DObject, product, activeDesignKind, clampTextP, clampText2P, clampArtP, textExtents.halfV, text2Extents.halfV, artExtents.halfV]);
 
   const centerActivePlacement = React.useCallback(() => {
     // Face centre for flat blanks; centre of the front-face rectangle (same
     // u, product-tuned v centre, run through the clamp) for drinkware.
-    const c = is3DObject ? { u: 0.5, v: 0.5 } : padToPlacement(0.5, 0.5, product);
+    const c = is3DObject ? { u: 0.5, v: 0.5 } : faceAreaCenter(product);
     const clampT = is3DObject ? (p: Placement) => p : clampTextP;
     const clampA = is3DObject ? (p: Placement) => p : clampArtP;
     // El texto se centra en su propia cara (frente, dorso o costado).
-    const ct = is3DObject ? c : padToPlacement(0.5, 0.5, product, textPlacement.face);
-    const c2 = is3DObject ? c : padToPlacement(0.5, 0.5, product, text2Placement.face);
-    const ca = is3DObject ? c : padToPlacement(0.5, 0.5, product, artPlacement.face);
+    const ct = is3DObject ? c : faceAreaCenter(product, textPlacement.face);
+    const c2 = is3DObject ? c : faceAreaCenter(product, text2Placement.face);
+    const ca = is3DObject ? c : faceAreaCenter(product, artPlacement.face);
     if (activeDesignKind === "text") setTextPlacement(p => clampT({ ...p, u: ct.u, v: ct.v }));
     // Texto 2: centrado solo en horizontal (arriba/abajo lo elige el cliente).
     else if (activeDesignKind === "text2") setText2Placement(p => (is3DObject ? p : singleFace ? clampText2P({ ...p, u: c2.u }) : { ...p, u: c2.u }));
@@ -2229,15 +2252,22 @@ export default function Customizer() {
   // Drinkware: el visor ya convierte el arrastre 1:1 a u (vuelta) y v (banda),
   // así el diseño queda pegado al dedo. En una cara se re-encuadra en el área.
   const onDesignMoveUV = React.useCallback((du: number, dv: number) => {
+    let vWanted: number | null = null;
+    if (multiZone) {
+      const zs = faceConfigFor(product).zones;
+      const base = dragVRef.current ?? activePlacementRef.current?.v ?? zs[0].vMin;
+      vWanted = Math.max(zs[0].vMin, Math.min(zs[zs.length - 1].vMax, base + dv));
+      dragVRef.current = vWanted;
+    }
     const apply = (p: Placement, clampFn: (q: Placement) => Placement, sf: boolean): Placement => {
-      if (sf) return clampFn({ ...p, u: p.u + du, v: p.v + dv });
+      if (sf) return clampFn({ ...p, u: p.u + du, v: vWanted ?? p.v + dv });
       let u = p.u + du; u -= Math.floor(u);
       return { ...p, u, v: Math.max(0, Math.min(1, p.v + dv)) };
     };
     if (activeDesignKind === "text") setTextPlacement(p => apply(p, clampTextP, singleFace));
     else if (activeDesignKind === "text2") setText2Placement(p => apply(p, clampText2P, singleFace));
     else if (activeDesignKind === "art") setArtPlacement(p => apply(p, clampArtP, true));
-  }, [activeDesignKind, clampTextP, clampText2P, clampArtP, singleFace]);
+  }, [activeDesignKind, clampTextP, clampText2P, clampArtP, singleFace, multiZone, product]);
 
   // ── Deshacer ────────────────────────────────────────────────────────────────
   // Una foto del diseño antes de cada acción (arrastre, tamaño, centrar,
@@ -2413,7 +2443,7 @@ export default function Customizer() {
     pushHistory();
     // Va en la misma cara que el texto 1 (frente, lado del logo o costado).
     const face = hasText && singleFace ? textFace : "front";
-    const c = padToPlacement(0.5, 0.5, product, face);
+    const c = faceAreaCenter(product, face);
     const nextToText1 = hasText && singleFace;
     const gap = textExtents.halfV + 0.07;
     let main = textPlacement;
@@ -2467,6 +2497,17 @@ export default function Customizer() {
   const idleEditKind: DesignKind | null =
     (drinkTab === "icons" || drinkTab === "media") ? (hasArt ? "art" : hasText ? "text" : hasText2 ? "text2" : null)
     : hasText ? "text" : hasText2 ? "text2" : hasArt ? "art" : null;
+
+  // Ubicación arriba del visor: la del elemento que se está editando, o la del
+  // que corresponde a la pestaña abierta. Nada si el producto tiene una sola cara
+  // o el texto envuelve el cuerpo (Envolvente 360°).
+  const faceKind: DesignKind | null = activeDesignKind ?? idleEditKind;
+  const faceControl =
+    is3DObject || textFaces.length < 2 ? null
+    : faceKind === "text" && hasText && singleFace ? { label: hasText2 ? "Texto 1" : "Texto", value: textFace, onChange: selectTextFace }
+    : faceKind === "text2" && hasText2 && singleFace ? { label: "Texto 2", value: text2Face, onChange: selectText2Face }
+    : faceKind === "art" && hasArt ? { label: selectedIcon ? "Ícono" : "Imagen", value: artFace, onChange: selectArtFace }
+    : null;
 
   // ── Preview capture ─────────────────────────────────────────────────────────
   // Grab a PNG of the live 3D canvas (the termo draws a fresh frame right before
@@ -3785,6 +3826,11 @@ export default function Customizer() {
 
               {isDrinkware ? (
                 <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
+                  {faceControl && (
+                    <div className="w-full flex justify-center px-3 pt-3 -mb-1">
+                      <FaceSelector faces={textFaces} product={product} {...faceControl} />
+                    </div>
+                  )}
                   {/* 3D Canvas — taller for bigger sizes; compact on phones */}
                   <div className="relative w-full" style={{ height: (isMobile ? 300 : 480) + Math.round((activeSize.scale - 0.84) * (isMobile ? 110 : 200)) }}>
                     <Thermos3D
@@ -4055,18 +4101,8 @@ export default function Customizer() {
                       {isColorPrint && (
                         <TextColorPicker value={textColor} onChange={setTextColor} />
                       )}
-
-                      {/* Orientación del texto (al final de los controles de Texto). */}
-                      <OrientationToggle
-                        value={textPlacement.orientation}
-                        onChange={(o) => applyTextPlacement({ ...textPlacement, orientation: o })}
-                        verticalDisabledReason={isWrap360 ? "El texto envolvente 360° va en horizontal alrededor del cuerpo" : undefined}
-                      />
-                      {/* Dónde va el texto: frente, dorso o costado (el Envolvente 360°
-                          ya rodea todo el cuerpo). */}
-                      {!isWrap360 && textFaces.length > 1 && (
-                        <FaceSelector faces={textFaces} value={textFace} onChange={selectTextFace} product={product} />
-                      )}
+                      {/* La ubicación (frente, lado del logo, costado) se elige arriba
+                          del visor 3D; la orientación, en Ajustes avanzados. */}
                     </div>
 
                     <div>
@@ -4092,6 +4128,11 @@ export default function Customizer() {
                         centrado, automático, interlineado normal, horizontal) ya dan un
                         resultado lindo sin abrir esto. */}
                     <AdvancedOptions>
+                      <OrientationToggle
+                        value={textPlacement.orientation}
+                        onChange={(o) => applyTextPlacement({ ...textPlacement, orientation: o })}
+                        verticalDisabledReason={isWrap360 ? "El texto envolvente 360° va en horizontal alrededor del cuerpo" : undefined}
+                      />
                       <div>
                         <TextDispositionToolbar placement={textPlacement} onChange={applyTextPlacement} />
                       </div>
@@ -4125,9 +4166,6 @@ export default function Customizer() {
                             placeholder="Segundo texto (ej. nombre del empleado)"
                           />
                         </div>
-                        {singleFace && textFaces.length > 1 && (
-                          <FaceSelector faces={textFaces} value={text2Face} onChange={selectText2Face} product={product} label="Ubicación del texto 2" />
-                        )}
                         <div>
                           <Label className="text-xs text-muted-foreground mb-2 block">Tipografía del texto 2</Label>
                           <FontCarousel fonts={FONTS} value={text2Font} onChange={setText2Font} sampleText={text2 || "Texto 2"} />
@@ -4166,9 +4204,6 @@ export default function Customizer() {
                       <IconPicker value={iconId} onChange={handlePickIcon} />
                     </div>
 
-                    {selectedIcon && textFaces.length > 1 && (
-                      <FaceSelector faces={textFaces} value={artFace} onChange={selectArtFace} product={product} label="Ubicación del ícono" />
-                    )}
 
                     {/* Tamaño/orientación del ícono, sólo cuando hay uno elegido. */}
                     {selectedIcon && (
@@ -4210,12 +4245,6 @@ export default function Customizer() {
                         onChange={handleUploadImage}
                         aiStyle={effectiveTechnique === "color" ? "color" : "laser"}
                       />
-
-                      {customImage && textFaces.length > 1 && (
-                        <div className="pt-4 mt-4 border-t border-border">
-                          <FaceSelector faces={textFaces} value={artFace} onChange={selectArtFace} product={product} label="Ubicación de la imagen" />
-                        </div>
-                      )}
 
                       {customImage && (
                         <div className="pt-4 mt-4 border-t border-border">

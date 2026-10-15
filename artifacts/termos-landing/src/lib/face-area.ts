@@ -45,16 +45,87 @@ export const FRONT_FACE = {
  * bodies (the copa's flared bowl) tune the area so its margins follow the
  * object's real shape instead of wedging into the narrow parts.
  */
+export interface FaceZone {
+  vMin: number;
+  vMax: number;
+}
+
 export interface FaceConfig {
   uCenter: number;
   uHalfWidth: number;
+  /** Centro y alto del rectángulo que envuelve todas las zonas. */
   vCenter: number;
   vHeightFrac: number;
   textPadFrac: number;
+  /** Zonas grabables de arriba hacia abajo (una sola en casi todos los productos). */
+  zones: FaceZone[];
 }
 
 export function faceConfigFor(product?: Pick<ProductDef, "frontFace">): FaceConfig {
-  return { ...FRONT_FACE, ...product?.frontFace };
+  const { zones: raw, ...rest } = product?.frontFace ?? {};
+  const base = { ...FRONT_FACE, ...rest };
+  if (raw && raw.length > 0) {
+    const zones = raw.map(([vMin, vMax]) => ({ vMin, vMax }));
+    const top = zones[0].vMin, bottom = zones[zones.length - 1].vMax;
+    return { ...base, vCenter: (top + bottom) / 2, vHeightFrac: bottom - top, zones };
+  }
+  return { ...base, zones: [{ vMin: base.vCenter - base.vHeightFrac / 2, vMax: base.vCenter + base.vHeightFrac / 2 }] };
+}
+
+/**
+ * Zona donde va un elemento centrado en `v` con medio alto `halfV`: la más
+ * cercana entre las que lo contienen entero; si no entra en ninguna, la más alta
+ * (ahí queda centrado, como siempre). Sin `halfV`, solo la más cercana a `v`.
+ */
+export function pickZone(f: Pick<FaceConfig, "zones">, v: number, halfV = 0): number {
+  let best = -1, bestDist = Infinity;
+  f.zones.forEach((z, i) => {
+    const lo = z.vMin + halfV, hi = z.vMax - halfV;
+    if (lo > hi) return;
+    const d = v < lo ? lo - v : v > hi ? v - hi : 0;
+    if (d < bestDist) { bestDist = d; best = i; }
+  });
+  if (best >= 0) return best;
+  let tallest = 0;
+  f.zones.forEach((z, i) => { if (z.vMax - z.vMin > f.zones[tallest].vMax - f.zones[tallest].vMin) tallest = i; });
+  return tallest;
+}
+
+/**
+ * Ensanche horizontal para dibujar en una zona. La textura reparte la vuelta
+ * según el radio máximo; en una parte más angosta del cuerpo (la de abajo del
+ * vaso con pico) el mismo ancho de textura se ve más chico, así que se dibuja
+ * más ancho para que el diseño conserve sus proporciones reales. Solo en
+ * productos con varias zonas: los demás quedan exactamente como estaban.
+ */
+export function zoneWidthScale(product: Pick<ProductDef, "frontFace" | "profile" | "band"> | undefined, zone: number): number {
+  const f = faceConfigFor(product);
+  const z = f.zones[zone];
+  if (!product || f.zones.length < 2 || !z) return 1;
+  const pts = product.profile;
+  const maxR = Math.max(...pts.map(p => p[0]));
+  const [yBot, yTop] = product.band;
+  const radiusAt = (y: number) => {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [r0, y0] = pts[i], [r1, y1] = pts[i + 1];
+      if (y >= y0 && y <= y1) return y1 === y0 ? r0 : r0 + (r1 - r0) * (y - y0) / (y1 - y0);
+    }
+    return y < pts[0][1] ? pts[0][0] : pts[pts.length - 1][0];
+  };
+  const N = 12;
+  let sum = 0;
+  for (let i = 0; i <= N; i++) {
+    const v = z.vMin + (z.vMax - z.vMin) * (i / N);
+    sum += radiusAt(yTop - (yTop - yBot) * v);
+  }
+  const avg = sum / (N + 1);
+  return avg > 0 ? maxR / avg : 1;
+}
+
+/** Centro de la cara para "centrar" y para los elementos nuevos: el de la zona principal (la de arriba). */
+export function faceAreaCenter(product?: Pick<ProductDef, "frontFace">, face: FaceId = "front"): { u: number; v: number } {
+  const z = faceConfigFor(product).zones[0];
+  return { u: faceCenterU(product, face), v: (z.vMin + z.vMax) / 2 };
 }
 
 /**
@@ -143,11 +214,29 @@ export function clampPlacementToFrontArea(
 ): Placement {
   const face = p.face ?? "front";
   const b = frontAreaBounds(product, face);
+  // Con varias zonas (cuerpo con escalón) el elemento entra entero en una sola.
+  const f = faceConfigFor(product);
+  const zi = pickZone(f, p.v, half.halfV);
+  const z = f.zones[zi];
+  const { zone: _prevZone, ...rest } = p;
   return {
-    ...p,
+    ...rest,
     u: collapseClamp(nearU(p.u, faceCenterU(product, face)), b.uMin + half.halfU, b.uMax - half.halfU),
-    v: collapseClamp(p.v, b.vMin + half.halfV, b.vMax - half.halfV),
+    v: collapseClamp(p.v, z.vMin + half.halfV, z.vMax - half.halfV),
+    ...(f.zones.length > 1 ? { zone: zi } : {}),
   };
+}
+
+/**
+ * Lleva el elemento a la zona vecina (arriba `dir` = -1, abajo +1), pegado al
+ * borde más cercano. Para las flechas de mover: el clamp solo nunca cruza el
+ * hueco entre zonas. null si no hay zona en esa dirección.
+ */
+export function vInNextZone(product: Pick<ProductDef, "frontFace"> | undefined, v: number, halfV: number, dir: 1 | -1): number | null {
+  const f = faceConfigFor(product);
+  const next = f.zones[pickZone(f, v, halfV) + dir];
+  if (!next) return null;
+  return dir > 0 ? next.vMin + halfV : next.vMax - halfV;
 }
 
 /** Pad coordinates (0..1 within the rectangle) → placement u/v. */
