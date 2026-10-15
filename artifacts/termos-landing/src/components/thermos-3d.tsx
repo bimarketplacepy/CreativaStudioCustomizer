@@ -94,6 +94,12 @@ interface Thermos3DProps {
   /** Ignore manual rotation drags (used together with autoSpin while typing). */
   rotationLocked?: boolean;
   /**
+   * Editor a pantalla completa (el visor no comparte el gesto con el scroll de
+   * la página): arrastrar sobre el diseño elegido lo mueve y arrastrar fuera
+   * gira la pieza, con mouse o con el dedo.
+   */
+  freeGestures?: boolean;
+  /**
    * Imperative snap hook: the parent stores here a fn that rotates the piece so
    * the given texture-u faces the camera (upright, no inertia). Used before
    * capturing the summary snapshot, so the personalized area is fully visible.
@@ -537,7 +543,7 @@ function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
   textPlacement, artPlacement, extraTexts, colorPrint, textColor, engraveStyle, singleFace, editSingleFace, showGuides, frontFaceU, guideFace, hideLogo = false, glass,
   designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, snapToURef, renderNowRef, onReady,
-  autoSpin = false, rotationLocked = false, onMotionChange, arModelRef,
+  autoSpin = false, rotationLocked = false, freeGestures = false, onMotionChange, arModelRef,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
@@ -554,7 +560,7 @@ function ThermosMesh({
   snapToURef?: React.MutableRefObject<((u: number) => void) | null>;
   renderNowRef?: React.MutableRefObject<(() => void) | null>;
   onReady?: () => void;
-  autoSpin?: boolean; rotationLocked?: boolean;
+  autoSpin?: boolean; rotationLocked?: boolean; freeGestures?: boolean;
   /** La pieza empezó (true) o terminó (false) de moverse: giro, arrastre, inercia. */
   onMotionChange?: (moving: boolean) => void;
   arModelRef?: Thermos3DProps["arModelRef"];
@@ -574,8 +580,8 @@ function ThermosMesh({
 
   // Latest design-drag inputs, read inside the (stable) pointer listeners so we
   // don't re-attach them every render when the callbacks change identity.
-  const designRef = useRef({ designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, sil, product });
-  designRef.current = { designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, sil, product };
+  const designRef = useRef({ designActive, editSingleFace, rotationLocked, freeGestures, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, sil, product });
+  designRef.current = { designActive, editSingleFace, rotationLocked, freeGestures, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, sil, product };
 
   const bodyGeo = useMemo(() => {
     const geo = new THREE.LatheGeometry(sil.points, 128);
@@ -885,10 +891,12 @@ function ThermosMesh({
       const editing = d.designActive && d.editSingleFace;
       // Chrome dispara pointerdown ANTES que touchstart: se calcula acá también.
       if (editing && e.pointerType !== "mouse") touchOnDesign = onDesignAt(e);
+      // Editor a pantalla completa: fuera del diseño elegido, el gesto gira.
+      const offDesign = editing && (e.pointerType === "mouse" ? d.freeGestures && !onDesignAt(e) : !touchOnDesign);
       // Editando, un dedo fuera del diseño no gira (la cara queda de frente):
       // ese gesto es solo el scroll de la página.
-      if (editing && e.pointerType !== "mouse" && !touchOnDesign) return;
-      const mode = editing ? "design" : "rotate";
+      if (offDesign && !d.freeGestures) return;
+      const mode = editing && !offDesign ? "design" : "rotate";
       // Envolvente 360° while typing: manual rotation is locked (the piece is
       // auto-spinning); ignore the gesture entirely until the input blurs.
       if (mode === "rotate" && d.rotationLocked) return;
@@ -1639,7 +1647,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
       // scrollea tocando fuera del visor.
       // pan-y: el desliz vertical scrollea la página; un dedo apoyado sobre el
       // diseño en edición lo cancela en el touchstart (ThermosMesh).
-      style={{ background: "transparent", cursor: "grab", touchAction: "pan-y" }}
+      style={{ background: "transparent", cursor: "grab", touchAction: props.freeGestures ? "none" : "pan-y" }}
     >
       <Rig sil={sil} />
       {/* 0.5: con las luces direccionales de abajo, más reflejo lava los colores
@@ -1681,6 +1689,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           onReady={props.onReady}
           autoSpin={props.autoSpin ?? false}
           rotationLocked={props.rotationLocked ?? false}
+          freeGestures={props.freeGestures ?? false}
           onMotionChange={onMotionChange}
           arModelRef={props.arModelRef}
         />

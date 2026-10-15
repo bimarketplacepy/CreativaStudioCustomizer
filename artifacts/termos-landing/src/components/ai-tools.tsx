@@ -24,15 +24,17 @@ const inputClass =
  * "Ideas con IA" en la pestaña Texto: el cliente cuenta para qué es y elige una
  * de las frases propuestas. Las ideas de dos líneas llenan también el texto 2.
  */
-export function AiPhraseIdeas({ product, twoLines, onPick }: {
+export function AiPhraseIdeas({ product, twoLines, onPick, defaultOpen = false }: {
   /** Nombre del producto, para el contexto ("Termo Mate"). */
   product: string;
   /** Ya hay un texto 2 abierto: pedir ideas de dos líneas. */
   twoLines: boolean;
   onPick: (idea: PhraseIdea) => void;
+  /** Abierto de entrada (se llegó desde "Ideas con IA" del editor). */
+  defaultOpen?: boolean;
 }) {
   const status = useAiStatus();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [occasion, setOccasion] = useState("");
   const [ideas, setIdeas] = useState<PhraseIdea[] | null>(null);
   const [loading, setLoading] = useState(false);
