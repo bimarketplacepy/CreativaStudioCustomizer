@@ -13,9 +13,16 @@ export interface ProcessedImage {
    * the automatic cut looks off. Never nested more than one level.
    */
   other?: ProcessedImage;
+  /**
+   * El archivo original tal como lo subió el cliente (no viaja al server ni al
+   * link). Lo usa el recorte con IA, que trabaja sobre la foto completa.
+   */
+  source?: Blob;
+  /** true: el recorte lo hizo la IA (background-removal.ts), no el de fondo liso. */
+  aiCut?: boolean;
 }
 
-const MAX_DIM = 1200;
+export const MAX_DIM = 1200;
 const ENGRAVE_MASK_MAX_DIM = 768;
 
 /** Colour distance below which a pixel is certainly background. */
@@ -44,7 +51,7 @@ const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 /** Perceptual luminance, 0–255. */
 const luminance = (r: number, g: number, b: number) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-function loadImage(file: Blob): Promise<HTMLImageElement> {
+export function loadImage(file: Blob): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -89,7 +96,7 @@ export async function fetchImageBlob(url: string): Promise<Blob> {
   throw lastError instanceof Error ? lastError : new Error("No se pudo descargar la imagen.");
 }
 
-function drawScaled(img: CanvasImageSource, srcW: number, srcH: number, maxDim: number): HTMLCanvasElement {
+export function drawScaled(img: CanvasImageSource, srcW: number, srcH: number, maxDim: number): HTMLCanvasElement {
   const scale = Math.min(1, maxDim / Math.max(srcW, srcH));
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(srcW * scale));
@@ -241,7 +248,7 @@ function eraseFlatBackground(
 /** Bounding box of everything that survived the cut-out. The alpha threshold
  *  is deliberately near zero: a fill that half-faded the artwork's light edges
  *  must never also crop them away. */
-function contentBounds(data: Uint8ClampedArray, width: number, height: number) {
+export function contentBounds(data: Uint8ClampedArray, width: number, height: number) {
   let minX = width;
   let minY = height;
   let maxX = -1;
@@ -267,7 +274,7 @@ function contentBounds(data: Uint8ClampedArray, width: number, height: number) {
   };
 }
 
-function crop(canvas: HTMLCanvasElement, b: ReturnType<typeof contentBounds>): HTMLCanvasElement {
+export function crop(canvas: HTMLCanvasElement, b: ReturnType<typeof contentBounds>): HTMLCanvasElement {
   const w = b.maxX - b.minX + 1;
   const h = b.maxY - b.minY + 1;
   if (w === canvas.width && h === canvas.height) return canvas;
@@ -279,7 +286,7 @@ function crop(canvas: HTMLCanvasElement, b: ReturnType<typeof contentBounds>): H
   return out;
 }
 
-function canvasToSvgDataUrl(canvas: HTMLCanvasElement): string {
+export function canvasToSvgDataUrl(canvas: HTMLCanvasElement): string {
   const pngDataUrl = canvas.toDataURL("image/png");
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas.width}" height="${canvas.height}" viewBox="0 0 ${canvas.width} ${canvas.height}"><image href="${pngDataUrl}" x="0" y="0" width="${canvas.width}" height="${canvas.height}" /></svg>`;
   return `data:image/svg+xml;base64,${btoa(svg)}`;

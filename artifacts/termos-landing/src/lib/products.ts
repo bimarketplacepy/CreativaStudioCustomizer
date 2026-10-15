@@ -39,11 +39,17 @@ export interface ProductDef {
   frontFace?: { uHalfWidth?: number; vCenter?: number; vHeightFrac?: number };
   /**
    * Caras donde se puede grabar el texto (ver FACES en face-area.ts). Se sacan
-   * las que caen sobre la manija (u 0.75 = "left", u 0.25 = "right") o sobre el
-   * logo de la marca, que en los modelos .glb queda atrás ("back").
+   * las que caen sobre la manija (u 0.75 = "left", u 0.25 = "right"). El dorso
+   * ("back") es el lado del logo de la marca en los modelos .glb (ver logoBack).
    * Default: las cuatro.
    */
   engraveFaces?: FaceId[];
+  /**
+   * El logo de la marca del .glb (piezas "logo*") cae en el dorso: esa cara se
+   * ofrece como "Lado del logo" y, con un diseño encima, el 3D oculta el logo
+   * (el diseño va en su lugar).
+   */
+  logoBack?: boolean;
   sizes: ProductSize[];
   /**
    * Modelo 3D real (.glb, ver GUIA-MODELOS-3D.md) en lugar del lathe generado.
@@ -168,8 +174,9 @@ export const PRODUCTS: ProductDef[] = [
       paintLight: ["label"],
       paintDark: ["handle_slot", "handle_hole"],
     },
-    // Caras de grabado: manija a la izquierda (u 0.75) y logo atrás.
-    engraveFaces: ["front", "right"],
+    // Caras de grabado: manija a la izquierda (u 0.75); el dorso es el lado del logo.
+    engraveFaces: ["front", "back", "right"],
+    logoBack: true,
     sizes: [
       { id: "termo-mate-800",  name: "800ml",  label: "Chico",   scale: 0.87 },
       { id: "termo-mate-915",  name: "915ml",  label: "Mediano", scale: 0.91 },
@@ -203,8 +210,9 @@ export const PRODUCTS: ProductDef[] = [
       yawDeg: 180,
       paint: ["lid"],
     },
-    // Caras de grabado: manija a la derecha (u 0.25) y logo atrás.
-    engraveFaces: ["front", "left"],
+    // Caras de grabado: manija a la derecha (u 0.25); el dorso es el lado del logo.
+    engraveFaces: ["front", "left", "back"],
+    logoBack: true,
     sizes: [
       { id: "termo-mate-forge-1200", name: "1200ml", label: "Clásico", scale: 1.00 },
     ],
@@ -239,8 +247,9 @@ export const PRODUCTS: ProductDef[] = [
       paintLight: ["strap_text"],
       paintDark: ["lid_spout"],
     },
-    // Caras de grabado: logo atrás.
-    engraveFaces: ["front", "left", "right"],
+    // Caras de grabado: las cuatro (el dorso es el lado del logo).
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
     sizes: [
       { id: "termo-kids-355", name: "355ml", label: "Kids", scale: 1.00 },
     ],
@@ -303,8 +312,9 @@ export const PRODUCTS: ProductDef[] = [
       reachM: 0.0417,
       yawDeg: 180,
     },
-    // Caras de grabado: logo atrás.
-    engraveFaces: ["front", "left", "right"],
+    // Caras de grabado: las cuatro (el dorso es el lado del logo).
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
     sizes: [
       { id: "hoppie-hydrate-530",  name: "530ml", label: "Chico",   scale: 0.95 },
       { id: "hoppie-hydrate-620",  name: "620ml", label: "Mediano", scale: 1.00 },
@@ -396,8 +406,9 @@ export const PRODUCTS: ProductDef[] = [
       reachM: 0.0555,
       yawDeg: 180,
     },
-    // Caras de grabado: logo atrás.
-    engraveFaces: ["front", "left", "right"],
+    // Caras de grabado: las cuatro (el dorso es el lado del logo).
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
     sizes: [
       { id: "guampa-sm", name: "Chica",   label: "300ml", scale: 0.84 },
       { id: "guampa-md", name: "Mediana", label: "500ml", scale: 1.00 },
@@ -435,8 +446,9 @@ export const PRODUCTS: ProductDef[] = [
       reachM: 0.0492,
       yawDeg: 180,
     },
-    // Caras de grabado: logo atrás.
-    engraveFaces: ["front", "left", "right"],
+    // Caras de grabado: las cuatro (el dorso es el lado del logo).
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
     sizes: [
       { id: "copa-hydrate-267", name: "267ml", label: "Clásica", scale: 1.00 },
     ],
@@ -553,8 +565,9 @@ export const PRODUCTS: ProductDef[] = [
       heightM: 0.203,
       reachM: 0.0842,
     },
-    // Caras de grabado: manija a la izquierda (u 0.75) y logo atrás.
-    engraveFaces: ["front", "right"],
+    // Caras de grabado: manija a la izquierda (u 0.75); el dorso es el lado del logo.
+    engraveFaces: ["front", "back", "right"],
+    logoBack: true,
     sizes: [
       { id: "vaso-manija-887",  name: "887ml",  label: "Clásico", scale: 1.00 },
       { id: "vaso-manija-1183", name: "1183ml", label: "Grande",  scale: 1.10 },
@@ -588,8 +601,9 @@ export const PRODUCTS: ProductDef[] = [
       exactFor: ["Vaso"],
       yawDeg: 180,
     },
-    // Caras de grabado: logo atrás.
-    engraveFaces: ["front", "left", "right"],
+    // Caras de grabado: las cuatro (el dorso es el lado del logo).
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
     sizes: [
       { id: "vaso-hydrate-470", name: "470ml", label: "Chico",   scale: 0.84 },
       { id: "vaso-hydrate-600", name: "600ml", label: "Mediano", scale: 0.91 },
@@ -626,8 +640,9 @@ export const PRODUCTS: ProductDef[] = [
       reachM: 0.036,
       yawDeg: 180,
     },
-    // Caras de grabado: logo atrás.
-    engraveFaces: ["front", "left", "right"],
+    // Caras de grabado: las cuatro (el dorso es el lado del logo).
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
     sizes: [
       { id: "vaso-espresso-80",  name: "80ml",  label: "Chico",   scale: 0.79 },
       { id: "vaso-espresso-160", name: "160ml", label: "Clásico", scale: 1.00 },
@@ -661,8 +676,9 @@ export const PRODUCTS: ProductDef[] = [
       reachM: 0.079,
       yawDeg: 180,
     },
-    // Caras de grabado: manija a la derecha (u 0.25) y logo atrás.
-    engraveFaces: ["front", "left"],
+    // Caras de grabado: manija a la derecha (u 0.25); el dorso es el lado del logo.
+    engraveFaces: ["front", "left", "back"],
+    logoBack: true,
     sizes: [
       { id: "taza-manija-unico", name: "Único", label: "Clásico", scale: 1.00 },
     ],
@@ -698,8 +714,9 @@ export const PRODUCTS: ProductDef[] = [
       reachM: 0.0752,
       yawDeg: 180,
     },
-    // Caras de grabado: manija a la izquierda (u 0.75) y logo atrás.
-    engraveFaces: ["front", "right"],
+    // Caras de grabado: manija a la izquierda (u 0.75); el dorso es el lado del logo.
+    engraveFaces: ["front", "back", "right"],
+    logoBack: true,
     sizes: [
       { id: "mini-coffee-unico", name: "Único", label: "Clásico", scale: 1.00 },
     ],
@@ -735,8 +752,9 @@ export const PRODUCTS: ProductDef[] = [
       paint: ["boot", "straw_tip"],
       paintLight: ["logo_funda"],
     },
-    // Caras de grabado: manija a la izquierda (u 0.75) y logo atrás.
-    engraveFaces: ["front", "right"],
+    // Caras de grabado: manija a la izquierda (u 0.75); el dorso es el lado del logo.
+    engraveFaces: ["front", "back", "right"],
+    logoBack: true,
     sizes: [
       { id: "vaso-sunbeam-887",  name: "887ml",  label: "Clásico", scale: 1.00 },
       { id: "vaso-sunbeam-1183", name: "1183ml", label: "Grande",  scale: 1.10 },

@@ -76,8 +76,12 @@ async function generateProductionFile(
       product: order.product,
       technique: order.technique,
       createdAt: order.createdAt,
-      text: order.customText,
+      // El texto exacto del diseño (customText puede traer "texto 1 / texto 2").
+      text: typeof ds.text === "string" ? ds.text : order.customText,
       fontId: typeof ds.fontId === "string" ? ds.fontId : null,
+      text2: typeof ds.text2 === "string" ? ds.text2 : null,
+      text2FontId: typeof ds.text2FontId === "string" ? ds.text2FontId : null,
+      text2Placement: (ds.text2Placement ?? null) as never,
       textColor: order.textColor,
       iconId: typeof ds.iconId === "string" ? ds.iconId : null,
       customImageDataUrl,

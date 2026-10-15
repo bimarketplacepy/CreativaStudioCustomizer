@@ -29,6 +29,10 @@ export interface SharedDesign {
   /** Grabado extra en tapa / base (null = no pedido; links anteriores no lo traen). */
   extraLid?: string | null;
   extraBase?: string | null;
+  /** Segundo texto (links anteriores no lo traen). */
+  text2?: string;
+  text2FontId?: string;
+  text2Placement?: Placement;
 }
 
 const PREFIX = "#diseno=";

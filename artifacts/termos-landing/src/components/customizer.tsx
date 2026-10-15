@@ -33,10 +33,10 @@ import {
 } from "@/lib/placement";
 import {
   markHalfExtents, computeFaceTextLayout, bandMetrics, TEXTURE_W, TEXTURE_H,
-  wrap360MaxScale, wrap360Fits, type MarkSpec,
+  wrap360MaxScale, wrap360Fits, type MarkSpec, type TextMark,
 } from "@/lib/engraving-maps";
 import {
-  FACES, padToPlacement, placementToPad, engraveFacesFor, faceCenterU,
+  padToPlacement, placementToPad, engraveFacesFor, faceCenterU, faceLabel,
   clampPlacementToFrontArea, type MarkHalfExtents,
 } from "@/lib/face-area";
 import {
@@ -57,6 +57,8 @@ import {
   useCatalog, viewSizeId, type CatalogSection, type ShopItem,
 } from "@/lib/odoo-catalog";
 import { track } from "@/lib/analytics";
+import { AiPhraseIdeas } from "./ai-tools";
+import type { PhraseIdea } from "@/lib/ai";
 import { dataUrlToJpeg, downloadDataUrl } from "@/lib/share";
 import { useCreateOrder, type CreateOrderRequest } from "@workspace/api-client-react";
 import { Download, Loader2 } from "lucide-react";
@@ -64,6 +66,8 @@ import { Download, Loader2 } from "lucide-react";
 /** Text scale bounds. Capped low so a name never blows out past the band. */
 const TEXT_SCALE_MIN = 0.3;
 const TEXT_SCALE_MAX = 1.2;
+/** "Texto 2" arranca más chico que el principal (suele ser la línea secundaria). */
+const TEXT2_DEFAULT_PLACEMENT: Placement = { ...DEFAULT_TEXT_PLACEMENT, scale: 0.32, layout: "auto" };
 
 /** Engraving text length cap. Line breaks (manual disposition) don't count
  *  toward it, so the user always gets 30 *visible* characters to work with. */
@@ -203,6 +207,8 @@ const TECHNIQUES = [
   { id: "color", name: "Impresión UV", desc: "Impresión a todo color sobre el producto.", color: true },
 ] as const;
 type TechniqueId = (typeof TECHNIQUES)[number]["id"];
+/** Elemento del diseño que se edita sobre el visor: texto, "Texto 2" o arte. */
+type DesignKind = "text" | "text2" | "art";
 
 /** Personalization kinds shared by the drinkware tabs and the simple flow. */
 const KINDS = [
@@ -1178,8 +1184,9 @@ function TextColorPicker({ value, onChange }: { value: string; onChange: (hex: s
 
 /** Multi-line engraving text field: a textarea with a newline-aware char cap
  *  (line breaks don't count) so "Saltos manuales" works without eating budget. */
-function EngravingTextField({ text, onText, layout, onFocusChange, limitNotice }: {
+function EngravingTextField({ text, onText, layout, onFocusChange, limitNotice, placeholder = "Tu nombre o texto" }: {
   text: string;
+  placeholder?: string;
   onText: (t: string) => void;
   layout: TextLayout | undefined;
   /** Focus tracking (drives the Envolvente 360° auto-rotation while typing). */
@@ -1194,7 +1201,7 @@ function EngravingTextField({ text, onText, layout, onFocusChange, limitNotice }
         onChange={(e) => onText(capEngravingText(e.target.value))}
         onFocus={() => onFocusChange?.(true)}
         onBlur={() => onFocusChange?.(false)}
-        placeholder="Tu nombre o texto"
+        placeholder={placeholder}
         rows={2}
         className="text-base text-center border-border focus-visible:ring-primary resize-none leading-snug"
       />
@@ -1330,16 +1337,18 @@ function ExtraEngravingFields({ lid, base, onLid, onBase }: {
   );
 }
 
-/** Cara del cuerpo donde va el texto (frente, dorso, costados): solo las que ofrece el producto. */
-function FaceSelector({ faces, value, onChange }: {
+/** Cara del cuerpo donde va un elemento (frente, lado del logo, costados): solo las que ofrece el producto. */
+function FaceSelector({ faces, value, onChange, product, label = "Ubicación del texto" }: {
   faces: FaceId[];
   value: FaceId;
   onChange: (f: FaceId) => void;
+  product: ProductDef;
+  label?: string;
 }) {
   return (
     <div>
-      <Label className="text-xs text-muted-foreground mb-2 block">Ubicación del texto</Label>
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Ubicación del texto">
+      <Label className="text-xs text-muted-foreground mb-2 block">{label}</Label>
+      <div className="flex flex-wrap gap-2" role="group" aria-label={label}>
         {faces.map(f => (
           <button
             key={f}
@@ -1352,7 +1361,7 @@ function FaceSelector({ faces, value, onChange }: {
                 : "border-border text-muted-foreground hover:border-primary/40 hover:bg-secondary/50"
             }`}
           >
-            {FACES[f].label}
+            {faceLabel(product, f)}
           </button>
         ))}
       </div>
@@ -1716,6 +1725,13 @@ export default function Customizer() {
   const [plan, setPlan] = useState<EngravingPlanId>(ENGRAVING_PLANS[0].id);
   const [customImage, setCustomImage] = useState<ProcessedImage | null>(null);
   const [textPlacement, setTextPlacement] = useState<Placement>(DEFAULT_TEXT_PLACEMENT);
+  // "Texto 2": un segundo texto con su propio contenido, fuente, tamaño y
+  // ubicación (ej. la empresa arriba y el nombre del empleado abajo). Se cobra
+  // como escritura extra. text2Open: la tarjeta está abierta aunque esté vacío.
+  const [text2, setText2] = useState("");
+  const [text2Font, setText2Font] = useState(FONTS[0].id);
+  const [text2Placement, setText2Placement] = useState<Placement>(TEXT2_DEFAULT_PLACEMENT);
+  const [text2Open, setText2Open] = useState(false);
   const [artPlacement, setArtPlacement] = useState<Placement>(DEFAULT_ART_PLACEMENT);
   // Placement mode: "edición en una cara" (rectángulo en la cara frontal) por
   // defecto. La disposición "Envolvente 360°" necesita el contorno completo,
@@ -1833,6 +1849,11 @@ export default function Customizer() {
     if (d.artPlacement && typeof d.artPlacement === "object") setArtPlacement({ ...DEFAULT_ART_PLACEMENT, ...d.artPlacement });
     setExtraLid(typeof d.extraLid === "string" ? d.extraLid.slice(0, EXTRA_TEXT_MAX) : null);
     setExtraBase(typeof d.extraBase === "string" ? d.extraBase.slice(0, EXTRA_TEXT_MAX) : null);
+    const t2 = capEngravingText(typeof d.text2 === "string" ? d.text2 : "");
+    setText2(t2);
+    setText2Open(!!t2);
+    if (FONTS.some(f => f.id === d.text2FontId)) setText2Font(d.text2FontId!);
+    if (d.text2Placement && typeof d.text2Placement === "object") setText2Placement({ ...TEXT2_DEFAULT_PLACEMENT, ...d.text2Placement });
     setDrinkTab("text");
     clearSharedDesign();
     track("design_link_open");
@@ -1931,6 +1952,31 @@ export default function Customizer() {
     [product, artSpec, artPlacement],
   );
 
+  // ── Texto 2 ── mismo tratamiento que el principal, con su fuente propia.
+  const activeFont2 = FONTS.find(f => f.id === text2Font) || FONTS[0];
+  const text2FontFamily = activeFont2.style.fontFamily as string | undefined;
+  React.useEffect(() => {
+    const fam = text2FontFamily?.split(",")[0]?.trim().replace(/['"]/g, "");
+    if (!fam || typeof document === "undefined" || !document.fonts?.load) return;
+    let alive = true;
+    document.fonts.load(`900 32px "${fam}"`).then(() => { if (alive) setFontTick(t => t + 1); }).catch(() => {});
+    return () => { alive = false; };
+  }, [text2FontFamily]);
+  const text2Spec = React.useMemo<MarkSpec>(
+    () => ({ kind: "text", text: text2, fontFamily: text2FontFamily, colorPrint: isColorPrint }),
+    [text2, text2FontFamily, isColorPrint],
+  );
+  const text2Extents = React.useMemo<MarkHalfExtents>(
+    () => markHalfExtents(product, text2Spec, text2Placement, singleFace),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [product, text2Spec, text2Placement, singleFace, fontTick],
+  );
+  /** Lo que recibe el 3D (y el PNG de la Dacen) además del texto principal. */
+  const extraTextMarks = React.useMemo<TextMark[]>(
+    () => (text2.trim() ? [{ text: text2, placement: text2Placement, fontFamily: text2FontFamily }] : []),
+    [text2, text2Placement, text2FontFamily],
+  );
+
   // Full text layout (wrap + auto-shrink) so the UI can flag when the size was
   // trimmed to fit the front-face area.
   const textLayout = React.useMemo(
@@ -2004,6 +2050,11 @@ export default function Customizer() {
     (p: Placement) => clampPlacementToFrontArea(p, markHalfExtents(product, artSpec, p, true), product),
     [product, artSpec],
   );
+  const clampText2P = React.useCallback(
+    (p: Placement) => clampPlacementToFrontArea(p, markHalfExtents(product, text2Spec, p, true), product),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [product, text2Spec, fontTick],
+  );
 
   // Setters that keep placements inside the rectangle while in single-face mode.
   // Flat blanks skip it: their face renderer clamps against the real face edges.
@@ -2011,6 +2062,7 @@ export default function Customizer() {
   // 360° aplica únicamente al texto.
   const applyTextPlacement = (next: Placement) => setTextPlacement(singleFace && !is3DObject ? clampTextP(next) : next);
   const applyArtPlacement = (next: Placement) => setArtPlacement(!is3DObject ? clampArtP(next) : next);
+  const applyText2Placement = (next: Placement) => setText2Placement(singleFace ? clampText2P(next) : next);
 
   // Re-clamp when growing the mark or the product changes could push the box out
   // of bounds (typing a longer name, a bigger plan image, switching size, …).
@@ -2020,6 +2072,9 @@ export default function Customizer() {
   React.useEffect(() => {
     if (!is3DObject) setArtPlacement(p => clampArtP(p));
   }, [is3DObject, clampArtP]);
+  React.useEffect(() => {
+    if (singleFace) setText2Placement(p => clampText2P(p));
+  }, [singleFace, clampText2P]);
 
   // ── Design drag / nudge (posicionamiento sobre el 3D) ───────────────────────
   // Which mark a drag-on-3D gesture or the floating d-pad moves: follow the open
@@ -2029,10 +2084,12 @@ export default function Customizer() {
   // entra a editar al crear algo, al tocarlo sobre el producto o con el botón
   // "Mover o editar diseño".
   const hasText = !!text;
+  const hasText2 = !!text2.trim();
   const hasArt = !!artUrl && artImageSize !== "none";
-  const [selected, setSelected] = useState<"text" | "art" | null>(null);
-  const activeDesignKind: "text" | "art" | null =
+  const [selected, setSelected] = useState<DesignKind | null>(null);
+  const activeDesignKind: DesignKind | null =
     selected === "text" && hasText ? "text"
+    : selected === "text2" && hasText2 ? "text2"
     : selected === "art" && hasArt ? "art"
     : null;
   const designActive = activeDesignKind !== null;
@@ -2046,19 +2103,53 @@ export default function Customizer() {
   // Cara del texto. Si el producto nuevo no la ofrece (ej. el dorso de un termo
   // con logo atrás), vuelve al frente.
   const textFaces = engraveFacesFor(product);
-  const textFace: FaceId = textFaces.includes(textPlacement.face ?? "front") ? textPlacement.face ?? "front" : "front";
+  const faceOf = (p: Placement): FaceId => (textFaces.includes(p.face ?? "front") ? p.face ?? "front" : "front");
+  const textFace = faceOf(textPlacement);
+  // El texto 2 y el arte (ícono/imagen) también eligen su cara: así se puede
+  // diseñar el lado del logo de la marca, no solo el frente.
+  const text2Face = faceOf(text2Placement);
+  const artFace = is3DObject ? "front" : faceOf(artPlacement);
   React.useEffect(() => {
     if ((textPlacement.face ?? "front") !== textFace) setTextPlacement(p => clampTextP({ ...p, face: textFace }));
   }, [textPlacement.face, textFace, clampTextP]);
+  React.useEffect(() => {
+    if ((text2Placement.face ?? "front") !== text2Face) setText2Placement(p => clampText2P({ ...p, face: text2Face }));
+  }, [text2Placement.face, text2Face, clampText2P]);
+  React.useEffect(() => {
+    if (!is3DObject && (artPlacement.face ?? "front") !== artFace) setArtPlacement(p => clampArtP({ ...p, face: artFace }));
+  }, [is3DObject, artPlacement.face, artFace, clampArtP]);
+  /** Lleva un elemento a otra cara, en el mismo lugar dentro del rectángulo. */
+  const moveToFace = (p: Placement, from: FaceId, face: FaceId): Placement =>
+    ({ ...p, face, u: p.u + faceCenterU(product, face) - faceCenterU(product, from) });
   const selectTextFace = (face: FaceId) => {
     if (face === textFace) return;
     pushHistory();
-    // Mismo lugar dentro del rectángulo, en la otra cara.
-    const du = faceCenterU(product, face) - faceCenterU(product, textFace);
-    applyTextPlacement({ ...textPlacement, face, u: textPlacement.u + du });
+    applyTextPlacement(moveToFace(textPlacement, textFace, face));
     flashGuides();
     track("text_face_select", { product: productId, face });
   };
+  const selectText2Face = (face: FaceId) => {
+    if (face === text2Face) return;
+    pushHistory();
+    applyText2Placement(moveToFace(text2Placement, text2Face, face));
+    thermosSnapRef.current?.(faceCenterU(product, face));
+    flashGuides();
+    track("text2_face_select", { product: productId, face });
+  };
+  const selectArtFace = (face: FaceId) => {
+    if (face === artFace) return;
+    pushHistory();
+    applyArtPlacement(moveToFace(artPlacement, artFace, face));
+    thermosSnapRef.current?.(faceCenterU(product, face));
+    flashGuides();
+    track("art_face_select", { product: productId, face });
+  };
+  // Con un diseño en el lado del logo, el 3D oculta el logo de la marca: el
+  // diseño va en su lugar.
+  const designOnLogoSide = !!product.logoBack && !is3DObject && (
+    (hasText && (!singleFace || textFace === "back"))
+    || (hasText2 && (!singleFace || text2Face === "back"))
+    || (hasArt && artFace === "back"));
 
   // Dashed front-face guides appear ONLY while the design is being moved — a drag
   // holds them on; a nudge/center tap flashes them briefly.
@@ -2108,8 +2199,9 @@ export default function Customizer() {
       return { ...p, u, v };
     };
     if (activeDesignKind === "text") setTextPlacement(p => apply(p, clampTextP, singleFace));
+    else if (activeDesignKind === "text2") setText2Placement(p => apply(p, clampText2P, singleFace));
     else if (activeDesignKind === "art") setArtPlacement(p => apply(p, clampArtP, true));
-  }, [singleFace, is3DObject, product, activeDesignKind, clampTextP, clampArtP]);
+  }, [singleFace, is3DObject, product, activeDesignKind, clampTextP, clampText2P, clampArtP]);
 
   const centerActivePlacement = React.useCallback(() => {
     // Face centre for flat blanks; centre of the front-face rectangle (same
@@ -2119,10 +2211,14 @@ export default function Customizer() {
     const clampA = is3DObject ? (p: Placement) => p : clampArtP;
     // El texto se centra en su propia cara (frente, dorso o costado).
     const ct = is3DObject ? c : padToPlacement(0.5, 0.5, product, textPlacement.face);
+    const c2 = is3DObject ? c : padToPlacement(0.5, 0.5, product, text2Placement.face);
+    const ca = is3DObject ? c : padToPlacement(0.5, 0.5, product, artPlacement.face);
     if (activeDesignKind === "text") setTextPlacement(p => clampT({ ...p, u: ct.u, v: ct.v }));
-    else if (activeDesignKind === "art") setArtPlacement(p => clampA({ ...p, u: c.u, v: c.v }));
+    // Texto 2: centrado solo en horizontal (arriba/abajo lo elige el cliente).
+    else if (activeDesignKind === "text2") setText2Placement(p => (is3DObject ? p : singleFace ? clampText2P({ ...p, u: c2.u }) : { ...p, u: c2.u }));
+    else if (activeDesignKind === "art") setArtPlacement(p => clampA({ ...p, u: ca.u, v: ca.v }));
     flashGuides();
-  }, [is3DObject, product, activeDesignKind, clampTextP, clampArtP, flashGuides, textPlacement.face]);
+  }, [is3DObject, product, activeDesignKind, clampTextP, clampText2P, clampArtP, flashGuides, textPlacement.face, text2Placement.face, artPlacement.face, singleFace]);
 
   // Objetos planos (billetera, tabla…): delta del arrastre como fracción del
   // canvas → delta del pad. La cara ocupa más o menos la mitad del visor.
@@ -2139,8 +2235,9 @@ export default function Customizer() {
       return { ...p, u, v: Math.max(0, Math.min(1, p.v + dv)) };
     };
     if (activeDesignKind === "text") setTextPlacement(p => apply(p, clampTextP, singleFace));
+    else if (activeDesignKind === "text2") setText2Placement(p => apply(p, clampText2P, singleFace));
     else if (activeDesignKind === "art") setArtPlacement(p => apply(p, clampArtP, true));
-  }, [activeDesignKind, clampTextP, clampArtP, singleFace]);
+  }, [activeDesignKind, clampTextP, clampText2P, clampArtP, singleFace]);
 
   // ── Deshacer ────────────────────────────────────────────────────────────────
   // Una foto del diseño antes de cada acción (arrastre, tamaño, centrar,
@@ -2148,12 +2245,13 @@ export default function Customizer() {
   type DesignSnapshot = {
     text: string; textPlacement: Placement; artPlacement: Placement;
     iconId: string | null; customImage: ProcessedImage | null;
+    text2: string; text2Placement: Placement;
   };
   const [history, setHistory] = useState<DesignSnapshot[]>([]);
   const historyRef = useRef(history);
   historyRef.current = history;
-  const snapshotRef = useRef<DesignSnapshot>({ text, textPlacement, artPlacement, iconId, customImage });
-  snapshotRef.current = { text, textPlacement, artPlacement, iconId, customImage };
+  const snapshotRef = useRef<DesignSnapshot>({ text, textPlacement, artPlacement, iconId, customImage, text2, text2Placement });
+  snapshotRef.current = { text, textPlacement, artPlacement, iconId, customImage, text2, text2Placement };
   const pushHistory = React.useCallback(() => {
     setHistory(h => [...h.slice(-29), snapshotRef.current]);
   }, []);
@@ -2166,6 +2264,9 @@ export default function Customizer() {
     setArtPlacement(last.artPlacement);
     setIconId(last.iconId);
     setCustomImage(last.customImage);
+    setText2(last.text2);
+    setText2Placement(last.text2Placement);
+    if (last.text2) setText2Open(true);
     setHistory(h.slice(0, -1));
     track("design_undo");
   }, []);
@@ -2196,20 +2297,28 @@ export default function Customizer() {
   // manda la cara del texto, así el visor y la captura muestran lo grabado.
   const frontU = faceCenterU(product, "front");
   const textFaceU = faceCenterU(product, textFace);
+  const text2FaceU = faceCenterU(product, text2Face);
+  const artFaceU = faceCenterU(product, artFace);
   const designFaceU = activeDesignKind === "art"
-    ? frontU
-    : !singleFace ? (activeDesignKind === "text" ? textPlacement.u : frontU)
-    : hasText ? textFaceU : frontU;
+    ? artFaceU
+    : !singleFace
+      ? (activeDesignKind === "text" ? textPlacement.u : activeDesignKind === "text2" ? text2Placement.u : frontU)
+    : activeDesignKind === "text2" ? text2FaceU
+    : hasText ? textFaceU : hasText2 ? text2FaceU : hasArt ? artFaceU : frontU;
 
   // ── Seleccionar / terminar ──────────────────────────────────────────────────
-  const selectDesign = React.useCallback((kind: "text" | "art", source: string) => {
+  const selectDesign = React.useCallback((kind: DesignKind, source: string) => {
     setSelected(kind);
     setUndoDeleteUntil(0);
     // La pieza gira para mostrar de frente lo que se va a editar.
-    thermosSnapRef.current?.(kind === "text" ? (singleFace ? textFaceU : textPlacement.u) : frontU);
+    thermosSnapRef.current?.(
+      kind === "text" ? (singleFace ? textFaceU : textPlacement.u)
+      : kind === "text2" ? (singleFace ? text2FaceU : text2Placement.u)
+      : artFaceU,
+    );
     flashGuides();
     track("design_select", { kind, source });
-  }, [singleFace, textPlacement.u, textFaceU, frontU, flashGuides]);
+  }, [singleFace, textPlacement.u, text2Placement.u, textFaceU, text2FaceU, artFaceU, flashGuides]);
 
   const finishEditing = React.useCallback(() => {
     setSelected(null);
@@ -2226,6 +2335,12 @@ export default function Customizer() {
     prevHasText.current = hasText;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasText]);
+  const prevHasText2 = useRef(hasText2);
+  React.useEffect(() => {
+    if (hasText2 && !prevHasText2.current) selectDesign("text2", "create");
+    prevHasText2.current = hasText2;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasText2]);
   const prevArtUrl = useRef(artUrl);
   React.useEffect(() => {
     if (artUrl && artUrl !== prevArtUrl.current && hasArt) selectDesign("art", "create");
@@ -2242,19 +2357,26 @@ export default function Customizer() {
       // Margen generoso (≈ un dedo): tocar cerca del diseño también lo toma.
       return Math.abs(du) <= ext.halfU + 0.05 && Math.abs(hit.v - p.v) <= ext.halfV + 0.1;
     };
-    if (hasText && over(textPlacement, textExtents)) { if (activeDesignKind !== "text") selectDesign("text", "tap"); return; }
-    if (hasArt && over(artPlacement, artExtents)) { if (activeDesignKind !== "art") selectDesign("art", "tap"); return; }
+    // El que se está editando gana si dos se tocan (ej. empresa y nombre juntos).
+    const kinds: DesignKind[] = ["text", "text2", "art"];
+    if (activeDesignKind) kinds.sort((a, b) => (a === activeDesignKind ? -1 : b === activeDesignKind ? 1 : 0));
+    for (const k of kinds) {
+      const has = k === "text" ? hasText : k === "text2" ? hasText2 : hasArt;
+      const p = k === "text" ? textPlacement : k === "text2" ? text2Placement : artPlacement;
+      const ext = k === "text" ? textExtents : k === "text2" ? text2Extents : artExtents;
+      if (has && over(p, ext)) { if (activeDesignKind !== k) selectDesign(k, "tap"); return; }
+    }
     if (activeDesignKind) finishEditing();
-  }, [hasText, hasArt, textPlacement, artPlacement, textExtents, artExtents, activeDesignKind, selectDesign, finishEditing]);
+  }, [hasText, hasText2, hasArt, textPlacement, text2Placement, artPlacement, textExtents, text2Extents, artExtents, activeDesignKind, selectDesign, finishEditing]);
 
   /** ¿El dedo se apoyó sobre el diseño en edición? (mismo margen que el toque). */
   const isOverActiveDesign = React.useCallback((hit: { u: number; v: number }) => {
-    const p = activeDesignKind === "text" ? textPlacement : activeDesignKind === "art" ? artPlacement : null;
-    const ext = activeDesignKind === "text" ? textExtents : artExtents;
+    const p = activeDesignKind === "text" ? textPlacement : activeDesignKind === "text2" ? text2Placement : activeDesignKind === "art" ? artPlacement : null;
+    const ext = activeDesignKind === "text" ? textExtents : activeDesignKind === "text2" ? text2Extents : artExtents;
     if (!p) return false;
     const du = hit.u - p.u - Math.round(hit.u - p.u);
     return Math.abs(du) <= ext.halfU + 0.05 && Math.abs(hit.v - p.v) <= ext.halfV + 0.1;
-  }, [activeDesignKind, textPlacement, artPlacement, textExtents, artExtents]);
+  }, [activeDesignKind, textPlacement, text2Placement, artPlacement, textExtents, text2Extents, artExtents]);
 
   // Acciones de la barra de edición.
   const resizeActive = (delta: number) => {
@@ -2263,6 +2385,9 @@ export default function Customizer() {
       const max = Math.min(TEXT_SCALE_MAX, wrapMaxScale);
       const scale = Math.max(TEXT_SCALE_MIN, Math.min(max, Math.round((textPlacement.scale + delta) * 100) / 100));
       applyTextPlacement({ ...textPlacement, scale });
+    } else if (activeDesignKind === "text2") {
+      const scale = Math.max(TEXT_SCALE_MIN, Math.min(TEXT_SCALE_MAX, Math.round((text2Placement.scale + delta) * 100) / 100));
+      applyText2Placement({ ...text2Placement, scale });
     } else if (activeDesignKind === "art") {
       const scale = Math.max(0.3, Math.min(1.5, Math.round((artPlacement.scale + delta) * 100) / 100));
       applyArtPlacement({ ...artPlacement, scale });
@@ -2272,17 +2397,76 @@ export default function Customizer() {
   const deleteActive = () => {
     pushHistory();
     if (activeDesignKind === "text") setText("");
+    else if (activeDesignKind === "text2") { setText2(""); setText2Open(false); }
     else if (activeDesignKind === "art") { if (iconId) setIconId(null); else setCustomImage(null); }
     setSelected(null);
     setUndoDeleteUntil(Date.now() + 6000);
     track("design_delete", { kind: activeDesignKind ?? "" });
   };
   const centerWithHistory = () => { pushHistory(); centerActivePlacement(); };
-  const editLabel = activeDesignKind === "text" ? "el texto" : iconId ? "el ícono" : "la imagen";
+
+  // "Agregar otro texto": el Texto 2 va DEBAJO del principal (ej. empresa
+  // arriba, empleado abajo); si abajo no entra, arriba. Si el principal sigue
+  // en su lugar de inicio, sube un poco para que los dos queden centrados.
+  // Después cada uno se arrastra libre.
+  const openText2 = () => {
+    pushHistory();
+    // Va en la misma cara que el texto 1 (frente, lado del logo o costado).
+    const face = hasText && singleFace ? textFace : "front";
+    const c = padToPlacement(0.5, 0.5, product, face);
+    const nextToText1 = hasText && singleFace;
+    const gap = textExtents.halfV + 0.07;
+    let main = textPlacement;
+    let v2 = c.v;
+    if (nextToText1) {
+      // "Sin mover": donde lo deja el inicio (v por defecto, ya encuadrado en el
+      // área de este producto) o en el centro del área.
+      const startV = clampTextP({ ...textPlacement, v: DEFAULT_TEXT_PLACEMENT.v }).v;
+      const untouched = Math.abs(textPlacement.v - startV) < 0.01 || Math.abs(textPlacement.v - c.v) < 0.04;
+      if (singleFace && untouched) {
+        main = clampTextP({ ...textPlacement, v: c.v - gap / 2 });
+        setTextPlacement(main);
+      }
+      const below = main.v + gap + 0.04;
+      const fitsBelow = clampText2P({ ...TEXT2_DEFAULT_PLACEMENT, face, u: main.u, v: below }).v >= below - 0.01;
+      v2 = fitsBelow ? below : main.v - gap - 0.04;
+    }
+    const u2 = nextToText1 ? main.u : c.u;
+    setText2Placement(clampText2P({ ...TEXT2_DEFAULT_PLACEMENT, face, u: u2, v: v2 }));
+    setText2Open(true);
+    track("text2_open", { product: productId });
+  };
+  // Idea de la IA: la primera línea va al texto 1; la segunda abre el texto 2
+  // (después del render, para que openText2 ya vea el texto 1 y lo acomode).
+  const [pendingText2, setPendingText2] = useState<string | null>(null);
+  const pickPhraseIdea = (idea: PhraseIdea) => {
+    pushHistory();
+    if (idea.text2 && isWrap360) { handleEngravingText(`${idea.text} ${idea.text2}`); return; }
+    handleEngravingText(idea.text);
+    if (idea.text2) setPendingText2(idea.text2);
+  };
+  React.useEffect(() => {
+    if (pendingText2 === null) return;
+    if (!text2Open) openText2();
+    setText2(pendingText2);
+    setPendingText2(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingText2]);
+  const removeText2 = () => {
+    if (text2) pushHistory();
+    setText2("");
+    setText2Open(false);
+    if (selected === "text2") setSelected(null);
+    if (text2) setUndoDeleteUntil(Date.now() + 6000);
+    track("text2_remove");
+  };
+  const editLabel = activeDesignKind === "text" ? (hasText2 ? "el texto 1" : "el texto")
+    : activeDesignKind === "text2" ? "el texto 2"
+    : iconId ? "el ícono" : "la imagen";
   // Sin editar: el botón entra al elemento de la pestaña abierta (o al que haya).
-  const idleEditKind: "text" | "art" | null =
-    (drinkTab === "icons" || drinkTab === "media") ? (hasArt ? "art" : hasText ? "text" : null)
-    : hasText ? "text" : hasArt ? "art" : null;
+  const idleEditKind: DesignKind | null =
+    (drinkTab === "icons" || drinkTab === "media") ? (hasArt ? "art" : hasText ? "text" : hasText2 ? "text2" : null)
+    : hasText ? "text" : hasText2 ? "text2" : hasArt ? "art" : null;
 
   // ── Preview capture ─────────────────────────────────────────────────────────
   // Grab a PNG of the live 3D canvas (the termo draws a fresh frame right before
@@ -2441,7 +2625,10 @@ export default function Customizer() {
     if (id) setCustomImage(null);
   };
   const handleUploadImage = (img: ProcessedImage | null) => {
-    const isNew = !!img && img.svgDataUrl !== customImage?.svgDataUrl && img.svgDataUrl !== customImage?.other?.svgDataUrl;
+    // Cambiar entre con fondo / sin fondo (o rehacer el recorte con IA) es la
+    // misma imagen: conserva el tamaño y el lugar que eligió el cliente.
+    const sameImage = (a?: ProcessedImage | null) => !!a && !!img && (a.svgDataUrl === img.svgDataUrl || a.svgDataUrl === img.other?.svgDataUrl);
+    const isNew = !!img && !sameImage(customImage) && !sameImage(customImage?.other);
     setCustomImage(img);
     if (img) {
       setIconId(null);
@@ -2498,7 +2685,7 @@ export default function Customizer() {
   const extraLidText = extraEngraving && extraLid !== null ? extraLid.trim() : null;
   const extraBaseText = extraEngraving && extraBase !== null ? extraBase.trim() : null;
   /** Escrituras extra (tapa / base): + Gs. 5.000 cada una (pricing.ts). */
-  const extraTextCount = (extraLidText !== null ? 1 : 0) + (extraBaseText !== null ? 1 : 0);
+  const extraTextCount = (extraLidText !== null ? 1 : 0) + (extraBaseText !== null ? 1 : 0) + (hasText2 ? 1 : 0);
 
   /** Precio estimado según lo diseñado. Solo montos que la landing ya publica
    *  (Tarifas y bolígrafos); lo que no tiene precio fijo se dice explícito. */
@@ -2540,10 +2727,14 @@ export default function Customizer() {
     if (orderColorName) rows.push(["Color", orderColorName]);
     rows.push(["Técnica", orderTechniqueName]);
     const trimmedText = text.trim();
-    if (trimmedText) rows.push(["Texto", `${trimmedText} (${activeFont.name})`]);
-    if (trimmedText && isDrinkware && !isWrap360 && textFaces.length > 1) rows.push(["Ubicación del texto", FACES[textFace].label]);
+    const trimmedText2 = text2.trim();
+    if (trimmedText) rows.push([trimmedText2 ? "Texto 1" : "Texto", `${trimmedText} (${activeFont.name})`]);
+    if (trimmedText && isDrinkware && !isWrap360 && textFaces.length > 1) rows.push(["Ubicación del texto", faceLabel(product, textFace)]);
+    if (trimmedText2) rows.push(["Texto 2", `${trimmedText2} (${activeFont2.name})`]);
+    if (trimmedText2 && isDrinkware && text2Face !== textFace) rows.push(["Ubicación del texto 2", faceLabel(product, text2Face)]);
     if (selectedIcon) rows.push(["Ícono", selectedIcon.name]);
     else if (customImage) rows.push(["Logo/foto adjunta", "Sí"]);
+    if (hasArt && isDrinkware && artFace !== "front") rows.push([selectedIcon ? "Ubicación del ícono" : "Ubicación de la imagen", faceLabel(product, artFace)]);
     if (extraLidText !== null) rows.push(["Grabado en tapa", extraLidText || "Sí (texto a definir)"]);
     if (extraBaseText !== null) rows.push(["Grabado en base", extraBaseText || "Sí (texto a definir)"]);
     return rows;
@@ -2553,15 +2744,19 @@ export default function Customizer() {
    *  completo del diseño (suficiente para reabrirlo/reproducirlo después). */
   const orderPayload = (previewImage: string | null, dacenFile: DacenPrintFile | null = null): CreateOrderRequest => {
     const trimmedText = text.trim();
+    const trimmedText2 = text2.trim();
     return {
       product: (isOwnProduct ? orderProductName : orderProductLabel).slice(0, 120),
       material: material.name,
       color: orderColorName,
       technique: orderTechniqueName,
-      customText: trimmedText || undefined,
-      font: trimmedText ? activeFont.name : undefined,
+      // Con "Texto 2" el panel muestra los dos (el detalle va en designState).
+      customText: [trimmedText, trimmedText2].filter(Boolean).join(" / ") || undefined,
+      font: trimmedText || trimmedText2
+        ? [trimmedText && activeFont.name, trimmedText2 && activeFont2.name].filter(Boolean).join(" / ")
+        : undefined,
       // El color de texto solo aplica en impresión UV (láser es monocromático).
-      textColor: trimmedText && effectiveTechnique === "color" ? textColor : undefined,
+      textColor: (trimmedText || trimmedText2) && effectiveTechnique === "color" ? textColor : undefined,
       iconName: selectedIcon?.name,
       hasUploadedImage: !!customImage,
       designState: {
@@ -2583,6 +2778,8 @@ export default function Customizer() {
         simpleKind,
         textPlacement,
         artPlacement,
+        // Texto 2 (empresa / nombre, etc.): también va al archivo de producción.
+        ...(trimmedText2 ? { text2: trimmedText2, text2FontId: text2Font, text2Placement } : {}),
         // Grabado extra (no está en el 3D): también va al archivo de producción.
         extraEngraving: extraLidText !== null || extraBaseText !== null
           ? { lid: extraLidText, base: extraBaseText }
@@ -2631,6 +2828,7 @@ export default function Customizer() {
         imageSize: artImageSize,
         artPlacement,
         singleFace,
+        extraTexts: extraTextMarks,
       });
     } catch {
       return null;
@@ -2658,7 +2856,7 @@ export default function Customizer() {
    *  imagen) y abre WhatsApp con el número de pedido y la URL permanente del
    *  preview. Si el POST falla o tarda de más, fallback: mensaje solo con las
    *  especificaciones, más un aviso sutil y el botón "Descargar imagen". */
-  const isEmptyDesign = !text.trim() && !selectedIcon && !customImage && !extraLidText && !extraBaseText;
+  const isEmptyDesign = !text.trim() && !hasText2 && !selectedIcon && !customImage && !extraLidText && !extraBaseText;
   // Lo que mira a cámara en la foto del resumen: el área personalizada, o sin
   // diseño el frente de la marca (u = 0, el logo del modelo) y no el dorso.
   const captureFaceU = isEmptyDesign ? 0 : designFaceU;
@@ -2688,6 +2886,7 @@ export default function Customizer() {
       material: materialId,
       technique: orderTechniqueName,
       has_text: !!text.trim(),
+      has_text2: hasText2,
       has_icon: !!selectedIcon,
       has_image: !!customImage,
       own_product: isOwnProduct,
@@ -3046,6 +3245,7 @@ export default function Customizer() {
     technique: effectiveTechnique, text, fontId: font, textColor, iconId, ownProduct,
     textPlacement, artPlacement,
     extraLid: extraEngraving ? extraLid : null, extraBase: extraEngraving ? extraBase : null,
+    ...(hasText2 ? { text2, text2FontId: text2Font, text2Placement } : {}),
   });
 
   const handleCopyLink = async () => {
@@ -3276,6 +3476,7 @@ export default function Customizer() {
               customImageUrl={artUrl}
               imageSize={artImageSize}
               textPlacement={textPlacement}
+              extraTexts={extraTextMarks}
               artPlacement={artPlacement}
               colorPrint={effectiveTechnique === "color"}
               textColor={textColor}
@@ -3283,6 +3484,7 @@ export default function Customizer() {
               singleFace={singleFace}
               showGuides={false}
               frontFaceU={designFaceU}
+              hideLogo={designOnLogoSide}
               glass={isGlass}
             />
           ) : is3DObject && activeObject ? (
@@ -3596,6 +3798,7 @@ export default function Customizer() {
                       customImageUrl={artUrl}
                       imageSize={artImageSize}
                       textPlacement={textPlacement}
+                      extraTexts={extraTextMarks}
                       artPlacement={artPlacement}
                       colorPrint={effectiveTechnique === "color"}
                       textColor={textColor}
@@ -3604,7 +3807,8 @@ export default function Customizer() {
                       editSingleFace={editSingleFace}
                       showGuides={guidesActive}
                       frontFaceU={designFaceU}
-                      guideFace={activeDesignKind === "art" ? "front" : textFace}
+                      guideFace={activeDesignKind === "art" ? artFace : activeDesignKind === "text2" ? text2Face : textFace}
+                      hideLogo={designOnLogoSide}
                       glass={isGlass}
                       designActive={designActive}
                       onDesignMove={onDesignMoveUV}
@@ -3647,7 +3851,7 @@ export default function Customizer() {
                           />
                           <ArViewButton
                             getModel={() => thermosArRef.current?.() ?? null}
-                            designKey={[productId, viewSize, activeColorHex, finish, text, font, iconId, artUrl?.length ?? 0, textColor, effectiveTechnique, singleFace, JSON.stringify(textPlacement), JSON.stringify(artPlacement)].join("|")}
+                            designKey={[productId, viewSize, activeColorHex, finish, text, font, text2, text2Font, JSON.stringify(text2Placement), iconId, artUrl?.length ?? 0, textColor, effectiveTechnique, singleFace, JSON.stringify(textPlacement), JSON.stringify(artPlacement)].join("|")}
                           />
                         </div>
                       </>
@@ -3841,6 +4045,7 @@ export default function Customizer() {
                           onFocusChange={setTextFieldFocused}
                           limitNotice={wrapLimitHit ? "El texto alcanzó el máximo para envolver el producto." : null}
                         />
+                        <AiPhraseIdeas product={product.singular} twoLines={text2Open} onPick={pickPhraseIdea} />
                       </div>
 
                       {/* Técnica de grabado — global (afecta texto, ícono e imagen).
@@ -3860,7 +4065,7 @@ export default function Customizer() {
                       {/* Dónde va el texto: frente, dorso o costado (el Envolvente 360°
                           ya rodea todo el cuerpo). */}
                       {!isWrap360 && textFaces.length > 1 && (
-                        <FaceSelector faces={textFaces} value={textFace} onChange={selectTextFace} />
+                        <FaceSelector faces={textFaces} value={textFace} onChange={selectTextFace} product={product} />
                       )}
                     </div>
 
@@ -3892,6 +4097,60 @@ export default function Customizer() {
                       </div>
                     </AdvancedOptions>
 
+                    {/* Texto 2: otro texto con su propia fuente, tamaño y lugar. */}
+                    {(text2Open || !isWrap360) && (text2Open ? (
+                      <div className="rounded-xl border border-border bg-secondary/30 px-4 py-3 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">Texto 2</p>
+                            <p className="text-xs text-muted-foreground">
+                              Ej.: la empresa arriba y el nombre del empleado abajo. Tocalo sobre el {product.singular.toLowerCase()} para moverlo.
+                              {effectiveTechnique === "laser" && <> {formatGs(PRICING.laser.extraText)} más.</>}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={removeText2}
+                            aria-label="Quitar el texto 2"
+                            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div>
+                          <EngravingTextField
+                            text={text2}
+                            onText={setText2}
+                            layout="auto"
+                            placeholder="Segundo texto (ej. nombre del empleado)"
+                          />
+                        </div>
+                        {singleFace && textFaces.length > 1 && (
+                          <FaceSelector faces={textFaces} value={text2Face} onChange={selectText2Face} product={product} label="Ubicación del texto 2" />
+                        )}
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-2 block">Tipografía del texto 2</Label>
+                          <FontCarousel fonts={FONTS} value={text2Font} onChange={setText2Font} sampleText={text2 || "Texto 2"} />
+                        </div>
+                        <TextSizeSlider
+                          scale={text2Placement.scale}
+                          onScale={(sc) => applyText2Placement({ ...text2Placement, scale: sc })}
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={openText2}
+                        className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-3 text-sm font-medium text-foreground hover:border-primary/40 hover:bg-secondary/50 active:scale-[0.99] transition-all"
+                      >
+                        <Plus className="w-4 h-4 text-primary" />
+                        Agregar otro texto
+                        {effectiveTechnique === "laser" && (
+                          <span className="text-xs font-normal text-muted-foreground">+ {formatGs(PRICING.laser.extraText)}</span>
+                        )}
+                      </button>
+                    ))}
+
                     {extraEngraving && (
                       <ExtraEngravingFields lid={extraLid} base={extraBase} onLid={setExtraLid} onBase={setExtraBase} />
                     )}
@@ -3906,6 +4165,10 @@ export default function Customizer() {
                       </p>
                       <IconPicker value={iconId} onChange={handlePickIcon} />
                     </div>
+
+                    {selectedIcon && textFaces.length > 1 && (
+                      <FaceSelector faces={textFaces} value={artFace} onChange={selectArtFace} product={product} label="Ubicación del ícono" />
+                    )}
 
                     {/* Tamaño/orientación del ícono, sólo cuando hay uno elegido. */}
                     {selectedIcon && (
@@ -3934,7 +4197,7 @@ export default function Customizer() {
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Subí tu logo o tu foto: se imprime a todo color (impresión UV) sobre el {product.singular.toLowerCase()}. Si tiene un fondo liso se lo quitamos automáticamente.
+                        Subí tu logo o tu foto: se imprime a todo color (impresión UV) sobre el {product.singular.toLowerCase()}. Podés dejarla con fondo o quitárselo.
                       </p>
 
                       {/* Antes se exigía un plan "con imagen", pero el plan se deduce
@@ -3945,7 +4208,14 @@ export default function Customizer() {
                         imageSize="large"
                         value={customImage}
                         onChange={handleUploadImage}
+                        aiStyle={effectiveTechnique === "color" ? "color" : "laser"}
                       />
+
+                      {customImage && textFaces.length > 1 && (
+                        <div className="pt-4 mt-4 border-t border-border">
+                          <FaceSelector faces={textFaces} value={artFace} onChange={selectArtFace} product={product} label="Ubicación de la imagen" />
+                        </div>
+                      )}
 
                       {customImage && (
                         <div className="pt-4 mt-4 border-t border-border">
@@ -4086,6 +4356,11 @@ export default function Customizer() {
                       <div>
                         <Label className="text-sm font-medium text-foreground mb-3 block">Texto Personalizado</Label>
                         <EngravingTextField text={text} onText={setText} layout={textPlacement.layout} />
+                        <AiPhraseIdeas
+                          product={activeObject.singular}
+                          twoLines={false}
+                          onPick={(idea) => setText(idea.text2 ? `${idea.text}\n${idea.text2}` : idea.text)}
+                        />
                       </div>
                       <OrientationToggle
                         value={textPlacement.orientation}
@@ -4142,7 +4417,7 @@ export default function Customizer() {
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Subí tu logo o tu foto. Le quitamos el fondo automáticamente y la grabamos sobre la {activeObject.singular.toLowerCase()}.
+                        Subí tu logo o tu foto y la grabamos sobre la {activeObject.singular.toLowerCase()}. Podés dejarla con fondo o quitárselo.
                       </p>
                       <ImageUpload imageSize="large" value={customImage} onChange={handleUploadImage} />
 

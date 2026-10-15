@@ -20,7 +20,8 @@ import { createReadStream, existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join, normalize, extname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gzipSync, brotliCompressSync, constants as zlibConstants } from "node:zlib";
+import { gzip, gzipSync, brotliCompressSync, constants as zlibConstants } from "node:zlib";
+import { promisify } from "node:util";
 import { handleServeRequest } from "./upload-store.mjs";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -119,6 +120,13 @@ const COMPRESSIBLE = new Set([
   "font/otf",
 ]);
 
+// Binarios grandes del recortador de fondos (motor wasm 14 MB, modelo 44 MB):
+// gzip asíncrono (en el pool de hilos, no traba el servidor como el brotli
+// síncrono de arriba), una sola vez y cacheado en memoria (~34 MB en total).
+const ASYNC_GZIP_EXT = new Set([".wasm", ".onnx"]);
+const gzipAsync = promisify(gzip);
+const pendingGzip = new Map();
+
 // In-memory cache of compressed payloads, keyed by `path|encoding`.
 const compressedCache = new Map();
 
@@ -146,6 +154,8 @@ function cacheControlFor(pathname) {
     pathname.startsWith("/assets/") ||
     pathname.startsWith("/fonts/") ||
     pathname.startsWith("/galeria/") ||
+    // Modelo del recortador de fondos (44 MB): se versiona por nombre de archivo.
+    pathname.startsWith("/ai/") ||
     /\.[0-9a-f]{8,}\.[a-z0-9]+$/i.test(pathname)
   ) {
     return "public, max-age=31536000, immutable";
@@ -191,10 +201,11 @@ function dynamicDoc(pathname, req) {
         `## Secciones\n` +
         `- [Personalizador 3D](${origin}/#customizer): elegí formato, color y grabado y previsualizá la pieza en 3D.\n` +
         `- [Precios y grabado](${origin}/#precios): planes de grabado láser e impresión a color.\n` +
-        `- [Trabajos realizados](${origin}/#inicio): galería de piezas ya personalizadas.\n` +
+        `- [Trabajos realizados](${origin}/#galeria): galería de piezas ya personalizadas.\n` +
+        `- [Stickers](${origin}/#stickers): stickers personalizados con tu diseño.\n` +
         `- [Contacto](${origin}/#contacto): WhatsApp, Instagram y ubicación del taller.\n\n` +
         `## Contacto\n` +
-        `- WhatsApp: +595 971 300 945\n` +
+        `- WhatsApp: +595 981 124607\n` +
         `- Instagram: https://www.instagram.com/creativastudio.py\n` +
         `- Ubicación: Local dentro de MarketPlace, Avda. España, Paraguay\n`,
     };
@@ -288,7 +299,9 @@ async function serve(req, res) {
 
   const type = MIME[extname(filePath).toLowerCase()] || "application/octet-stream";
   const cacheControl = cacheControlFor(pathname);
-  const encoding = COMPRESSIBLE.has(type) ? pickEncoding(req.headers["accept-encoding"]) : null;
+  const asyncGzip = ASYNC_GZIP_EXT.has(extname(filePath).toLowerCase())
+    && (req.headers["accept-encoding"] || "").includes("gzip");
+  const encoding = asyncGzip ? "gzip" : COMPRESSIBLE.has(type) ? pickEncoding(req.headers["accept-encoding"]) : null;
 
   const baseHeaders = {
     "Content-Type": type,
@@ -301,7 +314,17 @@ async function serve(req, res) {
     if (encoding) {
       const key = `${filePath}|${encoding}`;
       let payload = compressedCache.get(key);
-      if (!payload) {
+      if (!payload && asyncGzip) {
+        // Pedidos simultáneos comparten la misma compresión.
+        let job = pendingGzip.get(key);
+        if (!job) {
+          job = readFile(filePath).then(buf => gzipAsync(buf, { level: 6 }));
+          pendingGzip.set(key, job);
+          job.finally(() => pendingGzip.delete(key)).catch(() => {});
+        }
+        payload = await job;
+        compressedCache.set(key, payload);
+      } else if (!payload) {
         payload = compress(await readFile(filePath), encoding);
         compressedCache.set(key, payload);
       }

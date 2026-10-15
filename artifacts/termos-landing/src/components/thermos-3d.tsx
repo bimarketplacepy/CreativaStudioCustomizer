@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { getProduct, getSize, resampledProfile, type ProductDef } from "@/lib/products";
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, bandRange, vForY, type FaceId, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
-import { makeBodyMaps, makeGlassEngraving, type EngraveStyle } from "@/lib/engraving-maps";
+import { makeBodyMaps, makeGlassEngraving, type EngraveStyle, type TextMark } from "@/lib/engraving-maps";
 import { FRONT_FACE, frontAreaBounds } from "@/lib/face-area";
 import { layoutText, fillLinesAligned, measureLinesWidth, LINE_HEIGHT } from "@/lib/engraving-text";
 
@@ -33,6 +33,8 @@ interface Thermos3DProps {
   imageSize: "none" | "small" | "large";
   textPlacement?: Placement;
   artPlacement?: Placement;
+  /** Textos adicionales (Texto 2: ej. empresa arriba, empleado abajo). */
+  extraTexts?: TextMark[];
   /** Eufy Make (UV DTF): print the artwork in colour instead of engraving it. */
   colorPrint?: boolean;
   /** Ink colour for printed text (UV DTF only). */
@@ -53,6 +55,8 @@ interface Thermos3DProps {
   frontFaceU?: number;
   /** Cara sobre la que se dibuja la guía punteada (la del elemento en edición). */
   guideFace?: FaceId;
+  /** Ocultar el logo de la marca del .glb (hay un diseño en el lado del logo). */
+  hideLogo?: boolean;
   /** Render the body as transparent glass (cristal) with a sandblasted engraving. */
   glass?: boolean;
   /**
@@ -379,13 +383,14 @@ function useModelGeometries(product: ProductDef, sil: Silhouette) {
  * texturas de color y grabado que usa el lathe; el resto son piezas fijas.
  */
 function ModelPieces({
-  product, sil, colorHex, finish, bodyMaterial,
+  product, sil, colorHex, finish, bodyMaterial, hideLogo,
 }: {
   product: ProductDef;
   sil: Silhouette;
   colorHex: string;
   finish: string;
   bodyMaterial: ReactNode;
+  hideLogo?: boolean;
 }) {
   const parts = useModelGeometries(product, sil);
   const steel = { color: "#c9cdd1", roughness: 0.3, metalness: 1.0, envMapIntensity: 1.9 };
@@ -419,7 +424,7 @@ function ModelPieces({
       {/* Tapa, pajita, logos y demás piezas: el material del .glb, salvo las
           que el producto pinta con el color elegido (funda, boquilla…). */}
       {Object.entries(parts)
-        .filter(([name]) => !BUILT_IN_PARTS.has(name))
+        .filter(([name]) => !BUILT_IN_PARTS.has(name) && !(hideLogo && LOGO_PARTS.has(name)))
         .map(([name, part]) => {
           const m = product.model!;
           const light = m.paintLight?.includes(name);
@@ -445,6 +450,8 @@ function ModelPieces({
 
 /** Piezas con tratamiento propio en ModelPieces (el resto usa su material del .glb). */
 const BUILT_IN_PARTS = new Set(["body", "steel", "interior", "handle"]);
+/** El logo de la marca sobre el cuerpo (no el de la funda, ej. "logo_funda" del Sunbeam). */
+const LOGO_PARTS = new Set(["logo", "logo_texto"]);
 
 /** Mezcla un hex con blanco (0..1). */
 function lighten(hex: string, t: number): string {
@@ -525,16 +532,16 @@ function FrontFaceGuide({ sil, product, face }: { sil: Silhouette; product: Prod
 
 function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
-  textPlacement, artPlacement, colorPrint, textColor, engraveStyle, singleFace, editSingleFace, showGuides, frontFaceU, guideFace, glass,
+  textPlacement, artPlacement, extraTexts, colorPrint, textColor, engraveStyle, singleFace, editSingleFace, showGuides, frontFaceU, guideFace, hideLogo = false, glass,
   designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, snapToURef, renderNowRef, onReady,
   autoSpin = false, rotationLocked = false, onMotionChange, arModelRef,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
   customImageUrl: string | null; imageSize: "none" | "small" | "large";
-  textPlacement: Placement; artPlacement: Placement; colorPrint: boolean; textColor?: string;
+  textPlacement: Placement; artPlacement: Placement; extraTexts?: TextMark[]; colorPrint: boolean; textColor?: string;
   engraveStyle: EngraveStyle;
-  singleFace: boolean; editSingleFace: boolean; showGuides: boolean; frontFaceU: number; guideFace: FaceId; glass: boolean;
+  singleFace: boolean; editSingleFace: boolean; showGuides: boolean; frontFaceU: number; guideFace: FaceId; hideLogo?: boolean; glass: boolean;
   designActive: boolean;
   onDesignMove?: (du: number, dv: number) => void;
   onDesignDragStart?: () => void;
@@ -693,6 +700,16 @@ function ThermosMesh({
       setFontReady(n => n + 1);
     });
   }, [fontFamily]);
+  // Las fuentes de los textos adicionales también se esperan antes de medir.
+  const extraFontsKey = (extraTexts ?? []).map(t => t.fontFamily ?? "").join("|");
+  useEffect(() => {
+    if (!extraFontsKey || !document.fonts?.load) return;
+    let alive = true;
+    const loads = extraFontsKey.split("|").map(f => f.split(",")[0]?.trim().replace(/['"]/g, "")).filter(Boolean)
+      .map(f => document.fonts.load(`900 32px "${f}"`));
+    Promise.all(loads).then(() => { if (alive) setFontReady(n => n + 1); }).catch(() => {});
+    return () => { alive = false; };
+  }, [extraFontsKey]);
 
   const [customImageEl, setCustomImageEl] = useState<HTMLImageElement | null>(null);
 
@@ -741,6 +758,7 @@ function ThermosMesh({
   const dText = useDeferredValue(text);
   const dTextPlacement = useDeferredValue(textPlacement);
   const dArtPlacement = useDeferredValue(artPlacement);
+  const dExtraTexts = useDeferredValue(extraTexts);
 
   // Mientras el cliente escribe, arrastra o prueba colores, las texturas se
   // arman en borrador (¼ de los píxeles, sin desenfoques); la versión completa
@@ -750,7 +768,7 @@ function ThermosMesh({
   // en un efecto: cada tecla armaba primero la versión completa, con los
   // desenfoques, y después el borrador — el doble de trabajo, y el caro.)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const editKey = useMemo(() => ({}), [dText, dTextPlacement, dArtPlacement, artMask, imageSize, colorHex]);
+  const editKey = useMemo(() => ({}), [dText, dTextPlacement, dArtPlacement, dExtraTexts, artMask, imageSize, colorHex]);
   const [settledKey, setSettledKey] = useState(editKey);
   useEffect(() => {
     if (settledKey === editKey) return;
@@ -764,13 +782,13 @@ function ThermosMesh({
   const maps = useMemo(
     () => glass ? null : makeBodyMaps({
       product, colorHex, finish: matProps, isGradientFinish: finish === "gradient",
-      text: dText, textPlacement: dTextPlacement, fontFamily, artMask, imageSize, artPlacement: dArtPlacement,
+      text: dText, textPlacement: dTextPlacement, fontFamily, extraTexts: dExtraTexts, artMask, imageSize, artPlacement: dArtPlacement,
       anisotropy: maxAnisotropy, colorPrint, textColor, artImage: customImageEl, engraveStyle, singleFace,
       quality: settled ? "full" : "draft",
     }),
     // fontReady triggers re-creation once the font is actually loaded
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [glass, product, colorHex, matProps, finish, dText, dTextPlacement, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, textColor, customImageEl, engraveStyle, singleFace, settled]
+    [glass, product, colorHex, matProps, finish, dText, dTextPlacement, dExtraTexts, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, textColor, customImageEl, engraveStyle, singleFace, settled]
   );
 
   // Four textures per rebuild, now coalesced to the settled input via useDeferredValue.
@@ -780,11 +798,11 @@ function ThermosMesh({
   // frosted overlay mesh. Only built for cristal pieces.
   const glassFrost = useMemo(
     () => glass ? makeGlassEngraving({
-      product, text: dText, textPlacement: dTextPlacement, fontFamily,
+      product, text: dText, textPlacement: dTextPlacement, fontFamily, extraTexts: dExtraTexts,
       artMask, imageSize, artPlacement: dArtPlacement, singleFace, anisotropy: maxAnisotropy,
     }) : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [glass, product, dText, dTextPlacement, fontFamily, fontReady, artMask, imageSize, dArtPlacement, singleFace, maxAnisotropy]
+    [glass, product, dText, dTextPlacement, dExtraTexts, fontFamily, fontReady, artMask, imageSize, dArtPlacement, singleFace, maxAnisotropy]
   );
   useEffect(() => () => glassFrost?.dispose(), [glassFrost]);
 
@@ -1206,7 +1224,7 @@ function ThermosMesh({
              al pasar de `material={…}` a un material hijo R3F repone la prop
              quitada con el default de THREE.Mesh: un MeshBasicMaterial blanco
              (la tapa del Termo Mate salía blanca y sin luz). */
-          <ModelPieces key={product.id} product={product} sil={sil} colorHex={colorHex} finish={finish} bodyMaterial={bodyMaterial} />
+          <ModelPieces key={product.id} product={product} sil={sil} colorHex={colorHex} finish={finish} bodyMaterial={bodyMaterial} hideLogo={hideLogo} />
         ) : (
           <mesh geometry={bodyGeo} castShadow receiveShadow userData={ENGRAVE_BODY}>
             {bodyMaterial}
@@ -1283,7 +1301,7 @@ function isWebGLAvailable(): boolean {
 
 // Canvas 2D fallback (simplified)
 function FallbackCanvas({
-  colorHex, text, product, sil, customImageUrl, imageSize, textPlacement, artPlacement,
+  colorHex, text, product, sil, customImageUrl, imageSize, textPlacement, artPlacement, extraTexts,
 }: Omit<Thermos3DProps, "finish" | "fontClass" | "productId" | "sizeId"> & {
   product: ProductDef; sil: Silhouette; textPlacement: Placement; artPlacement: Placement;
 }) {
@@ -1297,8 +1315,8 @@ function FallbackCanvas({
   const velRef = useRef(0);
   const velXRef = useRef(0);
   const customImgRef = useRef<HTMLImageElement | null>(null);
-  const propsRef = useRef({ colorHex, text, product, sil, imageSize, textPlacement, artPlacement });
-  propsRef.current = { colorHex, text, product, sil, imageSize, textPlacement, artPlacement };
+  const propsRef = useRef({ colorHex, text, product, sil, imageSize, textPlacement, artPlacement, extraTexts });
+  propsRef.current = { colorHex, text, product, sil, imageSize, textPlacement, artPlacement, extraTexts };
 
   useEffect(() => {
     if (!customImageUrl) { customImgRef.current = null; return; }
@@ -1321,7 +1339,7 @@ function FallbackCanvas({
     function mix(a: number, b: number, t: number) { return a + (b - a) * t; }
 
     const draw = () => {
-      const { colorHex, text, product, sil, imageSize, textPlacement, artPlacement } = propsRef.current;
+      const { colorHex, text: mainText, product, sil, imageSize, textPlacement: mainPlacement, artPlacement, extraTexts } = propsRef.current;
       const customImg = customImgRef.current;
       const hasArt = !!(customImg && imageSize && imageSize !== "none");
       ctx.clearRect(0, 0, W, H);
@@ -1455,7 +1473,9 @@ function FallbackCanvas({
         }
       }
       // Text — engraved: a dark groove wall above, bare steel catching light below
-      if (text) {
+      const allTexts = [{ text: mainText, placement: mainPlacement }, ...(extraTexts ?? [])];
+      for (const { text, placement: textPlacement } of allTexts) {
+        if (!text) continue;
         const tp = project(textPlacement);
         if (tp.facing > -0.15) {
           ctx.save();
@@ -1635,6 +1655,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           customImageUrl={props.customImageUrl}
           imageSize={props.imageSize}
           textPlacement={props.textPlacement ?? DEFAULT_TEXT_PLACEMENT}
+          extraTexts={props.extraTexts}
           artPlacement={props.artPlacement ?? DEFAULT_ART_PLACEMENT}
           colorPrint={props.colorPrint ?? false}
           textColor={props.textColor}
@@ -1644,6 +1665,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           showGuides={props.showGuides ?? true}
           frontFaceU={props.frontFaceU ?? FRONT_FACE.uCenter}
           guideFace={props.guideFace ?? "front"}
+          hideLogo={props.hideLogo}
           glass={props.glass ?? false}
           designActive={props.designActive ?? false}
           onDesignMove={props.onDesignMove}
@@ -1697,6 +1719,7 @@ export default function Thermos3D(props: Thermos3DProps) {
       imageSize={props.imageSize}
       textPlacement={props.textPlacement ?? DEFAULT_TEXT_PLACEMENT}
       artPlacement={props.artPlacement ?? DEFAULT_ART_PLACEMENT}
+      extraTexts={props.extraTexts}
     />
   );
 

@@ -223,6 +223,17 @@ export interface BodyMaps {
   dispose: () => void;
 }
 
+/**
+ * Un texto adicional del diseño ("Texto 2": ej. la empresa arriba y el nombre
+ * del empleado abajo). Mismo dibujo que el texto principal, con su propio
+ * contenido, fuente y ubicación.
+ */
+export interface TextMark {
+  text: string;
+  placement: Placement;
+  fontFamily?: string;
+}
+
 export interface EngravingInput {
   product: ProductDef;
   colorHex: string;
@@ -232,6 +243,8 @@ export interface EngravingInput {
   text: string;
   textPlacement: Placement;
   fontFamily?: string;
+  /** Textos adicionales (Texto 2), dibujados igual que el principal. */
+  extraTexts?: TextMark[];
   /** Coverage map of the uploaded artwork, from `buildEngraveMask`. */
   artMask?: HTMLCanvasElement | null;
   imageSize?: "none" | "small" | "large";
@@ -411,6 +424,8 @@ export interface ColorLayerInput {
   imageSize: "none" | "small" | "large";
   artPlacement: Placement;
   singleFace: boolean;
+  /** Textos adicionales (Texto 2), en el mismo color que el principal. */
+  extraTexts?: TextMark[];
 }
 
 /**
@@ -423,6 +438,7 @@ export function drawColorLayer(ctx: CanvasRenderingContext2D, product: ProductDe
   const W = TEXTURE_W;
   const m = bandMetrics(product, W, TEXTURE_H);
   const { artImage, imageSize, artPlacement, text, textPlacement, fontFamily, textColor, singleFace } = o;
+  const texts: TextMark[] = [{ text, placement: textPlacement, fontFamily }, ...(o.extraTexts ?? [])];
   if (artImage && imageSize !== "none") {
     const naturalW = artImage.naturalWidth || artImage.width || 1;
     const naturalH = artImage.naturalHeight || artImage.height || 1;
@@ -435,15 +451,18 @@ export function drawColorLayer(ctx: CanvasRenderingContext2D, product: ProductDe
     }, singleFace);
   }
 
-  if (text) {
+  for (const t of texts) {
+    if (!t.text) continue;
+    const ff = t.fontFamily ?? fontFamily;
+    const p = t.placement;
     const L = computeFaceTextLayout(
       product,
-      { text, fontFamily, colorPrint: true, orientation: textPlacement.orientation, align: textPlacement.align, layout: textPlacement.layout, lineHeight: textPlacement.lineHeight },
-      textPlacement.scale,
+      { text: t.text, fontFamily: ff, colorPrint: true, orientation: p.orientation, align: p.align, layout: p.layout, lineHeight: p.lineHeight },
+      p.scale,
       singleFace,
     );
-    drawPlaced(ctx, m, W, textPlacement, L.boxW / 2, L.boxH / 2, () => {
-      ctx.font = makeTextFont(L.fontPx, fontFamily);
+    drawPlaced(ctx, m, W, p, L.boxW / 2, L.boxH / 2, () => {
+      ctx.font = makeTextFont(L.fontPx, ff);
       ctx.textBaseline = "middle";
       ctx.fillStyle = textColor;
       fillLinesAligned(ctx, L.lines, L.lineHeight, L.blockW, L.align);
@@ -466,6 +485,7 @@ export function makeBodyMaps({
   text,
   textPlacement,
   fontFamily = "Inter, system-ui, sans-serif",
+  extraTexts,
   artMask = null,
   imageSize = "none",
   artPlacement = DEFAULT_ART_PLACEMENT,
@@ -540,7 +560,7 @@ export function makeBodyMaps({
 
   // ── Impresión UV a color (Dacen F5): the artwork is PRINTED, not engraved ──
   if (colorPrint) {
-    drawColorLayer(ctx, product, { text, textPlacement, fontFamily, textColor, artImage, imageSize, artPlacement, singleFace });
+    drawColorLayer(ctx, product, { text, textPlacement, fontFamily, textColor, artImage, imageSize, artPlacement, singleFace, extraTexts });
 
     // Print sits flush on the coating: keep the base finish, no groove.
     // Flat data maps: a 1×1-texel look is identical, so keep them tiny.
@@ -569,7 +589,7 @@ export function makeBodyMaps({
   // ── Coverage mask for the laser burn ───────────────────────────────────────
   const [mark, mk] = newCanvas(s);
   const painted: Rect[] = [];
-  drawEngravingMark(mk, m, W, { product, text, textPlacement, fontFamily, artMask, imageSize, artPlacement, singleFace }, painted);
+  drawEngravingMark(mk, m, W, { product, text, textPlacement, fontFamily, extraTexts, artMask, imageSize, artPlacement, singleFace }, painted);
   // Blur passes only where the mark is (plus room for script swashes and the
   // blur itself): a name covers a few % of the texture, not all 2 megapixels.
   const area = paintedArea(painted, 24 + GROOVE_BEVEL * 3);
@@ -733,6 +753,7 @@ function drawEngravingMark(
     text: string;
     textPlacement: Placement;
     fontFamily: string;
+    extraTexts?: TextMark[];
     artMask?: HTMLCanvasElement | null;
     imageSize?: "none" | "small" | "large";
     artPlacement?: Placement;
@@ -755,15 +776,19 @@ function drawEngravingMark(
     }, singleFace, bounds);
   }
 
-  if (text) {
+  const texts: TextMark[] = [{ text, placement: textPlacement, fontFamily }, ...(opts.extraTexts ?? [])];
+  for (const t of texts) {
+    if (!t.text) continue;
+    const ff = t.fontFamily ?? fontFamily;
+    const p = t.placement;
     const L = computeFaceTextLayout(
       product,
-      { text, fontFamily, colorPrint: false, orientation: textPlacement.orientation, align: textPlacement.align, layout: textPlacement.layout, lineHeight: textPlacement.lineHeight },
-      textPlacement.scale,
+      { text: t.text, fontFamily: ff, colorPrint: false, orientation: p.orientation, align: p.align, layout: p.layout, lineHeight: p.lineHeight },
+      p.scale,
       singleFace,
     );
-    drawPlaced(mk, m, W, textPlacement, L.boxW / 2, L.boxH / 2, () => {
-      mk.font = makeTextFont(L.fontPx, fontFamily);
+    drawPlaced(mk, m, W, p, L.boxW / 2, L.boxH / 2, () => {
+      mk.font = makeTextFont(L.fontPx, ff);
       mk.textBaseline = "middle";
       mk.fillStyle = "#ffffff";
       fillLinesAligned(mk, L.lines, L.lineHeight, L.blockW, L.align);
@@ -798,6 +823,7 @@ export function makeGlassEngraving(opts: {
   text: string;
   textPlacement: Placement;
   fontFamily?: string;
+  extraTexts?: TextMark[];
   artMask?: HTMLCanvasElement | null;
   imageSize?: "none" | "small" | "large";
   artPlacement?: Placement;
@@ -812,6 +838,7 @@ export function makeGlassEngraving(opts: {
     text: opts.text,
     textPlacement: opts.textPlacement,
     fontFamily: opts.fontFamily ?? "Inter, system-ui, sans-serif",
+    extraTexts: opts.extraTexts,
     artMask: opts.artMask,
     imageSize: opts.imageSize,
     artPlacement: opts.artPlacement,

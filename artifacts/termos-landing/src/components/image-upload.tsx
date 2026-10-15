@@ -1,22 +1,35 @@
 import React, { useRef, useState } from "react";
-import { ImagePlus, Link2, Loader2, X } from "lucide-react";
+import { ImagePlus, Link2, Loader2, Sparkles, X } from "lucide-react";
 import { fetchImageBlob, fileToProcessedSvg, type ProcessedImage } from "@/lib/image-processing";
 import type { EngravingImageSize } from "@/lib/engraving-plans";
+import type { RemovalProgress } from "@/lib/background-removal";
+import type { AiImageStyle } from "@/lib/ai";
+import { AiImageCreator, AiToDrawingButton } from "./ai-tools";
+
+/** Pasa a la otra versión (con/sin fondo) sin perder el archivo original. */
+function swapVersion(value: ProcessedImage): ProcessedImage {
+  const { other, source, ...current } = value;
+  return { ...other!, source, other: { ...current, other: undefined } };
+}
 
 interface ImageUploadProps {
   imageSize: Exclude<EngravingImageSize, "none">;
   value: ProcessedImage | null;
   onChange: (image: ProcessedImage | null) => void;
+  /** Estilo de las imágenes creadas con IA: línea negra (láser) o a color (UV). */
+  aiStyle?: AiImageStyle;
 }
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 
-export default function ImageUpload({ imageSize, value, onChange }: ImageUploadProps) {
+export default function ImageUpload({ imageSize, value, onChange, aiStyle = "laser" }: ImageUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [urlInput, setUrlInput] = useState("");
+  // Recorte con IA en curso (descarga del modelo la primera vez, después el cálculo).
+  const [aiProgress, setAiProgress] = useState<RemovalProgress | null>(null);
 
   const previewBoxClass = imageSize === "large" ? "w-32 h-32" : "w-20 h-20";
 
@@ -36,7 +49,7 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
     setIsProcessing(true);
     try {
       const processed = await fileToProcessedSvg(file);
-      onChange(processed);
+      onChange({ ...processed, source: file });
     } catch {
       setError("No se pudo procesar la imagen. Probá con otra.");
     } finally {
@@ -69,7 +82,7 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
         return;
       }
       const processed = await fileToProcessedSvg(blob);
-      onChange(processed);
+      onChange({ ...processed, source: blob });
       setUrlInput("");
     } catch {
       setError("No se pudo cargar la imagen desde esa URL. Verificá el enlace, o descargala y subila desde tu dispositivo.");
@@ -78,14 +91,51 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
     }
   };
 
+  /** Imagen hecha por la IA (fondo blanco): entra como una subida, ya sin fondo. */
+  const handleAiImage = async (blob: Blob) => {
+    setError(null);
+    const processed = await fileToProcessedSvg(blob);
+    onChange({ ...processed, source: blob });
+  };
+
+  /** Recorta con IA. `withBackground`: la versión con fondo a la que se puede volver. */
+  const runAiCut = async (current: ProcessedImage, withBackground: ProcessedImage) => {
+    if (!current.source || aiProgress) return;
+    setError(null);
+    setAiProgress({ stage: "download", fraction: 0 });
+    try {
+      const { removeBackgroundAI } = await import("@/lib/background-removal");
+      const cut = await removeBackgroundAI(current.source, withBackground, { onProgress: setAiProgress });
+      onChange(cut);
+    } catch {
+      setError("No pudimos quitar el fondo de esta imagen. Probá de nuevo o subí otra foto.");
+    } finally {
+      setAiProgress(null);
+    }
+  };
+
+  /** "Sin fondo": usa el recorte que ya haya; si no hay, lo hace la IA. */
+  const pickNoBackground = () => {
+    if (!value || value.backgroundRemoved) return;
+    if (value.other?.backgroundRemoved) onChange(swapVersion(value));
+    else runAiCut(value, value);
+  };
+  const pickWithBackground = () => {
+    if (!value || !value.backgroundRemoved || !value.other) return;
+    onChange(swapVersion(value));
+  };
+  /** El recorte de fondo liso quedó raro: rehacerlo con IA sobre la foto completa. */
+  const improveWithAi = () => {
+    if (!value?.backgroundRemoved || !value.other) return;
+    runAiCut(value, value.other);
+  };
+
+  // La imagen ya venía sin fondo (PNG transparente): no hay otra versión.
+  const ownCutOut = !!value && value.backgroundRemoved && !value.other;
+  const canAiCut = !!value?.source;
+
   return (
     <div>
-      <p className="text-xs text-muted-foreground mb-3">
-        {imageSize === "large"
-          ? "Subí tu logo o foto: va a todo color (impresión UV) en tamaño grande. Si tiene un fondo liso se lo quitamos automáticamente."
-          : "Subí tu dibujo o foto: va a todo color (impresión UV) en tamaño chico. Si tiene un fondo liso se lo quitamos automáticamente."}
-      </p>
-
       {!value ? (
         <>
         <div
@@ -157,55 +207,87 @@ export default function ImageUpload({ imageSize, value, onChange }: ImageUploadP
             {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : "Usar URL"}
           </button>
         </div>
+
+        <AiImageCreator style={aiStyle} onImage={handleAiImage} disabled={isProcessing} />
         </>
       ) : (
-        <div className="flex items-center gap-4 border border-border rounded-xl p-4 bg-secondary/30">
-          <div
-            className={`relative shrink-0 rounded-lg overflow-hidden border border-border ${previewBoxClass}`}
-            style={{
-              backgroundImage:
-                "linear-gradient(45deg, #e5e5e5 25%, transparent 25%), linear-gradient(-45deg, #e5e5e5 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e5e5 75%), linear-gradient(-45deg, transparent 75%, #e5e5e5 75%)",
-              backgroundSize: "10px 10px",
-              backgroundPosition: "0 0, 0 5px, 5px -5px, -5px 0px",
-            }}
-          >
-            <img src={value.svgDataUrl} alt="Imagen subida" className="w-full h-full object-contain p-1" />
+        <div className="border border-border rounded-xl p-4 bg-secondary/30">
+          <div className="flex items-center gap-4">
+            <div
+              className={`relative shrink-0 rounded-lg overflow-hidden border border-border ${previewBoxClass}`}
+              style={{
+                backgroundImage:
+                  "linear-gradient(45deg, #e5e5e5 25%, transparent 25%), linear-gradient(-45deg, #e5e5e5 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e5e5 75%), linear-gradient(-45deg, transparent 75%, #e5e5e5 75%)",
+                backgroundSize: "10px 10px",
+                backgroundPosition: "0 0, 0 5px, 5px -5px, -5px 0px",
+              }}
+            >
+              <img src={value.svgDataUrl} alt="Imagen subida" className="w-full h-full object-contain p-1" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground">Imagen lista</p>
+              <p className="text-xs text-muted-foreground">
+                {ownCutOut
+                  ? `Tu imagen ya viene sin fondo. Va a todo color (${imageSize === "large" ? "tamaño grande" : "tamaño chico"}).`
+                  : value.backgroundRemoved
+                    ? `Sin fondo, a todo color (${imageSize === "large" ? "tamaño grande" : "tamaño chico"}).`
+                    : `Con fondo: va la imagen completa, a todo color (${imageSize === "large" ? "tamaño grande" : "tamaño chico"}).`}
+              </p>
+  
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onChange(null);
+                if (inputRef.current) inputRef.current.value = "";
+              }}
+              className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+              aria-label="Quitar imagen"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-foreground">Imagen lista</p>
-            <p className="text-xs text-muted-foreground">
-              {value.backgroundRemoved
-                ? `Fondo removido, va a todo color (${imageSize === "large" ? "tamaño grande" : "tamaño chico"}).`
-                : value.other
-                  ? `Imagen original completa, a todo color (${imageSize === "large" ? "tamaño grande" : "tamaño chico"}).`
-                  : `No encontramos un fondo liso, así que usamos la imagen completa a todo color (${imageSize === "large" ? "tamaño grande" : "tamaño chico"}).`}
+          {!ownCutOut && (value.other || canAiCut) && (
+            <div className="mt-3 flex w-full rounded-lg border border-border bg-background p-0.5" role="group" aria-label="Fondo de la imagen">
+              {([
+                ["Con fondo", !value.backgroundRemoved, pickWithBackground],
+                ["Sin fondo", value.backgroundRemoved, pickNoBackground],
+              ] as const).map(([label, on, pick]) => (
+                <button
+                  key={label}
+                  type="button"
+                  aria-pressed={on}
+                  disabled={!!aiProgress}
+                  onClick={pick}
+                  className={`flex-1 px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors disabled:opacity-60 ${
+                    on ? "bg-[#f5eaec] text-primary ring-1 ring-primary/30" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {aiProgress ? (
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-primary" role="status">
+              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+              {aiProgress.stage === "download"
+                ? `Preparando el recortador${aiProgress.fraction !== null ? ` · ${Math.round(aiProgress.fraction * 100)}%` : "…"} (solo la primera vez)`
+                : "Quitando el fondo…"}
             </p>
-            {value.other && (
-              <button
-                type="button"
-                onClick={() => {
-                  const { other, ...current } = value;
-                  onChange({ ...other!, other: current });
-                }}
-                className="mt-1.5 inline-block py-1.5 text-xs font-medium text-primary underline underline-offset-2 hover:opacity-80 active:opacity-80 transition-opacity"
-              >
-                {value.backgroundRemoved
-                  ? "¿El recorte quedó raro? Usar la imagen original"
-                  : "Quitar el fondo automáticamente"}
-              </button>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              onChange(null);
-              if (inputRef.current) inputRef.current.value = "";
-            }}
-            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
-            aria-label="Quitar imagen"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          ) : value.backgroundRemoved && !value.aiCut && value.other && canAiCut ? (
+            <button
+              type="button"
+              onClick={improveWithAi}
+              className="mt-1.5 inline-flex items-center gap-1 py-1 text-xs font-medium text-primary underline underline-offset-2 hover:opacity-80 active:opacity-80 transition-opacity"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> ¿El recorte no quedó bien? Recortar con IA
+            </button>
+          ) : null}
+          {!aiProgress && aiStyle === "laser" && value.source && (
+            <div><AiToDrawingButton photo={value.source} onImage={handleAiImage} /></div>
+          )}
         </div>
       )}
 

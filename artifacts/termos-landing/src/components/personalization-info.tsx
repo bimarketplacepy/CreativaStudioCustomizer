@@ -83,8 +83,8 @@ export default function PersonalizationInfo() {
         {/* Discreet closing note — replaces the loud alert box.
             12px y #6f685d (≥4.5:1 sobre #faf7f2): antes 10px a #9c9488 fallaba AA. */}
         <p className="mt-6 md:mt-10 text-xs text-[#6f685d] leading-relaxed max-w-3xl font-light">
-          Esta página permite simular cómo se vería tu pieza personalizada; no procesa compras ni pagos, y las
-          opciones son ejemplos de lo posible.
+          Armás tu diseño acá y nos lo enviás por WhatsApp: lo revisamos con vos antes de producir y pagás recién
+          cuando confirmás el diseño.
         </p>
       </div>
     </section>

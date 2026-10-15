@@ -76,6 +76,10 @@ export interface ProductionInput {
   /** Data URL del logo/foto original subido por el cliente (máx. resolución). */
   customImageDataUrl?: string | null;
   textPlacement?: PlacementLike | null;
+  /** Segundo texto (ej. empresa / nombre del empleado), con su fuente y lugar. */
+  text2?: string | null;
+  text2FontId?: string | null;
+  text2Placement?: PlacementLike | null;
   artPlacement?: PlacementLike | null;
   /** Grabado extra en tapa / base ("" = sí, texto a definir; null = no). */
   extraLid?: string | null;
@@ -343,46 +347,48 @@ export async function buildProductionSvg(input: ProductionInput): Promise<string
   const body: string[] = [];
   const warnings: string[] = [];
 
-  // ── Texto a curvas ──
-  const text = (input.text ?? "").trim();
-  if (text) {
-    const lf = await loadProductionFont(input.fontId);
-    if (lf) {
-      const p = input.textPlacement ?? {};
-      const vertical = p.orientation === "vertical";
-      const scale = typeof p.scale === "number" && p.scale > 0 ? p.scale : 1;
-      const layout = p.layout ?? "auto";
-      const align = p.align ?? "center";
-      const lineHeightMul = typeof p.lineHeight === "number" ? p.lineHeight : 1.12;
-      // En vertical el bloque se rota -90°: los límites se intercambian.
-      const maxW = vertical ? usableH : usableW;
-      const maxH = vertical ? usableW : usableH;
-      const requestedMm = usableH * TEXT_BASE_FRACTION * scale;
-
-      const block = fitTextBlock(lf, text, requestedMm, maxW, maxH, layout, lineHeightMul, align);
-      if (block) {
-        const rel = relPos(input.textPlacement);
-        const cx = padX + rel.x * usableW;
-        const cy = padY + rel.y * usableH;
-        const bcx = (block.bounds.x1 + block.bounds.x2) / 2;
-        const bcy = (block.bounds.y1 + block.bounds.y2) / 2;
-        const rotate = vertical ? ` rotate(-90 ${round(bcx)} ${round(bcy)})` : "";
-        body.push(
-          `  <g id="texto" transform="translate(${round(cx - bcx)} ${round(cy - bcy)})${rotate}">`,
-          `    <path d="${block.d}" ${fillAttrsFor(input.textColor)}/>`,
-          `  </g>`,
-        );
-        if ((p.layout ?? "auto") === "wrap360") {
-          warnings.push("Texto envolvente 360°: en este archivo va como una sola línea; envolver alrededor del cuerpo.");
-        } else {
-          const face = FACES[p.face ?? "front"];
-          if (face && face.offset !== 0) warnings.push(`Texto en el ${face.label} (no en el frente).`);
-        }
-      }
-    } else {
-      warnings.push(`No se pudo cargar la fuente (${input.fontId ?? "?"}); texto omitido — regenerar a mano.`);
+  // ── Textos a curvas (principal y "Texto 2") ──
+  const addText = async (raw: string | null | undefined, fontId: string | null | undefined, placement: PlacementLike | null | undefined, id: string, label: string) => {
+    const text = (raw ?? "").trim();
+    if (!text) return;
+    const lf = await loadProductionFont(fontId);
+    if (!lf) {
+      warnings.push(`No se pudo cargar la fuente del ${label} (${fontId ?? "?"}); texto omitido — regenerar a mano.`);
+      return;
     }
-  }
+    const p = placement ?? {};
+    const vertical = p.orientation === "vertical";
+    const scale = typeof p.scale === "number" && p.scale > 0 ? p.scale : 1;
+    const layout = p.layout ?? "auto";
+    const align = p.align ?? "center";
+    const lineHeightMul = typeof p.lineHeight === "number" ? p.lineHeight : 1.12;
+    // En vertical el bloque se rota -90°: los límites se intercambian.
+    const maxW = vertical ? usableH : usableW;
+    const maxH = vertical ? usableW : usableH;
+    const requestedMm = usableH * TEXT_BASE_FRACTION * scale;
+
+    const block = fitTextBlock(lf, text, requestedMm, maxW, maxH, layout, lineHeightMul, align);
+    if (!block) return;
+    const rel = relPos(placement);
+    const cx = padX + rel.x * usableW;
+    const cy = padY + rel.y * usableH;
+    const bcx = (block.bounds.x1 + block.bounds.x2) / 2;
+    const bcy = (block.bounds.y1 + block.bounds.y2) / 2;
+    const rotate = vertical ? ` rotate(-90 ${round(bcx)} ${round(bcy)})` : "";
+    body.push(
+      `  <g id="${id}" transform="translate(${round(cx - bcx)} ${round(cy - bcy)})${rotate}">`,
+      `    <path d="${block.d}" ${fillAttrsFor(input.textColor)}/>`,
+      `  </g>`,
+    );
+    if ((p.layout ?? "auto") === "wrap360") {
+      warnings.push(`${label[0]!.toUpperCase()}${label.slice(1)} envolvente 360°: en este archivo va como una sola línea; envolver alrededor del cuerpo.`);
+    } else {
+      const face = FACES[p.face ?? "front"];
+      if (face && face.offset !== 0) warnings.push(`${label[0]!.toUpperCase()}${label.slice(1)} en el ${face.label} (no en el frente).`);
+    }
+  };
+  await addText(input.text, input.fontId, input.textPlacement, "texto", "texto");
+  await addText(input.text2, input.text2FontId, input.text2Placement, "texto-2", "texto 2");
 
   // ── Ícono como vector nativo ──
   const icon = productionIconById(input.iconId);

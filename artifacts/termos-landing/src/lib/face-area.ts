@@ -72,7 +72,12 @@ export const FACES: Record<FaceId, { label: string; offset: number }> = {
 
 const ALL_FACES: FaceId[] = ["front", "left", "back", "right"];
 
-/** Caras que ofrece el producto (sin manija ni logo encima), en orden de la vuelta. */
+/** Nombre de la cara en pantalla: el dorso de un modelo con logo es "Lado del logo". */
+export function faceLabel(product: Pick<ProductDef, "logoBack"> | undefined, face: FaceId): string {
+  return face === "back" && product?.logoBack ? "Lado del logo" : FACES[face].label;
+}
+
+/** Caras que ofrece el producto (sin manija encima), en orden de la vuelta. */
 export function engraveFacesFor(product?: Pick<ProductDef, "engraveFaces">): FaceId[] {
   return product?.engraveFaces ?? ALL_FACES;
 }

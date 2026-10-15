@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import adminRouter from "./routes/admin";
 import { logger } from "./lib/logger";
+import { isSameOrigin } from "./middlewares/rate-limit";
 
 const app: Express = express();
 
@@ -26,7 +27,10 @@ app.use(
     },
   }),
 );
-app.use(cors());
+// CORS solo para el mismo host: la landing y el panel viven en el mismo origen,
+// y abierto a "*" dejaba que cualquier sitio usara la API (y la IA) desde los
+// navegadores de sus visitantes.
+app.use(cors((req, cb) => cb(null, { origin: isSameOrigin(req as express.Request) })));
 // El preview del pedido viaja como data URL base64 (~3MB de imagen ≈ ~4.1MB
 // de JSON), así que el límite por defecto de 100kb no alcanza.
 // 12 MB: vista previa + logo original + PNG de producción (Dacen, hasta 4,5 MB).

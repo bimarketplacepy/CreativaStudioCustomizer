@@ -21,7 +21,7 @@ export type StickerFinishId = "brillo" | "relieve";
 export const PRICING = {
   laser: {
     // Planes actuales (engraving-plans.ts / Odoo GRAB-*): se mantienen allá.
-    /** Cada escritura extra (texto en la tapa o en la base), en Gs. */
+    /** Cada escritura extra (Texto 2 en el cuerpo, o texto en la tapa o en la base), en Gs. */
     extraText: 5000,
   },
   dacen: {
@@ -92,7 +92,7 @@ export type QuoteInput =
       /** Nombre de la pieza para la nota ("Termo Mate 1 L"). */
       pieceLabel?: string;
       ownProduct?: boolean;
-      /** Escrituras extra pedidas (tapa y/o base): 0, 1 o 2. */
+      /** Escrituras extra pedidas (Texto 2, tapa y/o base). */
       extraTexts?: number;
       quantity?: number;
     }
