@@ -123,6 +123,17 @@ const imageUrlFor = (req: Request, order: Pick<Order, "orderNumber" | "previewIm
     ? `${originFrom(req)}/api/orders/${order.orderNumber}/image?t=${orderImageToken(order.orderNumber)}`
     : null;
 
+/** ¿Pedido de stickers para la eufyMake E1 con su PNG de producción? */
+const isEufySticker = (designState: unknown, productionFilePath: string | null | undefined) => {
+  const ds = (designState ?? {}) as Record<string, unknown>;
+  return ds.kind === "sticker" && orderMachine(ds) === "eufy" && !!productionFilePath?.endsWith(".png");
+};
+
+/** Stickers: el link del mensaje es el PNG transparente a tamaño real (el que
+ *  se carga tal cual en la app de la eufyMake E1), firmado con el mismo token. */
+const stickerPngUrlFor = (req: Request, orderNumber: string) =>
+  `${originFrom(req)}/api/orders/${orderNumber}/sticker.png?t=${orderImageToken(orderNumber)}`;
+
 /** Marca en designState de los pedidos cuya imagen exige token. Los pedidos
  *  anteriores no la tienen y siguen abriendo sin token, para no romper los
  *  links que ya se mandaron por WhatsApp. */
@@ -186,8 +197,9 @@ router.post("/orders", rateLimit({ max: 10, windowMs: 60 * 60 * 1000 }), async (
       order.previewImagePath = path;
     }
 
-    // Archivo vectorial de producción (uso interno del taller). Nunca viaja en
-    // la respuesta al cliente ni en el mensaje de WhatsApp.
+    // Archivo de producción. El vectorial (termos) es de uso interno y nunca
+    // viaja al cliente; el PNG del sticker sí: es su propio diseño recortado,
+    // y así el taller lo baja del mismo link de WhatsApp en el formato de la E1.
     const productionPath = await generateProductionFile(order, body.customImage ?? null, body.productionImage ?? null);
     if (productionPath) {
       await db
@@ -198,7 +210,9 @@ router.post("/orders", rateLimit({ max: 10, windowMs: 60 * 60 * 1000 }), async (
 
     res.status(201).json({
       orderNumber: order.orderNumber,
-      previewImageUrl: imageUrlFor(req, order),
+      previewImageUrl: isEufySticker(order.designState, productionPath)
+        ? stickerPngUrlFor(req, order.orderNumber)
+        : imageUrlFor(req, order),
     });
   } catch (err) {
     logger.error({ err }, "orders: create failed");
@@ -283,6 +297,45 @@ router.get("/orders/:orderNumber/production-file", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "orders: production file download failed");
     res.status(500).json({ message: "No se pudo obtener el archivo" });
+  }
+});
+
+// GET /api/orders/:orderNumber/sticker.png?t=<token> — el sticker en PNG
+// transparente a tamaño real (con sus dpi), listo para la app de la eufyMake
+// E1. Es el link del mensaje de WhatsApp de los pedidos de stickers.
+router.get("/orders/:orderNumber/sticker.png", async (req, res) => {
+  const orderNumber = req.params.orderNumber;
+  if (!ORDER_NUMBER_RE.test(orderNumber)) {
+    res.status(404).end();
+    return;
+  }
+  if (!checkOrderImageToken(orderNumber, req.query.t) && !hasInternalKey(req)) {
+    res.status(404).end();
+    return;
+  }
+  try {
+    const order = await db.query.ordersTable.findFirst({
+      where: eq(ordersTable.orderNumber, orderNumber),
+      columns: { productionFilePath: true, designState: true },
+    });
+    if (!order || !isEufySticker(order.designState, order.productionFilePath)) {
+      res.status(404).end();
+      return;
+    }
+    const entry = await loadOrderImage(order.productionFilePath!);
+    if (!entry) {
+      res.status(404).end();
+      return;
+    }
+    const ds = (order.designState ?? {}) as Record<string, unknown>;
+    res.setHeader("Content-Type", "image/png");
+    // inline: se ve en el navegador; "Guardar imagen" usa este nombre.
+    res.setHeader("Content-Disposition", `inline; filename="${productionPngFileName(orderNumber, "eufy", ds)}"`);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.end(entry.buf);
+  } catch (err) {
+    logger.error({ err }, "orders: sticker png failed");
+    res.status(500).end();
   }
 });
 
