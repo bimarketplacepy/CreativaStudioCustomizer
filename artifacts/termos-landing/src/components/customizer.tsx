@@ -4515,11 +4515,6 @@ export default function Customizer() {
           )}
           <div className="absolute inset-0 z-10">{renderThermosViewer()}</div>
 
-          {!designElementCount && !sheet && (
-            <p className="pointer-events-none absolute inset-x-0 top-[56%] z-20 text-center">
-              <span className="inline-block rounded-full bg-white/85 px-3 py-1 text-sm text-muted-foreground">Tu grabado aparece acá</span>
-            </p>
-          )}
           {pinchHint && renderPinchHint()}
           {keepOutHit && (
             <p role="status" className="pointer-events-none absolute inset-x-4 top-3 z-30 text-center">
@@ -4788,8 +4783,8 @@ export default function Customizer() {
         </>
         )}
 
-        {/* Mobile Step 1 — "Tu pieza": material, producto, tamaño, color y
-            técnica en una sola pantalla, con la pieza chica fija arriba para
+        {/* Mobile Step 1 — "Tu pieza": material, producto, tamaño y técnica
+            en una sola pantalla (el color va en Diseño), con la pieza chica fija arriba para
             ver cada cambio en el momento (antes eran dos pasos). */}
         {isMobile && mobileStep === 1 && (
           <motion.div key="wiz-1" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="pb-28">
@@ -4818,8 +4813,8 @@ export default function Customizer() {
               )}
               {isDrinkware ? (
                 <>
+                  {/* El color se elige en Diseño, sobre la pieza grande. */}
                   {renderDrinkSize()}
-                  {renderDrinkColor()}
                   {renderDrinkTechnique()}
                   {renderOwnProductLine()}
                   {renderPieceSummaryLine()}

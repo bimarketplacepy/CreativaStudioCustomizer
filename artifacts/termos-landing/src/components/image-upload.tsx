@@ -4,7 +4,7 @@ import { fetchImageBlob, fileToProcessedSvg, type ProcessedImage } from "@/lib/i
 import type { EngravingImageSize } from "@/lib/engraving-plans";
 import type { RemovalProgress } from "@/lib/background-removal";
 import type { AiImageStyle } from "@/lib/ai";
-import { AiImageCreator, AiToDrawingButton } from "./ai-tools";
+import { AiImageCreator } from "./ai-tools";
 
 /** Pasa a la otra versión (con/sin fondo) sin perder el archivo original. */
 function swapVersion(value: ProcessedImage): ProcessedImage {
@@ -285,9 +285,6 @@ export default function ImageUpload({ imageSize, value, onChange, aiStyle = "las
               <Sparkles className="w-3.5 h-3.5" /> ¿El recorte no quedó bien? Recortar con IA
             </button>
           ) : null}
-          {!aiProgress && aiStyle === "laser" && value.source && (
-            <div><AiToDrawingButton photo={value.source} onImage={handleAiImage} /></div>
-          )}
         </div>
       )}
 
