@@ -388,18 +388,21 @@ export default function Stickers() {
   const toggleBg = () => setBgChoice(dark ? "light" : "dark");
 
   const buildMessage = (orderNumber: string | null, imageUrl: string | null) => {
-    const parts = ["¡Hola! Quiero pedir stickers con mi diseño."];
-    if (orderNumber) parts.push(`Pedido: ${orderNumber}`);
-    parts.push(
-      "Producto: Stickers UV DTF",
-      `Tamaño: ${sizeText}`,
-      `Corte: ${cutDef.name}`,
-      `Acabado: ${finishDef.name}`,
-      `Cantidad: ${quantity}`,
-      STICKER_PRICES_ENABLED ? `Precio estimado: ${priceText}` : "Precio: a cotizar",
-    );
-    if (imageUrl) parts.push(`Así quedó mi sticker:\n${imageUrl}`);
-    else if (!art) parts.push("Te mando el diseño por acá.");
+    // Formato de WhatsApp: *negrita* para los títulos, un dato por línea.
+    const parts = ["Hola, Creativa Studio. Quisiera hacer un pedido de stickers personalizados."];
+    if (orderNumber) parts.push(`*Pedido N.º ${orderNumber}*`);
+    parts.push([
+      "*Detalle*",
+      "• Producto: Stickers UV DTF",
+      `• Medida: ${sizeText}`,
+      `• Corte: ${cutDef.name}`,
+      `• Acabado: ${finishDef.name}`,
+      `• Cantidad: ${quantity} ${quantity === 1 ? "unidad" : "unidades"}`,
+    ].join("\n"));
+    parts.push(STICKER_PRICES_ENABLED ? `*Precio estimado:* ${priceText}` : "*Precio:* a cotizar");
+    if (imageUrl) parts.push(`*Vista previa del diseño*\n${imageUrl}`);
+    else parts.push("Les envío el archivo del diseño por este chat.");
+    parts.push("Quedo a la espera de la confirmación del diseño y del precio. ¡Muchas gracias!");
     return parts.join("\n\n");
   };
 
