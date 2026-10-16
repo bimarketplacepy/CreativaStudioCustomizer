@@ -65,8 +65,9 @@ interface Thermos3DProps {
   /** Avisa las zonas medidas sobre las piezas del .glb (logo, manija, relieves). */
   onModelKeepOut?: (productId: string, zones: KeepOutZone[]) => void;
   /**
-   * u del diseño que se está arrastrando (ubicación libre): si se acerca al
-   * borde de lo que se ve, la pieza gira para seguirlo. null = no seguir.
+   * u del diseño que se está arrastrando (ubicación libre): la pieza gira con
+   * él, así el diseño queda quieto en pantalla y el cuerpo corre por debajo.
+   * null = no seguir.
    */
   followU?: number | null;
   /** Which u faces the camera when single-face is entered. Defaults to config. */
@@ -1138,17 +1139,22 @@ function ThermosMesh({
     };
   }, [gl, get, invalidate]);
 
-  // Ubicación libre: mientras se arrastra, si el diseño se acerca al borde de
-  // lo que se ve, la pieza gira lo justo para mantenerlo a la vista. Así se lo
-  // puede llevar alrededor de todo el cuerpo con un solo dedo.
+  // Ubicación libre: mientras se arrastra, la pieza gira junto con el diseño
+  // desde el primer momento. El diseño queda quieto en pantalla (donde estaba
+  // al apoyar el dedo, a lo sumo a ≈25° del centro) y el cuerpo corre por
+  // debajo: así se lo lleva alrededor de todo el cuerpo sin perderlo de vista.
+  const followOff = useRef<number | null>(null);
   useEffect(() => {
-    if (followU == null || !groupRef.current) return;
+    if (followU == null || !groupRef.current) { followOff.current = null; return; }
     const g = groupRef.current;
     const facing = -g.rotation.y / (Math.PI * 2);
-    const off = nearU(followU, facing) - facing;
-    const LIM = 0.07; // ≈ 25° del centro
-    if (Math.abs(off) <= LIM) return;
-    g.rotation.y = -(nearU(followU, facing) - Math.sign(off) * LIM) * Math.PI * 2;
+    if (followOff.current === null) {
+      const LIM = 0.07; // ≈ 25° del centro
+      followOff.current = Math.max(-LIM, Math.min(LIM, nearU(followU, facing) - facing));
+    }
+    const target = nearU(followU, facing) - followOff.current;
+    if (Math.abs(target - facing) < 1e-5) return;
+    g.rotation.y = -target * Math.PI * 2;
     velYaw.current = 0;
     spinLeft.current = 0;
     invalidate();
