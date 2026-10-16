@@ -76,6 +76,17 @@ Pedido después de la Etapa 1: que el texto se pueda poner en cualquier lugar, s
 - **Barra sobre el diseño seleccionado:** *Letra* (o *Cambiar* para ícono / imagen) · Centrar · Deshacer · Borrar · Listo.
 - En PC el editor no cambió. Los objetos planos (billeteras, tablas) siguen con su editor.
 
+## Etapa 3b — Pantalla de Diseño según las capturas (`diseño/`) ✅ (celular, termos y vasos)
+
+Reemplaza a las pestañas Texto · Íconos · Imagen y a los diseños rápidos debajo del termo:
+
+- **Cabecera:** volver · nombre del producto · *"Tocá + para empezar"* o *"N elementos · tocá para editar"* · ícono de AR.
+- **Visor de ~70 %** que nunca se mueve, con *"Tu grabado aparece acá"* cuando está vacío.
+- **Botón "+"** → hoja *"Agregar al termo"* con Texto, Ícono, Logo o foto y Plantilla. Se cierra sola al poner el elemento ("Ponerlo en el termo").
+- **El elemento es el menú:** al tocarlo aparece una pastilla pegada a él (achicar, agrandar, centrar, borrar) que lo sigue al girar (`anchor` en `Thermos3D`). Tocarlo otra vez abre su hoja de edición: texto, letra y "Más opciones".
+- **Siempre a la vista:** tira de colores, *"tamaño · grabado incluido"* con el precio y **Listo** (va a Enviar).
+- Pendiente: la versión **tablet** (columna derecha fija desde 768 px) y la fila 1 de la comparativa (producto antes que material). Billeteras y tablas siguen con el editor de pestañas.
+
 ## Etapa 4 — Gestos y ayuda en contexto ✅ (hecha, sin giro)
 
 - **Pellizco sin seleccionar antes:** si los dos dedos (o el punto medio) caen sobre un diseño, se selecciona y se escala en el mismo gesto (`onPinchSelect`, `claim` en `lib/pinch.ts`).

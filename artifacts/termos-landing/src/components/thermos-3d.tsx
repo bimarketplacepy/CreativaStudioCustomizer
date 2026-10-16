@@ -70,6 +70,14 @@ interface Thermos3DProps {
    * null = no seguir.
    */
   followU?: number | null;
+  /**
+   * Punto del cuerpo (u, v de la banda) donde se ancla un elemento HTML sobre
+   * el visor (la pastilla de acciones del diseño seleccionado). Cada cuadro se
+   * proyecta a píxeles del canvas y se mueve `anchorElRef`; si el punto queda
+   * del lado de atrás, el elemento se oculta.
+   */
+  anchor?: { u: number; v: number } | null;
+  anchorElRef?: React.RefObject<HTMLElement | null>;
   /** Which u faces the camera when single-face is entered. Defaults to config. */
   frontFaceU?: number;
   /** Cara sobre la que se dibuja la guía punteada (la del elemento en edición). */
@@ -163,6 +171,16 @@ interface Silhouette {
   topY: number;
   /** Engravable band [bottomY, topY], scaled. */
   band: [number, number];
+}
+
+/** Radio del perfil (Vector2 [radio, y], de abajo hacia arriba) a esa altura. */
+function profileRadiusAt(pts: THREE.Vector2[], y: number): number {
+  if (y <= pts[0].y) return pts[0].x;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const y0 = pts[i].y, y1 = pts[i + 1].y;
+    if (y >= y0 && y <= y1) return pts[i].x + (pts[i + 1].x - pts[i].x) * (y1 === y0 ? 0 : (y - y0) / (y1 - y0));
+  }
+  return pts[pts.length - 1].x;
 }
 
 function buildSilhouette(product: ProductDef, scale: number): Silhouette {
@@ -634,7 +652,7 @@ function ThermosMesh({
   textPlacement, artPlacement, extraTexts, colorPrint, textColor, engraveStyle, singleFace, editSingleFace, showGuides, frontFaceU, guideFace, hideLogo = false, glass,
   designActive, onDesignMove, onDesignPinch, onPinchSelect, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, snapToURef, renderNowRef, onReady,
   autoSpin = false, rotationLocked = false, onMotionChange, arModelRef,
-  freePlacement = false, keepOutZones, keepOutHit, onModelKeepOut, followU = null,
+  freePlacement = false, keepOutZones, keepOutHit, onModelKeepOut, followU = null, anchor = null, anchorElRef,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
@@ -662,6 +680,8 @@ function ThermosMesh({
   keepOutHit?: KeepOutZone | null;
   onModelKeepOut?: Thermos3DProps["onModelKeepOut"];
   followU?: number | null;
+  anchor?: { u: number; v: number } | null;
+  anchorElRef?: React.RefObject<HTMLElement | null>;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
@@ -1239,6 +1259,30 @@ function ThermosMesh({
     motionRef.current.moving = moving;
     motionRef.current.onMotionChange?.(moving);
   };
+
+  // Pastilla del diseño seleccionado: pegada debajo de él en la pantalla.
+  useEffect(() => { invalidate(); }, [anchor?.u, anchor?.v, invalidate]);
+  const anchorTmp = useMemo(() => ({ p: new THREE.Vector3(), n: new THREE.Vector3(), c: new THREE.Vector3() }), []);
+  useFrame(({ camera, size }) => {
+    const el = anchorElRef?.current;
+    if (!el) return;
+    const g = groupRef.current;
+    if (!anchor || !g) { el.style.visibility = "hidden"; return; }
+    const y = sil.band[1] + (sil.band[0] - sil.band[1]) * Math.min(1, Math.max(0, anchor.v));
+    const phi = anchor.u * Math.PI * 2;
+    const r = profileRadiusAt(sil.points, y);
+    const { p, n, c } = anchorTmp;
+    g.updateMatrixWorld();
+    p.set(r * Math.sin(phi), y, r * Math.cos(phi)).applyMatrix4(g.matrixWorld);
+    n.set(Math.sin(phi), 0, Math.cos(phi)).transformDirection(g.matrixWorld);
+    c.copy(camera.position).sub(p);
+    if (n.dot(c) <= 0) { el.style.visibility = "hidden"; return; }
+    p.project(camera);
+    const x = Math.min(size.width - 8, Math.max(8, ((p.x + 1) / 2) * size.width));
+    const sy = Math.min(size.height - 52, Math.max(8, ((1 - p.y) / 2) * size.height + 8));
+    el.style.transform = `translate(${x}px, ${sy}px) translateX(-50%)`;
+    el.style.visibility = "visible";
+  });
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
@@ -1857,6 +1901,8 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           keepOutHit={props.keepOutHit}
           onModelKeepOut={props.onModelKeepOut}
           followU={props.followU ?? null}
+          anchor={props.anchor ?? null}
+          anchorElRef={props.anchorElRef}
         />
 
         {/* Single, stable ground shadow, anchored to the floor plane — no

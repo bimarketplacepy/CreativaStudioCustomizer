@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
   WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
   ChevronUp, Crosshair, CirclePlay, Orbit, Link2, MessageCircle, MapPin, HandCoins,
-  Undo2, Trash2, Search, ScanEye, Maximize2, Paintbrush, X,
+  Undo2, Trash2, Search, ScanEye, Maximize2, Paintbrush, X, Heart,
 } from "lucide-react";
 import Thermos3D from "./thermos-3d";
 import type { PinchPhase } from "@/lib/pinch";
@@ -358,8 +358,11 @@ function useVisualViewport() {
  * de cada opción). Va en un portal sobre la página; "Atrás" del celular
  * vuelve al paso anterior en vez de salir del sitio.
  */
-function MobileDesignScreen({ title, step, total, top, height, onBack, nav, children }: {
-  title: string; step: number; total: number;
+function MobileDesignScreen({ title, subtitle, right, top, height, onBack, nav, children }: {
+  title: string;
+  subtitle: string;
+  /** Acción a la derecha de la cabecera (Ver en AR). */
+  right?: React.ReactNode;
   top: number; height: number;
   onBack: () => void;
   nav: React.ReactNode;
@@ -407,9 +410,9 @@ function MobileDesignScreen({ title, step, total, top, height, onBack, nav, chil
         </button>
         <div className="flex-1 min-w-0 text-center leading-tight py-1.5">
           <p className="text-sm font-semibold text-foreground truncate">{title}</p>
-          <p className="text-[11px] text-muted-foreground">Paso {step} de {total}</p>
+          <p className="text-[11px] text-muted-foreground truncate">{subtitle}</p>
         </div>
-        <span className="w-11" aria-hidden />
+        {right ?? <span className="w-11" aria-hidden />}
       </div>
       {children}
       {nav}
@@ -834,11 +837,8 @@ const PAD_BASE = 0.15; // element half-size as a fraction of the pad, at scale 1
  * girar la pieza. Reemplaza a la cruz de flechas: el diseño se mueve
  * arrastrándolo directamente sobre el producto.
  */
-function DesignEditBar({ kindLabel, pinch, onSmaller, onBigger, onCenter, onUndo, onDelete, onDone, onStyle, styleLabel }: {
+function DesignEditBar({ kindLabel, pinch, onSmaller, onBigger, onCenter, onUndo, onDelete, onDone }: {
   kindLabel: string;
-  /** Celular: lleva a las opciones del elemento tocado (la letra del texto, o el ícono / la imagen). */
-  onStyle?: () => void;
-  styleLabel?: string;
   /** Celular: el tamaño se cambia pellizcando el visor, sin botones + / −. */
   pinch?: boolean;
   onSmaller: () => void;
@@ -863,11 +863,6 @@ function DesignEditBar({ kindLabel, pinch, onSmaller, onBigger, onCenter, onUndo
         </span>
       )}
       <div className="flex items-center gap-1 rounded-xl bg-white border border-border shadow-sm p-1">
-        {onStyle && (
-          <button type="button" onClick={onStyle} className="h-10 px-2.5 inline-flex items-center gap-1 rounded-lg text-sm font-medium text-foreground/80 hover:text-primary hover:bg-white active:scale-95 transition">
-            {styleLabel === "Letra" ? <Type className="w-4 h-4" /> : <Shapes className="w-4 h-4" />} {styleLabel}
-          </button>
-        )}
         {!pinch && <button type="button" aria-label="Achicar" title="Achicar" className={btn} onClick={onSmaller}><Minus className="w-4 h-4" /></button>}
         {!pinch && <button type="button" aria-label="Agrandar" title="Agrandar" className={btn} onClick={onBigger}><Plus className="w-4 h-4" /></button>}
         <button type="button" aria-label="Centrar" title="Centrar" className={btn} onClick={onCenter}><Crosshair className="w-4 h-4" /></button>
@@ -886,6 +881,24 @@ function DesignEditBar({ kindLabel, pinch, onSmaller, onBigger, onCenter, onUndo
 }
 
 /**
+ * Pastilla de acciones pegada al elemento seleccionado (celular): achicar,
+ * agrandar, centrar y borrar. El elemento es el menú: no hay panel aparte.
+ */
+function ElementPill({ onSmaller, onBigger, onCenter, onDelete }: {
+  onSmaller: () => void; onBigger: () => void; onCenter: () => void; onDelete: () => void;
+}) {
+  const b = "w-10 h-10 grid place-items-center rounded-full active:bg-secondary transition";
+  return (
+    <div className="flex items-center gap-0.5 rounded-full bg-white border border-border shadow-md px-1 py-0.5 select-none">
+      <button type="button" aria-label="Achicar" title="Achicar" onClick={onSmaller} className={`${b} text-foreground/80`}><Minus className="w-4 h-4" /></button>
+      <button type="button" aria-label="Agrandar" title="Agrandar" onClick={onBigger} className={`${b} text-foreground/80`}><Plus className="w-4 h-4" /></button>
+      <button type="button" aria-label="Centrar" title="Centrar" onClick={onCenter} className={`${b} text-foreground/80`}><Crosshair className="w-4 h-4" /></button>
+      <button type="button" aria-label="Borrar" title="Borrar" onClick={onDelete} className={`${b} text-red-600`}><Trash2 className="w-4 h-4" /></button>
+    </div>
+  );
+}
+
+/**
  * Con un diseño puesto pero sin editar: el visor gira libremente y este botón
  * (o tocar el diseño sobre el producto) entra a editarlo. Tras borrar algo,
  * ofrece deshacerlo unos segundos.
@@ -898,7 +911,11 @@ type ArModelGetter = () => import("@/lib/ar-viewer").ArModel | null;
  * primero y el toque sobre el enlace lo abre (Safari exige un toque directo
  * sobre un <a rel="ar">); `designKey` invalida el preparado si cambia el diseño.
  */
-function ArViewButton({ getModel, designKey }: { getModel: ArModelGetter; designKey: string }) {
+function ArViewButton({ getModel, designKey, compact }: {
+  getModel: ArModelGetter; designKey: string;
+  /** Solo el ícono (cabecera de la pantalla de Diseño del celular). */
+  compact?: boolean;
+}) {
   const [mode, setMode] = useState<"quicklook" | "webxr" | null>(null);
   const [state, setState] = useState<"idle" | "preparing" | "ready" | "error">("idle");
   const [url, setUrl] = useState<string | null>(null);
@@ -921,7 +938,9 @@ function ArViewButton({ getModel, designKey }: { getModel: ArModelGetter; design
 
   if (!mode) return null;
 
-  const btn = "h-10 px-4 inline-flex items-center gap-1.5 rounded-full bg-white text-foreground text-sm font-medium border border-border shadow-sm active:scale-95 transition";
+  const btn = compact
+    ? "w-11 h-11 grid place-items-center rounded-full text-primary active:bg-secondary disabled:opacity-50"
+    : "h-10 px-4 inline-flex items-center gap-1.5 rounded-full bg-white text-foreground text-sm font-medium border border-border shadow-sm active:scale-95 transition";
 
   if (mode === "quicklook" && state === "ready" && url) {
     return (
@@ -930,7 +949,7 @@ function ArViewButton({ getModel, designKey }: { getModel: ArModelGetter; design
       <a rel="ar" href={`${url}#allowsContentScaling=0`} className={btn} onClick={() => track("ar_open", { mode })}>
         {/* Quick Look exige una imagen como primer hijo del enlace. */}
         <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" width={1} height={1} />
-        <ScanEye className="w-4 h-4 text-primary" /> Abrir en tu espacio · tamaño real
+        <ScanEye className={compact ? "w-5 h-5" : "w-4 h-4 text-primary"} /> {compact ? <span className="sr-only">Abrir en tu espacio, tamaño real</span> : "Abrir en tu espacio · tamaño real"}
       </a>
     );
   }
@@ -953,6 +972,21 @@ function ArViewButton({ getModel, designKey }: { getModel: ArModelGetter; design
       setState("error");
     }
   };
+
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={state === "preparing"}
+        aria-label={state === "error" ? "No pudimos abrir la vista AR" : "Ver en AR"}
+        title={state === "error" ? "No pudimos abrir la vista AR en este dispositivo" : "Ver en tu espacio (AR)"}
+        className={btn}
+      >
+        {state === "preparing" ? <Loader2 className="w-5 h-5 animate-spin" /> : <ScanEye className="w-5 h-5" />}
+      </button>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center gap-1">
@@ -2727,6 +2761,7 @@ export default function Customizer() {
 
   // Toque sobre el visor: sobre un diseño lo selecciona; en cualquier otro
   // lado, si se estaba editando, termina (igual que "Listo").
+  const tapSelectedRef = useRef<((kind: DesignKind) => void) | null>(null);
   const handleViewerTap = React.useCallback((hit: { u: number; v: number } | null) => {
     const over = (p: Placement, ext: MarkHalfExtents) => {
       if (!hit) return false;
@@ -2741,7 +2776,11 @@ export default function Customizer() {
       const has = k === "text" ? hasText : k === "text2" ? hasText2 : hasArt;
       const p = k === "text" ? textPlacement : k === "text2" ? text2Placement : artPlacement;
       const ext = k === "text" ? textExtents : k === "text2" ? text2Extents : artExtents;
-      if (has && over(p, ext)) { if (activeDesignKind !== k) selectDesign(k, "tap"); return; }
+      if (has && over(p, ext)) {
+        if (activeDesignKind !== k) selectDesign(k, "tap");
+        else tapSelectedRef.current?.(k); // celular: segundo toque = editarlo
+        return;
+      }
     }
     if (activeDesignKind) finishEditing();
   }, [hasText, hasText2, hasArt, textPlacement, text2Placement, artPlacement, textExtents, text2Extents, artExtents, activeDesignKind, selectDesign, finishEditing]);
@@ -2942,47 +2981,58 @@ export default function Customizer() {
     (drinkTab === "icons" || drinkTab === "media") ? (hasArt ? "art" : hasText ? "text" : hasText2 ? "text2" : null)
     : hasText ? "text" : hasText2 ? "text2" : hasArt ? "art" : null;
 
-  // ── Editor simple del celular (pestaña Texto) ───────────────────────────────
-  // El campo y las letras editan el texto que se tocó sobre la pieza: el 1 o
-  // el 2. Así no hay que buscar en las pestañas cuál es cuál.
-  const [textTarget, setTextTarget] = useState<"text" | "text2">("text");
-  React.useEffect(() => {
-    if (activeDesignKind === "text" || activeDesignKind === "text2") setTextTarget(activeDesignKind);
-  }, [activeDesignKind]);
-  React.useEffect(() => {
-    if (!text2Open && textTarget === "text2") setTextTarget("text");
-  }, [text2Open, textTarget]);
-  const editingText2 = textTarget === "text2" && text2Open;
-  const [moreOpen, setMoreOpen] = useState(false);
+  // ── Pantalla de Diseño del celular ──────────────────────────────────────────
+  // Una sola pantalla fija: el termo ocupa casi todo y nunca se mueve. El botón
+  // "+" abre la hoja "Agregar al termo" (texto, ícono, logo o foto, plantilla),
+  // que se cierra sola al colocar el elemento. Tocar un elemento muestra sus
+  // acciones en una pastilla pegada a él; tocarlo otra vez abre la hoja para
+  // editarlo (texto, letra y más opciones). No hay pestañas ni panel aparte.
+  type SheetMode = "text" | "icon" | "image" | "template";
+  const [sheet, setSheet] = useState<null | { mode: SheetMode; edit: DesignKind | null }>(null);
+  const [draft, setDraft] = useState("");
+  const [sheetMore, setSheetMore] = useState(false);
   const textInputRef = useRef<HTMLTextAreaElement>(null);
-  const fontGridRef = useRef<HTMLDivElement>(null);
-  /** Barra sobre el diseño: "Letra" lleva a la pestaña Texto (o "Cambiar" al ícono / la imagen). */
-  const styleActive = () => {
-    if (activeDesignKind === "art") { setDrinkTab(iconId ? "icons" : "media"); return; }
-    if (activeDesignKind) setTextTarget(activeDesignKind);
-    setDrinkTab("text");
-    requestAnimationFrame(() => fontGridRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }));
-    track("design_style", { kind: activeDesignKind ?? "" });
+  const pillRef = useRef<HTMLDivElement>(null);
+  /** Hay lugar para otro texto (el modelo admite el texto 1 y el texto 2). */
+  const canAddText = !hasText || (!hasText2 && !isWrap360);
+  const openAddSheet = () => {
+    setDraft("");
+    setSheetMore(false);
+    const mode: SheetMode = canAddText ? "text" : "icon";
+    // flushSync + foco en el mismo toque: iOS solo abre el teclado así.
+    flushSync(() => setSheet({ mode, edit: null }));
+    if (mode === "text") textInputRef.current?.focus();
+    track("design_add_open", { elements: [hasText, hasText2, hasArt].filter(Boolean).length });
+  };
+  const openEditSheet = (kind: DesignKind) => {
+    setSheetMore(false);
+    setSheet({ mode: kind === "art" ? (iconId ? "icon" : "image") : "text", edit: kind });
+    track("design_edit_open", { kind });
+  };
+  tapSelectedRef.current = isMobile && isDrinkware ? openEditSheet : null;
+  const closeSheet = () => setSheet(null);
+  const placeDraftText = () => {
+    const t = capEngravingText(draft.trim());
+    if (!t) return;
+    pushHistory();
+    // Sin texto 1 va ahí; si ya hay, abre el texto 2 debajo y lo selecciona.
+    if (!hasText) handleEngravingText(t);
+    else setPendingText2(t);
+    track("design_add", { kind: hasText ? "text2" : "text" });
+    setSheet(null);
   };
 
-  // Diseños rápidos: un toque y la pieza ya tiene un ejemplo para editar (en
-  // las pruebas nadie quería arrancar con la pieza vacía). El ejemplo queda
-  // seleccionado en el campo: lo que se escriba lo reemplaza. Después se
-  // arrastra libre por toda la pieza, como cualquier diseño.
+  // Plantillas: un toque y la pieza ya tiene un ejemplo para editar (en las
+  // pruebas nadie quería arrancar con la pieza vacía). Después se arrastra
+  // libre por toda la pieza, como cualquier diseño.
   const QUICK_STARTS = [
     { id: "name", title: "Nombre", sample: "“Sofía”" },
     { id: "date", title: "Nombre + fecha", sample: `“Sofía · ${new Date().getFullYear()}”` },
     { id: "phrase", title: "Frase + ícono", sample: "“Mate y amigos” + mate" },
-    canUploadImage
-      ? { id: "logo", title: "Logo", sample: "Subí tu imagen" }
-      : { id: "icon", title: "Solo un ícono", sample: "Corazón, estrella…" },
   ] as const;
   const applyQuickStart = (id: (typeof QUICK_STARTS)[number]["id"]) => {
     track("design_quickstart", { id, product: productId });
-    if (id === "logo") { setDrinkTab("media"); return; }
-    if (id === "icon") { setDrinkTab("icons"); return; }
     pushHistory();
-    setTextTarget("text");
     if (id === "date") {
       handleEngravingText("Sofía");
       setPendingText2(String(new Date().getFullYear()));
@@ -2993,12 +3043,18 @@ export default function Customizer() {
       handlePickIcon("mate");
       applyArtPlacement({ ...DEFAULT_ART_PLACEMENT, u: textPlacement.u });
     }
-    // Foco en el mismo toque (iOS abre el teclado solo así) y el ejemplo
-    // seleccionado, para escribir encima.
-    const el = textInputRef.current;
-    el?.focus();
-    requestAnimationFrame(() => el?.select());
+    setSheet(null);
   };
+
+  // Pastilla de acciones: pegada debajo del elemento seleccionado (el visor la
+  // proyecta cada cuadro). Se oculta mientras se arrastra o con la hoja abierta.
+  const pillAnchor = React.useMemo(() => {
+    if (!activeDesignKind || designDragging || sheet) return null;
+    const p = activeDesignKind === "text" ? textPlacement : activeDesignKind === "text2" ? text2Placement : artPlacement;
+    const ext = activeDesignKind === "text" ? textExtents : activeDesignKind === "text2" ? text2Extents : artExtents;
+    return { u: p.u, v: p.v + ext.halfV };
+  }, [activeDesignKind, designDragging, sheet, textPlacement, text2Placement, artPlacement, textExtents, text2Extents, artExtents]);
+  const designElementCount = [hasText, hasText2, hasArt].filter(Boolean).length;
 
   // ── Preview capture ─────────────────────────────────────────────────────────
   // Grab a PNG of the live 3D canvas (the termo draws a fresh frame right before
@@ -3778,166 +3834,6 @@ export default function Customizer() {
     </div>
   );
 
-  // Pestaña Texto en el celular: lo esencial a la vista (diseños rápidos, el
-  // campo y 6 letras); el resto, a un toque en "Más opciones". El tamaño se
-  // cambia pellizcando la pieza (el control deslizante queda en "Más opciones").
-  // La ubicación es libre: no hay "frente / dorso", se arrastra a cualquier
-  // lugar de la pieza menos el logo y la marca.
-  const renderMobileTextTab = () => {
-    const t2 = editingText2;
-    const value = t2 ? text2 : text;
-    const placement = t2 ? text2Placement : textPlacement;
-    const applyP = t2 ? applyText2Placement : applyTextPlacement;
-    return (
-      <div className="space-y-5">
-        {isEmptyDesign && (
-          <div>
-            <Label className="text-sm font-medium text-foreground mb-2 block">Empezá con un diseño</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {QUICK_STARTS.map(q => (
-                <button
-                  key={q.id}
-                  type="button"
-                  onClick={() => applyQuickStart(q.id)}
-                  className={`min-h-14 px-3 py-2 border rounded-xl text-left transition-all ${idleCard}`}
-                >
-                  <span className="block text-sm font-semibold text-foreground leading-tight">{q.title}</span>
-                  <span className="block text-xs text-muted-foreground leading-tight mt-0.5 truncate">{q.sample}</span>
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              O escribí lo que quieras. Después lo arrastrás a cualquier lugar {productArticle(product.singular)} {product.singular.toLowerCase()}.
-            </p>
-          </div>
-        )}
-
-        {text2Open && (
-          <div role="tablist" aria-label="Qué texto editar" className="flex gap-1 rounded-xl bg-secondary/50 p-1">
-            {(["text", "text2"] as const).map(k => {
-              const on = (k === "text2") === t2;
-              return (
-                <button
-                  key={k}
-                  type="button"
-                  role="tab"
-                  aria-selected={on}
-                  onClick={() => {
-                    setTextTarget(k);
-                    if (k === "text" ? hasText : hasText2) selectDesign(k, "text_switch");
-                  }}
-                  className={`flex-1 min-h-10 rounded-lg text-sm font-medium transition-colors ${on ? "bg-white text-primary shadow-sm" : "text-muted-foreground"}`}
-                >
-                  {k === "text" ? "Texto 1" : "Texto 2"}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        <div>
-          <EngravingTextField
-            key={t2 ? "t2" : "t1"}
-            inputRef={textInputRef}
-            text={value}
-            onText={t2 ? setText2 : handleEngravingText}
-            layout={t2 ? "auto" : textPlacement.layout}
-            onFocusChange={t2 ? undefined : setTextFieldFocused}
-            limitNotice={!t2 && wrapLimitHit ? "El texto alcanzó el máximo para envolver el producto." : null}
-            placeholder={t2 ? "Segundo texto (ej. una fecha)" : "Tu nombre o texto"}
-          />
-          {!t2 && <AiPhraseIdeas product={product.singular} twoLines={text2Open} onPick={pickPhraseIdea} />}
-        </div>
-
-        {isColorPrint && <TextColorPicker value={textColor} onChange={setTextColor} />}
-
-        <div ref={fontGridRef} className="scroll-mt-16">
-          <Label className="text-sm font-medium text-foreground mb-2 block">Letra</Label>
-          <FontQuickGrid fonts={FONTS} value={t2 ? text2Font : font} onChange={t2 ? setText2Font : setFont} sampleText={value} />
-        </div>
-
-        {!t2 && textLayout.shrunk && (
-          <p className="text-xs text-primary/90 flex items-center gap-1.5 rounded-lg bg-[#f5eaec] border border-primary/20 px-3 py-2">
-            <Info className="w-3.5 h-3.5 shrink-0" />
-            Tamaño ajustado automáticamente para que entre en el área.
-          </p>
-        )}
-
-        <button
-          type="button"
-          onClick={() => { setMoreOpen(true); track("design_more_options"); }}
-          className="w-full min-h-12 flex items-center gap-3 rounded-xl border border-border px-4 py-2.5 text-left active:bg-secondary/50"
-        >
-          <Settings2 className="w-4 h-4 text-primary shrink-0" />
-          <span className="flex-1 min-w-0">
-            <span className="block text-sm font-medium text-foreground">Más opciones</span>
-            <span className="block text-xs text-muted-foreground truncate">Tamaño, orientación, disposición, otro texto, tapa o base</span>
-          </span>
-          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-        </button>
-
-        <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
-          <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto rounded-t-3xl px-5 pt-5" style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}>
-            <SheetTitle className="text-base font-semibold text-foreground">Más opciones{text2Open ? (t2 ? " · Texto 2" : " · Texto 1") : ""}</SheetTitle>
-            <SheetDescription className="sr-only">Tamaño, orientación y disposición del texto, otro texto y grabado en tapa o base</SheetDescription>
-            <div className="mt-2 space-y-6">
-              <div>
-                <TextSizeSlider
-                  scale={placement.scale}
-                  onScale={(s) => applyP({ ...placement, scale: s })}
-                  maxScale={!t2 && isWrap360 ? wrapMaxScale : undefined}
-                />
-                <p className="text-xs text-muted-foreground mt-1.5">También podés pellizcar la pieza con dos dedos.</p>
-              </div>
-              {!t2 && (
-                <OrientationToggle
-                  value={textPlacement.orientation}
-                  onChange={(o) => applyTextPlacement({ ...textPlacement, orientation: o })}
-                  verticalDisabledReason={isWrap360 ? "El texto envolvente 360° va en horizontal alrededor del cuerpo" : undefined}
-                />
-              )}
-              {!t2 && (
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-2 block">Disposición e interlineado</Label>
-                  <TextDispositionToolbar placement={textPlacement} onChange={applyTextPlacement} />
-                </div>
-              )}
-              {text2Open ? (
-                <button
-                  type="button"
-                  onClick={() => { removeText2(); setMoreOpen(false); }}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground active:bg-secondary/50"
-                >
-                  <Trash2 className="w-4 h-4 text-primary" /> Quitar el texto 2
-                </button>
-              ) : !isWrap360 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    openText2();
-                    setTextTarget("text2");
-                    setMoreOpen(false);
-                    textInputRef.current?.focus();
-                  }}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-3 text-sm font-medium text-foreground active:bg-secondary/50"
-                >
-                  <Plus className="w-4 h-4 text-primary" />
-                  Agregar otro texto
-                  {effectiveTechnique === "laser" && (
-                    <span className="text-xs font-normal text-muted-foreground">+ {formatGs(PRICING.laser.extraText)}</span>
-                  )}
-                </button>
-              )}
-              {extraEngraving && (
-                <ExtraEngravingFields lid={extraLid} base={extraBase} onLid={setExtraLid} onBase={setExtraBase} />
-              )}
-            </div>
-          </SheetContent>
-        </Sheet>
-      </div>
-    );
-  };
-
   /** Estado mínimo para el link del diseño (sin el logo subido: no entra en una URL). */
   const sharedDesignState = (): SharedDesign => ({
     v: 1, materialId, materialProductId, sizeId: size, colorId: color, customHex, finish,
@@ -4234,6 +4130,55 @@ export default function Customizer() {
     </div>
   );
 
+  // Visor 3D grande del paso de Diseño (escritorio y pantalla del celular).
+  const renderThermosViewer = () => (
+    <Thermos3D
+      colorHex={activeColorHex}
+      finish={finish}
+      text={text}
+      fontClass=""
+      fontStyle={activeFont.style}
+      productId={productId}
+      sizeId={viewSize}
+      customImageUrl={artUrl}
+      imageSize={artImageSize}
+      textPlacement={textPlacement}
+      extraTexts={extraTextMarks}
+      artPlacement={artPlacement}
+      colorPrint={effectiveTechnique === "color"}
+      textColor={textColor}
+      engraveStyle={drinkwareEngraveStyle}
+      singleFace={singleFace}
+      editSingleFace={editSingleFace}
+      showGuides={guidesActive}
+      frontFaceU={designFaceU}
+      guideFace={activeDesignKind === "art" ? artFace : activeDesignKind === "text2" ? text2Face : textFace}
+      hideLogo={designOnLogoSide}
+      glass={isGlass}
+      designActive={designActive}
+      onDesignMove={onDesignMoveUV}
+      onDesignPinch={isMobile ? onDesignPinch : undefined}
+      onPinchSelect={isMobile ? onPinchSelect : undefined}
+      freePlacement={FREE_PLACEMENT}
+      keepOutZones={keepOutZones}
+      keepOutHit={keepOutHit}
+      onModelKeepOut={onModelKeepOut}
+      followU={designDragging && activeDesignKind ? designFaceU : null}
+      onDesignDragStart={beginDesignDrag}
+      onDesignDragEnd={endDesignDrag}
+      onTap={handleViewerTap}
+      isOverDesign={isOverActiveDesign}
+      snapToURef={thermosSnapRef}
+      renderNowRef={thermosRenderRef}
+      arModelRef={thermosArRef}
+      onReady={() => setViewerReady(n => n + 1)}
+      autoSpin={wrapSpin}
+      rotationLocked={wrapSpin}
+      anchor={isMobile ? pillAnchor : null}
+      anchorElRef={pillRef}
+    />
+  );
+
   // "Traigo el mío" en el celular: una línea al final de "Tu pieza" (antes
   // eran dos tarjetas arriba de todo, y casi nadie lo usa).
   const renderOwnProductLine = () => canBringOwn && (
@@ -4307,6 +4252,350 @@ export default function Customizer() {
     </div>
   );
 
+  // Salir del paso de Diseño: la pieza gira para mostrar el diseño de frente,
+  // se espera el repintado y RECIÉN ahí se captura el canvas, así la imagen del
+  // resumen siempre muestra el diseño completo.
+  const leaveDesignStep = () => {
+    // Terminar la edición: sin guías ni selección en la foto.
+    if (activeDesignKind) finishEditing();
+    setSheet(null);
+    thermosSnapRef.current?.(captureFaceU);
+    setTimeout(() => {
+      const img = capturePreview();
+      if (img) { setPreviewImg(img); previewImgRef.current = img; }
+      goToStep(Math.min(wizardLabels.length, designStepIndex + 1));
+    }, 150);
+  };
+
+  /** Colores del producto en una tira (pantalla de Diseño del celular). */
+  const renderColorDots = () => {
+    if (isGlass || isInox) return null;
+    const items = odooMode && odooColors.length
+      ? odooColors.map(c => ({ key: c.name, hex: c.hex, name: c.name, on: odooColor === c.name, disabled: !odooColorInStock(c.name), pick: () => selectOdooColor(c.name) }))
+      : COLORS.map(c => ({ key: c.id, hex: c.hex, name: c.name, on: color === c.id && !customHex, disabled: false, pick: () => handleSelectColor(c.id) }));
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-foreground shrink-0">Color</span>
+        <div role="radiogroup" aria-label="Color" className="flex-1 min-w-0 flex gap-2 overflow-x-auto p-1 [scrollbar-width:none]">
+          {items.map(c => (
+            <button
+              key={c.key}
+              type="button"
+              role="radio"
+              aria-checked={c.on}
+              aria-label={c.disabled ? `${c.name}, agotado` : c.name}
+              title={c.name}
+              disabled={c.disabled}
+              onClick={c.pick}
+              className={`shrink-0 w-8 h-8 rounded-full border border-black/10 ring-offset-2 transition disabled:opacity-30 ${c.on ? "ring-2 ring-primary" : ""}`}
+              style={{ backgroundColor: c.hex }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  /** Hoja "Agregar al termo" / edición del elemento tocado, dentro de la pantalla. */
+  const renderDesignSheet = () => {
+    if (!sheet) return null;
+    const { mode, edit } = sheet;
+    const t2 = edit === "text2";
+    const modes: { id: SheetMode; label: string; Icon: React.ComponentType<{ className?: string }>; off?: boolean }[] = [
+      { id: "text", label: "Texto", Icon: Type, off: !canAddText },
+      { id: "icon", label: "Ícono", Icon: Heart },
+      ...(canUploadImage ? [{ id: "image" as const, label: "Logo o foto", Icon: ImageIcon }] : []),
+      { id: "template", label: "Plantilla", Icon: Sparkles },
+    ];
+    const title = edit === "text" || edit === "text2" ? (hasText2 ? (t2 ? "Editar texto 2" : "Editar texto 1") : "Editar texto")
+      : edit === "art" ? (iconId ? "Cambiar ícono" : "Logo o foto")
+      : "Agregar al termo";
+    const primary = (label: string, onClick: () => void, disabled = false) => (
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className="w-full min-h-12 rounded-full bg-primary text-primary-foreground text-base font-semibold disabled:opacity-40 active:scale-[0.99] transition"
+      >
+        {label}
+      </button>
+    );
+    return (
+      <div className="absolute inset-0 z-40 flex flex-col justify-end">
+        <button type="button" aria-label="Cerrar" onClick={closeSheet} className="absolute inset-0 bg-black/30" />
+        <div
+          role="dialog"
+          aria-label={title}
+          className="relative bg-white rounded-t-3xl max-h-[82%] overflow-y-auto overscroll-contain px-4"
+          style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
+        >
+          <div className="sticky top-0 z-10 bg-white pt-2 pb-3">
+            <span aria-hidden className="block mx-auto w-10 h-1 rounded-full bg-border" />
+            <div className="mt-2 flex items-center justify-between">
+              <p className="text-base font-semibold text-foreground">{title}</p>
+              <button type="button" onClick={closeSheet} aria-label="Cerrar" className="w-10 h-10 -mr-2 grid place-items-center rounded-full text-muted-foreground active:bg-secondary">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {edit === null && (
+              <div className="grid grid-cols-2 gap-2">
+                {modes.map(({ id, label, Icon, off }) => {
+                  const on = mode === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      aria-pressed={on}
+                      disabled={off}
+                      onClick={() => setSheet({ mode: id, edit: null })}
+                      className={`min-h-12 px-3 py-2.5 border rounded-xl flex items-center gap-2.5 text-sm font-medium transition-all disabled:opacity-40 ${on ? activeCard : idleCard}`}
+                    >
+                      <Icon className="w-5 h-5 text-primary shrink-0" />
+                      <span className={on ? "" : "text-foreground"}>{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Nuevo texto: se escribe y se pone en el termo. */}
+            {edit === null && mode === "text" && (
+              <div className="space-y-3">
+                <EngravingTextField
+                  inputRef={textInputRef}
+                  text={draft}
+                  onText={setDraft}
+                  layout="auto"
+                  placeholder={hasText ? "Otro texto (ej. una fecha)" : "Tu nombre o texto"}
+                />
+                {hasText && effectiveTechnique === "laser" && (
+                  <p className="text-xs text-muted-foreground -mt-1">El segundo texto suma {formatGs(PRICING.laser.extraText)}.</p>
+                )}
+                {primary("Ponerlo en el termo", placeDraftText, !draft.trim())}
+              </div>
+            )}
+
+            {/* Editar un texto: contenido, letra y más opciones. */}
+            {(edit === "text" || edit === "text2") && (
+              <div className="space-y-4">
+                <EngravingTextField
+                  key={edit}
+                  text={t2 ? text2 : text}
+                  onText={t2 ? setText2 : handleEngravingText}
+                  layout={t2 ? "auto" : textPlacement.layout}
+                  onFocusChange={t2 ? undefined : setTextFieldFocused}
+                  limitNotice={!t2 && wrapLimitHit ? "El texto alcanzó el máximo para envolver el producto." : null}
+                />
+                {!t2 && <AiPhraseIdeas product={product.singular} twoLines={text2Open} onPick={pickPhraseIdea} />}
+                {isColorPrint && <TextColorPicker value={textColor} onChange={setTextColor} />}
+                <div>
+                  <Label className="text-sm font-medium text-foreground mb-2 block">Letra</Label>
+                  <FontQuickGrid fonts={FONTS} value={t2 ? text2Font : font} onChange={t2 ? setText2Font : setFont} sampleText={t2 ? text2 : text} />
+                </div>
+                {!t2 && textLayout.shrunk && (
+                  <p className="text-xs text-primary/90 flex items-center gap-1.5 rounded-lg bg-[#f5eaec] border border-primary/20 px-3 py-2">
+                    <Info className="w-3.5 h-3.5 shrink-0" />
+                    Tamaño ajustado automáticamente para que entre en el área.
+                  </p>
+                )}
+                <div className="border-t border-border pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setSheetMore(m => !m)}
+                    aria-expanded={sheetMore}
+                    className="w-full min-h-11 flex items-center gap-2 text-sm font-medium text-primary"
+                  >
+                    <Settings2 className="w-4 h-4" /> Más opciones
+                    <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${sheetMore ? "rotate-180" : ""}`} />
+                  </button>
+                  {sheetMore && (
+                    <div className="mt-2 space-y-5">
+                      <TextSizeSlider
+                        scale={(t2 ? text2Placement : textPlacement).scale}
+                        onScale={(sc) => t2 ? applyText2Placement({ ...text2Placement, scale: sc }) : applyTextPlacement({ ...textPlacement, scale: sc })}
+                        maxScale={!t2 && isWrap360 ? wrapMaxScale : undefined}
+                      />
+                      {!t2 && (
+                        <OrientationToggle
+                          value={textPlacement.orientation}
+                          onChange={(o) => applyTextPlacement({ ...textPlacement, orientation: o })}
+                          verticalDisabledReason={isWrap360 ? "El texto envolvente 360° va en horizontal alrededor del cuerpo" : undefined}
+                        />
+                      )}
+                      {!t2 && <TextDispositionToolbar placement={textPlacement} onChange={applyTextPlacement} />}
+                      {extraEngraving && (
+                        <ExtraEngravingFields lid={extraLid} base={extraBase} onLid={setExtraLid} onBase={setExtraBase} />
+                      )}
+                    </div>
+                  )}
+                </div>
+                {primary("Listo", closeSheet)}
+              </div>
+            )}
+
+            {mode === "icon" && (edit === null || edit === "art") && (
+              <IconPicker
+                value={iconId}
+                onChange={(id) => {
+                  pushHistory();
+                  handlePickIcon(id);
+                  if (id) { track("design_add", { kind: "icon" }); setSheet(null); }
+                }}
+              />
+            )}
+
+            {mode === "image" && (edit === null || edit === "art") && canUploadImage && (
+              <div className="space-y-3">
+                <ImageUpload
+                  imageSize="large"
+                  value={customImage}
+                  onChange={handleUploadImage}
+                  aiStyle={effectiveTechnique === "color" ? "color" : "laser"}
+                />
+                {primary(edit ? "Listo" : "Ponerlo en el termo", () => { if (!edit) track("design_add", { kind: "image" }); setSheet(null); }, !customImage)}
+              </div>
+            )}
+
+            {edit === null && mode === "template" && (
+              <div className="grid grid-cols-1 gap-2">
+                {QUICK_STARTS.map(q => (
+                  <button
+                    key={q.id}
+                    type="button"
+                    onClick={() => applyQuickStart(q.id)}
+                    className={`min-h-14 px-4 py-2.5 border rounded-xl text-left transition-all ${idleCard}`}
+                  >
+                    <span className="block text-sm font-semibold text-foreground leading-tight">{q.title}</span>
+                    <span className="block text-xs text-muted-foreground leading-tight mt-0.5">{q.sample}</span>
+                  </button>
+                ))}
+                <p className="text-xs text-muted-foreground">Después tocás el texto para cambiarlo y lo arrastrás a cualquier lugar.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /**
+   * Paso de Diseño del celular para termos y vasos: una sola pantalla fija.
+   * El visor ocupa casi todo (~70 %); abajo, siempre a la vista, el color, el
+   * precio y "Listo". El único botón que llama es el "+".
+   */
+  const renderMobileDrinkDesign = () => {
+    const sizeName = odooMode ? odooSize : product.sizes.length > 1 ? activeSize.name : null;
+    const priceNote = isOwnProduct ? "solo el grabado" : estimate.total ? "grabado incluido" : null;
+    return (
+      <MobileDesignScreen
+        title={odooProduct?.name ?? activeMProduct?.name ?? product.singular}
+        subtitle={designElementCount
+          ? `${designElementCount} ${designElementCount === 1 ? "elemento" : "elementos"} · tocá para editar`
+          : "Tocá + para empezar"}
+        right={
+          <ArViewButton
+            compact
+            getModel={() => thermosArRef.current?.() ?? null}
+            designKey={[productId, viewSize, activeColorHex, finish, text, font, text2, text2Font, JSON.stringify(text2Placement), iconId, artUrl?.length ?? 0, textColor, effectiveTechnique, JSON.stringify(textPlacement), JSON.stringify(artPlacement)].join("|")}
+          />
+        }
+        top={vp.top}
+        height={vp.height}
+        onBack={() => goToStep(designStepIndex - 1)}
+        nav={null}
+      >
+        <div ref={previewPanelRef} className="relative flex-1 min-h-0 isolate [transform:translateZ(0)] bg-secondary/30 overflow-hidden">
+          {isGlass ? (
+            <div className="absolute inset-0" style={{ background: "radial-gradient(circle at 50% 38%, #eef2f6 0%, #d3dae2 55%, #aeb8c4 100%)" }} />
+          ) : (
+            <div className="absolute inset-0 opacity-[0.07] transition-colors duration-500" style={{ backgroundColor: activeColorHex }} />
+          )}
+          <div className="absolute inset-0 z-10">{renderThermosViewer()}</div>
+
+          {!designElementCount && !sheet && (
+            <p className="pointer-events-none absolute inset-x-0 top-[56%] z-20 text-center">
+              <span className="inline-block rounded-full bg-white/85 px-3 py-1 text-sm text-muted-foreground">Tu grabado aparece acá</span>
+            </p>
+          )}
+          {pinchHint && renderPinchHint()}
+          {keepOutHit && (
+            <p role="status" className="pointer-events-none absolute inset-x-4 top-3 z-30 text-center">
+              <span className="inline-block rounded-full bg-white/95 border border-primary/30 px-3 py-1.5 text-xs font-medium text-primary shadow-sm">
+                Ahí está {KEEP_OUT_LABEL[keepOutHit.kind]}: no se puede grabar encima.
+              </span>
+            </p>
+          )}
+
+          {/* Pastilla del elemento: la mueve el visor (ver anchor en Thermos3D). */}
+          <div ref={pillRef} className="absolute left-0 top-0 z-30" style={{ visibility: "hidden" }}>
+            {pillAnchor && (
+              <ElementPill
+                onSmaller={() => resizeActive(-0.1)}
+                onBigger={() => resizeActive(0.1)}
+                onCenter={centerWithHistory}
+                onDelete={deleteActive}
+              />
+            )}
+          </div>
+
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pb-2 flex flex-col items-center gap-2">
+            {undoDeleteUntil > 0 && (
+              <button
+                type="button"
+                onClick={() => { setUndoDeleteUntil(0); undo(); }}
+                className="pointer-events-auto h-9 px-4 inline-flex items-center gap-1.5 rounded-full bg-foreground text-background text-sm font-medium shadow-sm active:scale-95 transition"
+              >
+                <Undo2 className="w-4 h-4" /> Deshacer borrado
+              </button>
+            )}
+            <p className="text-xs text-muted-foreground text-center px-4">
+              {wrapSpin ? "Girando para mostrar el texto envolvente…"
+                : designActive ? "Arrastrá para mover · Pellizcá para el tamaño"
+                : "Arrastrá para girar"}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={openAddSheet}
+            aria-label="Agregar al termo"
+            className="absolute right-4 bottom-10 z-30 w-14 h-14 rounded-full bg-primary text-primary-foreground grid place-items-center shadow-lg shadow-primary/30 active:scale-95 transition"
+          >
+            <Plus className="w-7 h-7" />
+          </button>
+        </div>
+
+        {!vp.keyboard && (
+          <div className="shrink-0 bg-white border-t border-border px-4 pt-2.5 space-y-2.5" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
+            {renderColorDots()}
+            <div className={`flex items-center justify-between gap-3 ${isGlass || isInox ? "" : "pt-2.5 border-t border-border"}`}>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground truncate">
+                  {[sizeName, priceNote].filter(Boolean).join(" · ") || estimate.note}
+                </p>
+                <p className="text-base font-semibold text-foreground tabular-nums leading-tight">
+                  {isSoldOut ? "Agotado" : estimate.price ?? "Se cotiza por WhatsApp"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={leaveDesignStep}
+                className="shrink-0 h-12 px-6 inline-flex items-center gap-1 rounded-full bg-primary text-primary-foreground text-base font-semibold shadow-sm active:scale-[0.98] transition"
+              >
+                Listo <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {renderDesignSheet()}
+      </MobileDesignScreen>
+    );
+  };
+
   // Barra inferior del asistente del celular (fija sobre la página, o dentro
   // de la pantalla de Diseño con `inline`).
   const renderWizardNav = (inline: boolean) => (
@@ -4319,17 +4608,7 @@ export default function Customizer() {
         // camera, wait for the repaint, THEN snapshot the live canvas — so
         // the Step 4 image always shows the design completely, no matter
         // how the user left the piece rotated.
-        if (mobileStep === designStepIndex) {
-          // Terminar la edición: sin guías ni selección en la foto.
-          if (activeDesignKind) finishEditing();
-          thermosSnapRef.current?.(captureFaceU);
-          setTimeout(() => {
-            const img = capturePreview();
-            if (img) { setPreviewImg(img); previewImgRef.current = img; }
-            goToStep(Math.min(wizardLabels.length, mobileStep + 1));
-          }, 150);
-          return;
-        }
+        if (mobileStep === designStepIndex) { leaveDesignStep(); return; }
         goToStep(Math.min(wizardLabels.length, mobileStep + 1));
       }}
       nextLabel={mobileStep === designStepIndex ? "Continuar"
@@ -4351,8 +4630,7 @@ export default function Customizer() {
   const wrapDesignStep = (content: React.ReactNode) => !isMobile ? content : (
     <MobileDesignScreen
       title={`Diseñá tu ${(isDrinkware ? product.singular : orderProductName).toLowerCase()}`}
-      step={mobileStep}
-      total={wizardLabels.length}
+      subtitle={`Paso ${mobileStep} de ${wizardLabels.length}`}
       top={vp.top}
       height={vp.height}
       onBack={() => goToStep(Math.max(1, designStepIndex - 1))}
@@ -4552,7 +4830,8 @@ export default function Customizer() {
         )}
 
         {/* Design step — 3D preview + editor. Step 3 on drinkware, Step 2 otherwise. */}
-        {(!isMobile || mobileStep === designStepIndex) && wrapDesignStep(
+        {isMobile && isDrinkware && mobileStep === designStepIndex && renderMobileDrinkDesign()}
+        {(!isMobile || (mobileStep === designStepIndex && !isDrinkware)) && wrapDesignStep(
         <div className={isMobile ? "flex-1 min-h-0 flex flex-col" : undefined}>
         {/* STEP 3 — CUSTOMIZE */}
         <div className={isMobile ? "flex-1 min-h-0 flex flex-col" : "flex flex-col lg:grid lg:grid-cols-12 gap-6 lg:gap-8 lg:items-start"}>
@@ -4589,49 +4868,7 @@ export default function Customizer() {
                 <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
                   {/* 3D Canvas — taller for bigger sizes; compact on phones */}
                   <div className="relative w-full" style={{ height: isMobile ? mobileViewerH : 480 + Math.round((activeSize.scale - 0.84) * 200) }}>
-                    <Thermos3D
-                      colorHex={activeColorHex}
-                      finish={finish}
-                      text={text}
-                      fontClass=""
-                      fontStyle={activeFont.style}
-                      productId={productId}
-                      sizeId={viewSize}
-                      customImageUrl={artUrl}
-                      imageSize={artImageSize}
-                      textPlacement={textPlacement}
-                      extraTexts={extraTextMarks}
-                      artPlacement={artPlacement}
-                      colorPrint={effectiveTechnique === "color"}
-                      textColor={textColor}
-                      engraveStyle={drinkwareEngraveStyle}
-                      singleFace={singleFace}
-                      editSingleFace={editSingleFace}
-                      showGuides={guidesActive}
-                      frontFaceU={designFaceU}
-                      guideFace={activeDesignKind === "art" ? artFace : activeDesignKind === "text2" ? text2Face : textFace}
-                      hideLogo={designOnLogoSide}
-                      glass={isGlass}
-                      designActive={designActive}
-                      onDesignMove={onDesignMoveUV}
-                      onDesignPinch={isMobile ? onDesignPinch : undefined}
-                      onPinchSelect={isMobile ? onPinchSelect : undefined}
-                      freePlacement={FREE_PLACEMENT}
-                      keepOutZones={keepOutZones}
-                      keepOutHit={keepOutHit}
-                      onModelKeepOut={onModelKeepOut}
-                      followU={designDragging && activeDesignKind ? designFaceU : null}
-                      onDesignDragStart={beginDesignDrag}
-                      onDesignDragEnd={endDesignDrag}
-                      onTap={handleViewerTap}
-                      isOverDesign={isOverActiveDesign}
-                      snapToURef={thermosSnapRef}
-                      renderNowRef={thermosRenderRef}
-                      arModelRef={thermosArRef}
-                      onReady={() => setViewerReady(n => n + 1)}
-                      autoSpin={wrapSpin}
-                      rotationLocked={wrapSpin}
-                    />
+                    {renderThermosViewer()}
                     {pinchHint && renderPinchHint()}
                   </div>
 
@@ -4655,8 +4892,6 @@ export default function Customizer() {
                         onUndo={history.length ? undo : null}
                         onDelete={deleteActive}
                         onDone={finishEditing}
-                        onStyle={isMobile ? styleActive : undefined}
-                        styleLabel={activeDesignKind === "art" ? "Cambiar" : "Letra"}
                       />
                     ) : (
                       <>
@@ -4857,10 +5092,7 @@ export default function Customizer() {
                   </TabsContent>
                   )}
 
-                  {/* TEXT TAB — en el celular, la versión simple. */}
-                  {isMobile && (
-                    <TabsContent value="text" className="mt-0">{renderMobileTextTab()}</TabsContent>
-                  )}
+                  {/* TEXT TAB */}
                   {!isMobile && (
                   <TabsContent value="text" className="mt-0 space-y-5">
                     {/* BÁSICO — escribir, elegir técnica de grabado y orientación. */}
