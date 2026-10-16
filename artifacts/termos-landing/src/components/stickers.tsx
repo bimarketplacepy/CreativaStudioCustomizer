@@ -391,13 +391,15 @@ export default function Stickers() {
     // Corto a propósito: el detalle completo queda guardado en el pedido
     // (panel /admin). *negrita* es el formato de WhatsApp.
     const parts = [
-      "Hola, Creativa Studio. Quiero pedir estos stickers:",
+      "Hola Creativa Studio 👋 Quiero pedir stickers personalizados.",
       [
         orderNumber ? `*Pedido ${orderNumber}*` : null,
-        `${quantity} u. · ${sizeText} · ${cutDef.name} · ${finishDef.name}`,
-        STICKER_PRICES_ENABLED ? `Precio estimado: ${formatGs(quote.total)}` : "Precio: a cotizar",
+        `Stickers UV DTF · ${sizeText}`,
+        `Corte ${cutDef.name.toLowerCase()} · ${finishDef.name}`,
+        `${quantity} ${quantity === 1 ? "unidad" : "unidades"} · ${STICKER_PRICES_ENABLED ? `precio estimado ${formatGs(quote.total)}` : "precio a cotizar"}`,
       ].filter(Boolean).join("\n"),
-      imageUrl ? `Diseño (PNG): ${imageUrl}` : "Les envío el diseño por este chat.",
+      imageUrl ? `*Diseño:* ${imageUrl}` : "*Diseño:* se los envío por este chat.",
+      "¿Me confirman diseño y precio? ¡Gracias!",
     ];
     return parts.join("\n\n");
   };
