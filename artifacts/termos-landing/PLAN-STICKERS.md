@@ -25,7 +25,14 @@ referencia: la altura real la decide el software de la E1.
 | 6 | Tamaño elegido dos veces; cantidad en dos filas | Botones 5/7/10/15 cm + deslizador; 10/25/50/100 no entran |
 | 7 | El aviso de baja resolución asusta | Tres líneas en amarillo aunque a menor tamaño quede bien |
 
-## Etapa 1 — Una pantalla fija, como en los termos (mediana)
+## Etapa 1 — Una pantalla fija, como en los termos (mediana) — HECHA
+
+Implementado en `stickers.tsx` (la pantalla fija se comparte con el termo: `mobile-screen.tsx`):
+celular con subida primero + 3 ejemplos (Logo, Mascota, Frase), pantalla "Tu sticker" con
+Cambiar / Sin fondo, filas Tamaño·Forma·Acabado·Cantidad, barra "Pedir ›"; botón de fondo
+claro/oscuro (automático en diseños casi blancos); aviso chico "Se puede ver pixelado · ideal
+hasta X cm"; en PC el deslizador aparece solo con "Otro". Eventos nuevos: `sticker_example`,
+`sticker_finish_select`. Falta: fondo del color de un termo.
 
 - Primero el diseño: una sola acción "Elegir imagen" (+ ejemplos).
 - Después: sticker siempre arriba, una fila por opción (Tamaño 5/7/10/15/Otro, Forma, Acabado,
