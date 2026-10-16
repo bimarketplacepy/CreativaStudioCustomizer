@@ -3068,14 +3068,24 @@ export default function Customizer() {
   const handleSelectMaterial = (id: MaterialId) => {
     setMaterialId(id);
     setOdooTemplateId(null);
-    startColorPending.current = false;
     setGenericPick(false);
     track("customizer_material_select", { material: id });
     // La captura anterior pertenece a otro producto: nunca ofrecer descargarla.
     clearPreviews();
     const m = getMaterial(id);
-    const first = m.products[0];
+    // Mismo arranque que al abrir la página: si la tienda tiene productos de
+    // este material, se empieza por uno de ellos (Vaso Sunbeam en acero), no
+    // por la primera forma genérica.
+    const inShop = (p: (typeof m.products)[number]) =>
+      !!p.drinkwareProductId && matchingProducts(catalog, p.drinkwareProductId, id).length > 0;
+    const first = m.products.find(p => p.id === START_PRODUCT_ID && inShop(p))
+      ?? m.products.find(inShop)
+      ?? m.products[0];
     setMaterialProductId(first?.id ?? "");
+    // Variante de la tienda: de nuevo en negro (si el producto lo tiene).
+    startColorPending.current = true;
+    setOdooColor(null);
+    setOdooSize(null);
     if (first?.drinkwareProductId) {
       const dp = getProduct(first.drinkwareProductId);
       setSize(dp.sizes[1]?.id ?? dp.sizes[0].id);
@@ -3099,6 +3109,9 @@ export default function Customizer() {
       setFinish("inox"); // acero natural cepillado, sin pintura
     } else {
       setFinish("matte");
+      // El color del material anterior (café del cuero, perla del cristal) no
+      // sigue: vuelve al color de arranque.
+      handleSelectColor(COLORS.find(c => c.name.startsWith(START_COLOR_NAME))?.id ?? COLORS[0].id);
     }
   };
 
