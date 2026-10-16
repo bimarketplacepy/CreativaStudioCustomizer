@@ -84,7 +84,26 @@ export interface ProductionInput {
   /** Grabado extra en tapa / base ("" = sí, texto a definir; null = no). */
   extraLid?: string | null;
   extraBase?: string | null;
+  /**
+   * "free": ubicación libre del personalizador — u/v son de toda la vuelta y el
+   * archivo sale con la vuelta completa (360°) desenrollada. Sin valor: los
+   * pedidos de antes, con el rectángulo de una cara.
+   */
+  placementMode?: string | null;
+  /** Zonas sin grabado (logo de la marca, manija, relieves) — solo referencia. */
+  keepOut?: KeepOutLike[] | null;
 }
+
+/** Zona sin grabado tal como viaja en designState (lib/keep-out.ts del landing). */
+interface KeepOutLike {
+  kind?: string;
+  u?: number;
+  halfU?: number;
+  v0?: number;
+  v1?: number;
+}
+
+const KEEP_OUT_NAMES: Record<string, string> = { logo: "LOGO MARCA", handle: "MANIJA", relief: "RELIEVE" };
 
 /** Técnica del pedido → modo de color del archivo. */
 export function productionMode(technique: string): ProductionMode {
@@ -328,12 +347,40 @@ function relPos(p: PlacementLike | null | undefined): { x: number; y: number } {
 
 export async function buildProductionSvg(input: ProductionInput): Promise<string> {
   const mode = productionMode(input.technique);
-  const area = PRODUCT_AREAS_MM[input.product.trim().toLowerCase()] ?? DEFAULT_AREA_MM;
+  const front = PRODUCT_AREAS_MM[input.product.trim().toLowerCase()] ?? DEFAULT_AREA_MM;
+  const free = input.placementMode === "free";
 
-  const padX = area.w * AREA_PAD_FRAC;
-  const padY = area.h * AREA_PAD_FRAC;
-  const usableW = area.w - padX * 2;
-  const usableH = area.h - padY * 2;
+  // El tamaño de las marcas sale siempre del área frontal (misma escala que el
+  // personalizador); con ubicación libre el archivo es la vuelta entera:
+  // el frontal ocupa (uMax-uMin) de la vuelta y (vMax-vMin) de la banda.
+  // AJUSTAR: con las medidas reales (print-specs) el ancho es π × diámetro.
+  const padX = front.w * AREA_PAD_FRAC;
+  const padY = front.h * AREA_PAD_FRAC;
+  const usableW = front.w - padX * 2;
+  const usableH = front.h - padY * 2;
+  const area = free
+    ? {
+      w: Math.round(front.w / (FRONT_FACE.uMax - FRONT_FACE.uMin)),
+      h: Math.round(front.h / (FRONT_FACE.vMax - FRONT_FACE.vMin)),
+    }
+    : front;
+  /** Centro de una marca en el archivo (mm). Libre: el frente queda al medio. */
+  const posOf = (p: PlacementLike | null | undefined): { cx: number; cy: number } => {
+    if (free) {
+      const u0 = typeof p?.u === "number" ? p.u : 0.5;
+      const u = u0 - Math.round(u0 - 0.5);
+      const v = typeof p?.v === "number" ? Math.max(0, Math.min(1, p.v)) : 0.5;
+      return { cx: u * area.w, cy: v * area.h };
+    }
+    const rel = relPos(p);
+    return { cx: padX + rel.x * usableW, cy: padY + rel.y * usableH };
+  };
+  /** Libre: aviso si la marca cruza la costura (los bordes del archivo). */
+  const seamCheck = (cx: number, halfW: number, label: string) => {
+    if (free && (cx - halfW < 0 || cx + halfW > area.w)) {
+      warnings.push(`${label[0]!.toUpperCase()}${label.slice(1)} cruza la costura del archivo (atrás): unir los dos lados al grabar.`);
+    }
+  };
 
   // Colores según técnica: láser = negro puro sólido; UV = colores reales;
   // plotter = solo contornos negros.
@@ -363,15 +410,16 @@ export async function buildProductionSvg(input: ProductionInput): Promise<string
     const align = p.align ?? "center";
     const lineHeightMul = typeof p.lineHeight === "number" ? p.lineHeight : 1.12;
     // En vertical el bloque se rota -90°: los límites se intercambian.
-    const maxW = vertical ? usableH : usableW;
-    const maxH = vertical ? usableW : usableH;
+    // Libre: hasta media vuelta de ancho y el alto de la banda, como en el 3D.
+    const roomW = free ? area.w * 0.5 : usableW;
+    const roomH = free ? area.h * 0.92 : usableH;
+    const maxW = vertical ? roomH : roomW;
+    const maxH = vertical ? roomW : roomH;
     const requestedMm = usableH * TEXT_BASE_FRACTION * scale;
 
     const block = fitTextBlock(lf, text, requestedMm, maxW, maxH, layout, lineHeightMul, align);
     if (!block) return;
-    const rel = relPos(placement);
-    const cx = padX + rel.x * usableW;
-    const cy = padY + rel.y * usableH;
+    const { cx, cy } = posOf(placement);
     const bcx = (block.bounds.x1 + block.bounds.x2) / 2;
     const bcy = (block.bounds.y1 + block.bounds.y2) / 2;
     const rotate = vertical ? ` rotate(-90 ${round(bcx)} ${round(bcy)})` : "";
@@ -380,8 +428,11 @@ export async function buildProductionSvg(input: ProductionInput): Promise<string
       `    <path d="${block.d}" ${fillAttrsFor(input.textColor)}/>`,
       `  </g>`,
     );
+    const bw = block.bounds.x2 - block.bounds.x1, bh = block.bounds.y2 - block.bounds.y1;
     if ((p.layout ?? "auto") === "wrap360") {
       warnings.push(`${label[0]!.toUpperCase()}${label.slice(1)} envolvente 360°: en este archivo va como una sola línea; envolver alrededor del cuerpo.`);
+    } else if (free) {
+      seamCheck(cx, (vertical ? bh : bw) / 2, label);
     } else {
       const face = FACES[p.face ?? "front"];
       if (face && face.offset !== 0) warnings.push(`${label[0]!.toUpperCase()}${label.slice(1)} en el ${face.label} (no en el frente).`);
@@ -396,9 +447,8 @@ export async function buildProductionSvg(input: ProductionInput): Promise<string
     const p = input.artPlacement ?? {};
     const scale = typeof p.scale === "number" && p.scale > 0 ? p.scale : 1;
     const box = Math.min(usableW, usableH) * ICON_BASE_FRACTION * scale;
-    const rel = relPos(input.artPlacement);
-    const cx = padX + rel.x * usableW;
-    const cy = padY + rel.y * usableH;
+    const { cx, cy } = posOf(input.artPlacement);
+    seamCheck(cx, box / 2, "el ícono");
     let iconBody = icon.body;
     if (mode === "cut") {
       // Plotter: solo contornos. stroke-width en unidades del viewBox 24.
@@ -424,9 +474,8 @@ export async function buildProductionSvg(input: ProductionInput): Promise<string
     const p = input.artPlacement ?? {};
     const scale = typeof p.scale === "number" && p.scale > 0 ? p.scale : 1;
     const box = Math.min(usableW * LOGO_BASE_FRACTION * scale, usableW, usableH);
-    const rel = relPos(input.artPlacement);
-    const cx = padX + rel.x * usableW;
-    const cy = padY + rel.y * usableH;
+    const { cx, cy } = posOf(input.artPlacement);
+    seamCheck(cx, box / 2, "el logo del cliente");
     body.push(
       `  <!-- LOGO RASTER - revisar/vectorizar manualmente si es grabado láser -->`,
       `  <image id="logo-cliente" x="${round(cx - box / 2)}" y="${round(cy - box / 2)}" width="${round(box)}" height="${round(box)}" preserveAspectRatio="xMidYMid meet" href="${dataUrl}"/>`,
@@ -450,7 +499,9 @@ export async function buildProductionSvg(input: ProductionInput): Promise<string
   const dateStr = input.createdAt.toISOString().slice(0, 10);
   const infoLines = [
     `PEDIDO ${input.orderNumber} · ${input.product.toUpperCase()} · ${input.technique.toUpperCase()}`,
-    `Área grabable: ${area.w}×${area.h} mm · ${dateStr} · CAPA NO IMPRIMIR`,
+    free
+      ? `Vuelta completa (360°): ${area.w}×${area.h} mm aprox. · frente al centro · ${dateStr} · CAPA NO IMPRIMIR`
+      : `Área grabable: ${area.w}×${area.h} mm · ${dateStr} · CAPA NO IMPRIMIR`,
     ...warnings,
   ];
   const infoFont = await loadInfoFont();
@@ -462,6 +513,27 @@ export async function buildProductionSvg(input: ProductionInput): Promise<string
       const d = p.toPathData(3);
       if (d) infoPaths.push(`    <path d="${d}" fill="#888888"/>`);
     });
+  }
+
+  // Zonas sin grabado (solo ubicación libre): rayadas en la capa de info.
+  const zoneRects: string[] = [];
+  if (free && Array.isArray(input.keepOut)) {
+    for (const z of input.keepOut) {
+      if (typeof z?.u !== "number" || typeof z.halfU !== "number" || typeof z.v0 !== "number" || typeof z.v1 !== "number") continue;
+      const u = z.u - Math.round(z.u - 0.5);
+      const x0 = (u - z.halfU) * area.w, x1 = (u + z.halfU) * area.w;
+      const y0 = Math.max(0, z.v0) * area.h, y1 = Math.min(1, z.v1) * area.h;
+      // Una zona sobre la costura (atrás) sale partida en los dos bordes.
+      for (const dx of [-area.w, 0, area.w]) {
+        if (x1 + dx <= 0 || x0 + dx >= area.w) continue;
+        const a = Math.max(0, x0 + dx), b = Math.min(area.w, x1 + dx);
+        zoneRects.push(`    <rect x="${round(a)}" y="${round(y0)}" width="${round(b - a)}" height="${round(y1 - y0)}" fill="url(#no-grabar)" stroke="#bbbbbb" stroke-width="0.2"/>`);
+        if (infoFont && b - a > 12) {
+          const d = runPath(infoFont, KEEP_OUT_NAMES[z.kind ?? ""] ?? "NO GRABAR", a + 1, y0 + 4, 2.5).toPathData(3);
+          if (d) zoneRects.push(`    <path d="${d}" fill="#999999"/>`);
+        }
+      }
+    }
   }
 
   const meta = escComment(
@@ -483,6 +555,10 @@ export async function buildProductionSvg(input: ProductionInput): Promise<string
     ...body,
     `  <g id="INFO-NO-IMPRIMIR">`,
     `    <!-- Capa informativa para el operario: borrar antes de producir. -->`,
+    ...(zoneRects.length ? [
+      `    <defs><pattern id="no-grabar" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="3" stroke="#cccccc" stroke-width="0.4"/></pattern></defs>`,
+      ...zoneRects,
+    ] : []),
     `    <rect x="0" y="0" width="${area.w}" height="${area.h}" fill="none" stroke="#bbbbbb" stroke-width="0.2" stroke-dasharray="2 1.5"/>`,
     `    <line x1="0" y1="${area.h + 2}" x2="${area.w}" y2="${area.h + 2}" stroke="#bbbbbb" stroke-width="0.2"/>`,
     ...infoPaths,

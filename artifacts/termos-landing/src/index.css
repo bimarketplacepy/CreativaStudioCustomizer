@@ -549,3 +549,17 @@ body.wa-fab-hidden .wa-fab {
 @media (prefers-reduced-motion: reduce) {
   .section-shimmer { animation: none; }
 }
+
+/* Botón "Diseñar" del personalizador en celular: un pulso suave (tres veces)
+   para que se note cuál es el paso siguiente. */
+.wiz-design-cta {
+  animation: wizDesignPulse 1.8s ease-out 0.6s 3;
+}
+@keyframes wizDesignPulse {
+  0%   { box-shadow: 0 0 0 0 rgb(139 26 47 / 0.45); }
+  70%  { box-shadow: 0 0 0 12px rgb(139 26 47 / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(139 26 47 / 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wiz-design-cta { animation: none; }
+}

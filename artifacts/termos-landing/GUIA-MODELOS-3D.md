@@ -223,6 +223,11 @@ Lo que devuelve la IA suele venir **todo en una sola pieza** y con la superficie
    - `handle`: manija o asa
    - `steel`: partes de acero sin pintar (cuello, borde)
    - `straw`: pajita
+   - **Zonas donde no se graba** (el personalizador no deja poner el diseño encima; ver `src/lib/keep-out.ts`):
+     - `logo`, `logo_texto`: logo y marca del fabricante sobre el cuerpo (por ejemplo, el triángulo y la palabra HYDRATE)
+     - `relieve` (o `relieve_1`, `relieve_2`…): cualquier relieve o etiqueta en relieve del cuerpo
+     - `handle`, `strap`: manija o correa (también frenan el diseño)
+     Si el producto real tiene un relieve que el modelo no muestra, avisar: se carga a mano como zona (`keepOut` en `products.ts`).
 3. **Desplegar el UV del cuerpo** con proyección **cilíndrica** (*UV → Cylinder Projection*), para que el grabado no se estire. Es el paso más importante.
 4. **Orientación y escala:** parado sobre la base, **origen en el centro de la base**, eje Y hacia arriba, **la zona de grabado mirando hacia adelante (+Z)**, escala real en metros.
 5. **Materiales simples:** color base gris neutro, sin texturas.

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -16,9 +17,10 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
   WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
   ChevronUp, Crosshair, CirclePlay, Orbit, Link2, MessageCircle, MapPin, HandCoins,
-  Undo2, Trash2, Search, ScanEye,
+  Undo2, Trash2, Search, ScanEye, Maximize2, Paintbrush, X,
 } from "lucide-react";
 import Thermos3D from "./thermos-3d";
+import type { PinchPhase } from "@/lib/pinch";
 // El creador de stickers baja recién al elegir el modo "Stickers".
 const StickerCreator = React.lazy(() => import("./stickers"));
 import Object3D from "./object-3d";
@@ -36,9 +38,10 @@ import {
   wrap360MaxScale, wrap360Fits, type MarkSpec, type TextMark,
 } from "@/lib/engraving-maps";
 import {
-  padToPlacement, placementToPad, engraveFacesFor, faceCenterU, faceLabel,
+  padToPlacement, placementToPad, engraveFacesFor, faceCenterU, faceLabel, nearU,
   clampPlacementToFrontArea, type MarkHalfExtents,
 } from "@/lib/face-area";
+import { clampFree, staticZones, KEEP_OUT_LABEL, type FreeClampResult, type KeepOutZone } from "@/lib/keep-out";
 import {
   MATERIALS, DEFAULT_MATERIAL_ID, PEN_OPTIONS, getMaterial, allowsColorPrint, type MaterialId,
 } from "@/lib/materials";
@@ -64,6 +67,14 @@ import { useCreateOrder, type CreateOrderRequest } from "@workspace/api-client-r
 import { Download, Loader2 } from "lucide-react";
 
 /** Text scale bounds. Capped low so a name never blows out past the band. */
+/**
+ * Ubicación libre en termos y vasos: el diseño va en cualquier lugar de la
+ * banda grabable (entre la tapa y la base), sin el recuadro de una cara. Solo
+ * lo frenan el logo y la marca, la manija y los relieves (lib/keep-out.ts).
+ * En false vuelve la "edición en una cara" de antes.
+ */
+const FREE_PLACEMENT = true;
+
 const TEXT_SCALE_MIN = 0.3;
 const TEXT_SCALE_MAX = 1.2;
 /** "Texto 2" arranca más chico que el principal (suele ser la línea secundaria). */
@@ -265,13 +276,17 @@ function WizardProgress({ step, labels }: { step: number; labels: string[] }) {
  * resumen) el botón principal envía el pedido: es el paso que convierte y el
  * CTA no puede quedar abajo, fuera de la vista.
  */
-function WizardNav({ step, total, onBack, onNext, nextLabel, final }: {
+function WizardNav({ step, total, onBack, onNext, nextLabel, design, inline, final }: {
   step: number; total: number; onBack: () => void; onNext: () => void; nextLabel?: string;
+  /** El siguiente paso es el de Diseño: botón grande, con pincel, que se note. */
+  design?: boolean;
+  /** Dentro de la pantalla de Diseño (no fija sobre la página). */
+  inline?: boolean;
   final?: { label: React.ReactNode; onClick: () => void; disabled?: boolean };
 }) {
   return (
     <div
-      className="md:hidden fixed inset-x-0 bottom-0 z-40 bg-white/95 backdrop-blur border-t border-border px-4 pt-3 flex items-center gap-3"
+      className={`md:hidden ${inline ? "shrink-0" : "fixed inset-x-0 bottom-0 z-40"} bg-white/95 backdrop-blur border-t border-border px-4 pt-3 flex items-center gap-3`}
       style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
     >
       <button
@@ -282,7 +297,15 @@ function WizardNav({ step, total, onBack, onNext, nextLabel, final }: {
       >
         <ChevronLeft className="w-4 h-4" /> Atrás
       </button>
-      {step < total && (
+      {step < total && (design ? (
+        <button
+          type="button"
+          onClick={onNext}
+          className="wiz-design-cta flex-1 inline-flex items-center justify-center gap-2 px-5 py-3.5 min-h-12 rounded-full bg-primary text-primary-foreground text-base font-bold shadow-lg shadow-primary/30 active:scale-[0.98] transition-transform"
+        >
+          <Paintbrush className="w-5 h-5" /> {nextLabel ?? "Diseñar"} <ChevronRight className="w-5 h-5" />
+        </button>
+      ) : (
         <button
           type="button"
           onClick={onNext}
@@ -290,7 +313,7 @@ function WizardNav({ step, total, onBack, onNext, nextLabel, final }: {
         >
           {nextLabel ?? "Siguiente"} <ChevronRight className="w-4 h-4" />
         </button>
-      )}
+      ))}
       {step >= total && final && (
         <button
           type="button"
@@ -305,14 +328,120 @@ function WizardNav({ step, total, onBack, onNext, nextLabel, final }: {
   );
 }
 
-/** Material picker as a horizontal row of scrollable pills (mobile Step 1). */
+/**
+ * Área visible de la pantalla: con el teclado abierto se achica (y en iPhone
+ * además se corre). `keyboard` = el alto bajó bastante respecto del máximo visto.
+ */
+function useVisualViewport() {
+  const read = () => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    return { height: vv?.height ?? (typeof window !== "undefined" ? window.innerHeight : 800), top: vv?.offsetTop ?? 0 };
+  };
+  const [vp, setVp] = useState(read);
+  const maxH = useRef(vp.height);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const on = () => setVp(read());
+    vv.addEventListener("resize", on);
+    vv.addEventListener("scroll", on);
+    return () => { vv.removeEventListener("resize", on); vv.removeEventListener("scroll", on); };
+  }, []);
+  maxH.current = Math.max(maxH.current, vp.height);
+  return { ...vp, keyboard: vp.height < maxH.current - 150 };
+}
+
+/**
+ * Paso de Diseño en el celular: UNA pantalla fija, sin scroll de página. El
+ * producto queda siempre arriba y las opciones se desplazan debajo, así cada
+ * cambio se ve en el momento (antes había que subir a mirar el termo después
+ * de cada opción). Va en un portal sobre la página; "Atrás" del celular
+ * vuelve al paso anterior en vez de salir del sitio.
+ */
+function MobileDesignScreen({ title, step, total, top, height, onBack, nav, children }: {
+  title: string; step: number; total: number;
+  top: number; height: number;
+  onBack: () => void;
+  nav: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  // Sin scroll de la página detrás.
+  useEffect(() => {
+    const h = document.documentElement, b = document.body;
+    const prev = [h.style.overflow, b.style.overflow];
+    h.style.overflow = "hidden";
+    b.style.overflow = "hidden";
+    return () => { h.style.overflow = prev[0]; b.style.overflow = prev[1]; };
+  }, []);
+
+  // "Atrás" del celular: una entrada propia en el historial.
+  const onBackRef = useRef(onBack);
+  onBackRef.current = onBack;
+  useEffect(() => {
+    let popped = false;
+    window.history.pushState({ csDesign: true }, "");
+    const onPop = () => { popped = true; onBackRef.current(); };
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      if (!popped && window.history.state?.csDesign) window.history.back();
+    };
+  }, []);
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      className="md:hidden fixed inset-x-0 z-50 bg-white flex flex-col"
+      style={{ top, height }}
+    >
+      <div className="shrink-0 flex items-center gap-1 px-1 border-b border-border" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Volver al paso anterior"
+          className="w-11 h-11 grid place-items-center rounded-full text-muted-foreground active:bg-secondary"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <div className="flex-1 min-w-0 text-center leading-tight py-1.5">
+          <p className="text-sm font-semibold text-foreground truncate">{title}</p>
+          <p className="text-[11px] text-muted-foreground">Paso {step} de {total}</p>
+        </div>
+        <span className="w-11" aria-hidden />
+      </div>
+      {children}
+      {nav}
+    </div>,
+    document.body,
+  );
+}
+
+// Qué hay dentro de cada material, en palabras del cliente: en las pruebas
+// nadie buscaba "Acero con pintura recubierta", buscaba "un termo".
+const MATERIAL_SHORT: Record<string, string> = { acero: "Acero" };
+const MATERIAL_HINT: Record<string, string> = {
+  acero: "Termos, vasos y botellas",
+  cuero: "Billeteras y forrados",
+  madera: "Tablas y cajas",
+  boligrafos: "Grabado láser",
+  cristal: "Copas",
+  plastico: "Conservadoras",
+};
+
+/**
+ * Material (celular, Paso 1): todas las opciones a la vista en una grilla de
+ * tarjetas con ícono y qué productos trae. Antes era una fila de pastillas con
+ * scroll horizontal y la mitad quedaba fuera de pantalla.
+ */
 function MaterialChips({ materials, value, onChange }: {
   materials: typeof MATERIALS; value: MaterialId; onChange: (id: MaterialId) => void;
 }) {
   return (
     <div>
-      <Label className="text-sm font-medium text-foreground mb-3 block">Material</Label>
-      <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 snap-x [scrollbar-width:thin]">
+      <Label className="text-sm font-medium text-foreground mb-3 block">¿Qué querés personalizar?</Label>
+      <div role="radiogroup" aria-label="Material" className="grid grid-cols-3 gap-2">
         {materials.map(m => {
           const Icon = MATERIAL_ICON[m.icon] ?? Box;
           const on = m.id === value;
@@ -320,11 +449,15 @@ function MaterialChips({ materials, value, onChange }: {
             <button
               key={m.id}
               type="button"
+              role="radio"
+              aria-checked={on}
               onClick={() => onChange(m.id)}
-              title={m.desc}
-              className={`snap-start shrink-0 inline-flex items-center gap-2 px-4 py-2.5 border rounded-full text-sm font-medium whitespace-nowrap transition-all ${on ? activeCard : idleCard}`}
+              className={`relative min-h-[96px] px-1.5 py-3 border rounded-xl flex flex-col items-center justify-center gap-1 text-center transition-all ${on ? activeCard : idleCard}`}
             >
-              <Icon className="w-4 h-4 shrink-0" /> {m.name}
+              {on && <Check className="absolute top-1.5 right-1.5 w-3.5 h-3.5" aria-hidden />}
+              <Icon className="w-6 h-6 shrink-0" />
+              <span className={`text-[13px] font-semibold leading-tight ${on ? "" : "text-foreground"}`}>{MATERIAL_SHORT[m.id] ?? m.name}</span>
+              <span className="text-[11px] leading-tight text-muted-foreground">{MATERIAL_HINT[m.id] ?? ""}</span>
             </button>
           );
         })}
@@ -333,10 +466,27 @@ function MaterialChips({ materials, value, onChange }: {
   );
 }
 
-/** Product picker (or pen) as scrollable pills for the chosen material (mobile Step 1). */
+/** Cuántos productos se ven antes de "Ver todos" (dos filas de tres). */
+const PRODUCT_PREVIEW = 6;
+
+/**
+ * Producto del material elegido (celular, Paso 1): grilla con la silueta de
+ * cada pieza. Con muchos productos se ven dos filas (siempre incluye el
+ * elegido) y "Ver todos" despliega el resto.
+ */
 function ProductChips({ material, value, onChange }: {
   material: (typeof MATERIALS)[number]; value: string; onChange: (id: string) => void;
 }) {
+  const [all, setAll] = useState(false);
+  useEffect(() => { setAll(false); }, [material.id]);
+  const Glyph = MATERIAL_ICON[material.icon] ?? Box;
+  const products = material.products;
+  let shown = products;
+  if (!all && products.length > PRODUCT_PREVIEW) {
+    shown = products.slice(0, PRODUCT_PREVIEW);
+    const sel = products.find(p => p.id === value);
+    if (sel && !shown.includes(sel)) shown = [...shown.slice(0, PRODUCT_PREVIEW - 1), sel];
+  }
   return (
     <div>
       <Label className="text-sm font-medium text-foreground mb-3 block">
@@ -347,22 +497,42 @@ function ProductChips({ material, value, onChange }: {
           <PenLine className="w-4 h-4" /> Bolígrafo
         </div>
       ) : (
-        <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 snap-x [scrollbar-width:thin]">
-          {material.products.map(p => {
-            const on = p.id === value;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => onChange(p.id)}
-                title={p.desc}
-                className={`snap-start shrink-0 inline-flex items-center px-4 py-2.5 border rounded-full text-sm font-medium whitespace-nowrap transition-all ${on ? activeCard : idleCard}`}
-              >
-                {p.name}
-              </button>
-            );
-          })}
-        </div>
+        <>
+          <div role="radiogroup" aria-label="Producto" className="grid grid-cols-3 gap-2">
+            {shown.map(p => {
+              const on = p.id === value;
+              const dp = p.drinkwareProductId ? getProduct(p.drinkwareProductId) : null;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => onChange(p.id)}
+                  title={p.desc}
+                  className={`relative px-1.5 pt-2 pb-2.5 border rounded-xl flex flex-col items-center justify-end gap-1.5 transition-all ${on ? activeCard : idleCard}`}
+                >
+                  {on && <Check className="absolute top-1.5 right-1.5 w-3.5 h-3.5" aria-hidden />}
+                  {dp ? (
+                    <ProductGlyph product={dp} className="h-12 w-full" />
+                  ) : (
+                    <span className="h-12 flex items-center justify-center"><Glyph className="w-7 h-7" /></span>
+                  )}
+                  <span className={`text-xs font-medium text-center leading-tight ${on ? "" : "text-foreground"}`}>{p.name}</span>
+                </button>
+              );
+            })}
+          </div>
+          {products.length > PRODUCT_PREVIEW && (
+            <button
+              type="button"
+              onClick={() => setAll(a => !a)}
+              className="mt-2 w-full min-h-11 inline-flex items-center justify-center gap-1 rounded-xl text-sm font-medium text-primary hover:bg-secondary/50"
+            >
+              {all ? <>Ver menos <ChevronUp className="w-4 h-4" /></> : <>Ver todos ({products.length}) <ChevronDown className="w-4 h-4" /></>}
+            </button>
+          )}
+        </>
       )}
     </div>
   );
@@ -613,9 +783,13 @@ function IconPicker({ value, onChange }: { value: string | null; onChange: (id: 
 }
 
 /** Laser vs Eufy Make picker shown once the customer is personalizing. */
-function TechniqueSelector({ value, onChange }: { value: TechniqueId; onChange: (id: TechniqueId) => void }) {
+function TechniqueSelector({ value, onChange, compact }: {
+  value: TechniqueId; onChange: (id: TechniqueId) => void;
+  /** Celular: las dos opciones lado a lado. */
+  compact?: boolean;
+}) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div className={compact ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 sm:grid-cols-2 gap-3"}>
       {TECHNIQUES.map(t => {
         const active = value === t.id;
         const Icon = t.color ? Sparkles : Zap;
@@ -629,7 +803,7 @@ function TechniqueSelector({ value, onChange }: { value: TechniqueId; onChange: 
             <span className="flex items-center gap-2">
               <Icon className="w-4 h-4" />
               <span className="font-semibold text-sm">{t.name}</span>
-              {t.color && (
+              {t.color && !compact && (
                 <span className="ml-auto text-[11px] font-medium uppercase tracking-wide rounded-full px-2.5 py-0.5 bg-[#1A1614] text-white/90">
                   Todo color
                 </span>
@@ -660,8 +834,13 @@ const PAD_BASE = 0.15; // element half-size as a fraction of the pad, at scale 1
  * girar la pieza. Reemplaza a la cruz de flechas: el diseño se mueve
  * arrastrándolo directamente sobre el producto.
  */
-function DesignEditBar({ kindLabel, onSmaller, onBigger, onCenter, onUndo, onDelete, onDone }: {
+function DesignEditBar({ kindLabel, pinch, onSmaller, onBigger, onCenter, onUndo, onDelete, onDone, onStyle, styleLabel }: {
   kindLabel: string;
+  /** Celular: lleva a las opciones del elemento tocado (la letra del texto, o el ícono / la imagen). */
+  onStyle?: () => void;
+  styleLabel?: string;
+  /** Celular: el tamaño se cambia pellizcando el visor, sin botones + / −. */
+  pinch?: boolean;
   onSmaller: () => void;
   onBigger: () => void;
   onCenter: () => void;
@@ -672,12 +851,25 @@ function DesignEditBar({ kindLabel, onSmaller, onBigger, onCenter, onUndo, onDel
   const btn = "w-10 h-10 grid place-items-center rounded-lg text-foreground/80 hover:text-primary hover:bg-white active:scale-90 transition disabled:opacity-35 disabled:pointer-events-none";
   return (
     <div className="relative z-20 flex flex-col items-center gap-1 select-none px-2">
-      <span className="text-xs text-muted-foreground">
-        Editando {kindLabel} · arrastralo sobre el producto
-      </span>
+      {pinch ? (
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground text-center">
+          <Move className="w-3.5 h-3.5 shrink-0 text-primary" /> Arrastrá para mover
+          <span aria-hidden>·</span>
+          <Maximize2 className="w-3.5 h-3.5 shrink-0 text-primary" /> Pellizcá para el tamaño
+        </span>
+      ) : (
+        <span className="text-xs text-muted-foreground">
+          Editando {kindLabel} · arrastralo sobre el producto
+        </span>
+      )}
       <div className="flex items-center gap-1 rounded-xl bg-white border border-border shadow-sm p-1">
-        <button type="button" aria-label="Achicar" title="Achicar" className={btn} onClick={onSmaller}><Minus className="w-4 h-4" /></button>
-        <button type="button" aria-label="Agrandar" title="Agrandar" className={btn} onClick={onBigger}><Plus className="w-4 h-4" /></button>
+        {onStyle && (
+          <button type="button" onClick={onStyle} className="h-10 px-2.5 inline-flex items-center gap-1 rounded-lg text-sm font-medium text-foreground/80 hover:text-primary hover:bg-white active:scale-95 transition">
+            {styleLabel === "Letra" ? <Type className="w-4 h-4" /> : <Shapes className="w-4 h-4" />} {styleLabel}
+          </button>
+        )}
+        {!pinch && <button type="button" aria-label="Achicar" title="Achicar" className={btn} onClick={onSmaller}><Minus className="w-4 h-4" /></button>}
+        {!pinch && <button type="button" aria-label="Agrandar" title="Agrandar" className={btn} onClick={onBigger}><Plus className="w-4 h-4" /></button>}
         <button type="button" aria-label="Centrar" title="Centrar" className={btn} onClick={onCenter}><Crosshair className="w-4 h-4" /></button>
         <button type="button" aria-label="Deshacer" title="Deshacer" className={btn} onClick={onUndo ?? undefined} disabled={!onUndo}><Undo2 className="w-4 h-4" /></button>
         <button type="button" aria-label="Borrar" title="Borrar" className={btn} onClick={onDelete}><Trash2 className="w-4 h-4" /></button>
@@ -733,10 +925,12 @@ function ArViewButton({ getModel, designKey }: { getModel: ArModelGetter; design
 
   if (mode === "quicklook" && state === "ready" && url) {
     return (
-      <a rel="ar" href={url} className={btn} onClick={() => track("ar_open", { mode })}>
+      // allowsContentScaling=0: la pieza queda a tamaño real (Quick Look no
+      // deja agrandarla ni achicarla con los dedos).
+      <a rel="ar" href={`${url}#allowsContentScaling=0`} className={btn} onClick={() => track("ar_open", { mode })}>
         {/* Quick Look exige una imagen como primer hijo del enlace. */}
         <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" width={1} height={1} />
-        <ScanEye className="w-4 h-4 text-primary" /> Abrir en tu espacio
+        <ScanEye className="w-4 h-4 text-primary" /> Abrir en tu espacio · tamaño real
       </a>
     );
   }
@@ -1078,6 +1272,62 @@ function FontCarousel({ fonts, value, onChange, sampleText }: {
   );
 }
 
+/** Cuántas tipografías se ven en el celular antes de "Ver todas". */
+const FONT_PREVIEW = 6;
+
+/**
+ * Tipografías en el celular: 6 a la vista en una grilla (siempre incluye la
+ * elegida) y "Ver las N tipografías" despliega el resto. Reemplaza al
+ * carrusel de 23 con scroll lateral, que en las pruebas resultaba tosco.
+ */
+function FontQuickGrid({ fonts, value, onChange, sampleText }: {
+  fonts: typeof FONTS;
+  value: string;
+  onChange: (id: string) => void;
+  sampleText: string;
+}) {
+  const [all, setAll] = useState(false);
+  let shown: (typeof FONTS)[number][] = [...fonts];
+  if (!all) {
+    shown = shown.slice(0, FONT_PREVIEW);
+    const sel = fonts.find(f => f.id === value);
+    if (sel && !shown.includes(sel)) shown = [...shown.slice(0, FONT_PREVIEW - 1), sel];
+  }
+  const sample = sampleText.split("\n")[0].trim().slice(0, 10) || "Aa";
+  return (
+    <div>
+      <div role="radiogroup" aria-label="Tipografía" className="grid grid-cols-3 gap-2">
+        {shown.map(f => {
+          const on = f.id === value;
+          return (
+            <button
+              key={f.id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => onChange(f.id)}
+              title={f.name}
+              className={`min-h-14 px-1.5 py-2 border rounded-xl text-center transition-all ${on ? activeCard : idleCard}`}
+            >
+              <span className={`block text-lg leading-tight truncate ${on ? "text-primary" : "text-foreground"}`} style={f.style}>{sample}</span>
+              <span className="block text-[10px] text-muted-foreground mt-0.5 truncate">{f.name}</span>
+            </button>
+          );
+        })}
+      </div>
+      {fonts.length > FONT_PREVIEW && (
+        <button
+          type="button"
+          onClick={() => setAll(a => !a)}
+          className="mt-2 w-full min-h-11 inline-flex items-center justify-center gap-1 rounded-xl text-sm font-medium text-primary hover:bg-secondary/50"
+        >
+          {all ? <>Ver menos <ChevronUp className="w-4 h-4" /></> : <>Ver las {fonts.length} tipografías <ChevronDown className="w-4 h-4" /></>}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /**
  * Una tipografía del carrusel. Recién aplica su fuente cuando el chip entra en
  * pantalla (o está elegida): así el navegador baja solo las 3–4 visibles y no
@@ -1184,8 +1434,9 @@ function TextColorPicker({ value, onChange }: { value: string; onChange: (hex: s
 
 /** Multi-line engraving text field: a textarea with a newline-aware char cap
  *  (line breaks don't count) so "Saltos manuales" works without eating budget. */
-function EngravingTextField({ text, onText, layout, onFocusChange, limitNotice, placeholder = "Tu nombre o texto" }: {
+function EngravingTextField({ text, onText, layout, onFocusChange, limitNotice, placeholder = "Tu nombre o texto", inputRef }: {
   text: string;
+  inputRef?: React.Ref<HTMLTextAreaElement>;
   placeholder?: string;
   onText: (t: string) => void;
   layout: TextLayout | undefined;
@@ -1197,6 +1448,7 @@ function EngravingTextField({ text, onText, layout, onFocusChange, limitNotice, 
   return (
     <>
       <Textarea
+        ref={inputRef}
         value={text}
         onChange={(e) => onText(capEngravingText(e.target.value))}
         onFocus={() => onFocusChange?.(true)}
@@ -1533,10 +1785,11 @@ export default function Customizer() {
   // below. On ≥md it goes back to the roomier desktop sizing.
   const isMobile = useIsMobile();
 
-  // Mobile wizard: the flow is split into steps on phones. Drinkware gets the
-  // full four-step flow (Producto · Estilo · Diseño · Resumen); simpler products
-  // (flat objects, pens) collapse to two (Producto · Diseño). State is
-  // centralised here, so stepping back and forth never loses anything.
+  // Mobile wizard: the flow is split into steps on phones. Drinkware gets three
+  // steps (Tu pieza · Diseño · Enviar): material, producto, tamaño, color y
+  // técnica se eligen juntos en la primera. Simpler products (flat objects,
+  // pens) collapse to two (Tu pieza · Diseño). State is centralised here, so
+  // stepping back and forth never loses anything.
   const [mobileStep, setMobileStep] = useState(1);
   // "Stickers" (eufyMake E1) vive acá mismo, como otro modo del personalizador.
   const [mode, setMode] = useState<"products" | "stickers">("products");
@@ -1738,7 +1991,9 @@ export default function Customizer() {
   // así que al elegirla cambiamos automáticamente a edición libre (con aviso
   // en el toolbar de disposición) y volvemos a una cara al salir de ella.
   const isWrap360 = (textPlacement.layout ?? "auto") === "wrap360";
-  const singleFace = !isWrap360;
+  const singleFace = !FREE_PLACEMENT && !isWrap360;
+  /** El arte (ícono/imagen) va en una cara salvo con la ubicación libre. */
+  const artSingleFace = !FREE_PLACEMENT;
 
   const [technique, setTechnique] = useState<TechniqueId>("laser");
   // Eufy (colour) is drinkware-with-coating only; everything else is laser-only.
@@ -1768,15 +2023,28 @@ export default function Customizer() {
 
   // ── Mobile wizard step model (derived from the product kind) ───────────────
   const wizardLabels = isDrinkware
-    ? ["Producto", "Estilo", "Diseño", "Resumen"]
-    : ["Producto", "Diseño"];
-  const designStepIndex = isDrinkware ? 3 : 2;
+    ? ["Tu pieza", "Diseño", "Enviar"]
+    : ["Tu pieza", "Diseño"];
+  const designStepIndex = 2;
   const isDesignStep = isMobile && mobileStep === designStepIndex;
 
   const goToStep = (n: number) => {
+    // Al salir de la pantalla de Diseño se vuelve a la página: mostrar el
+    // personalizador desde arriba (la página pudo haber quedado en otro lado).
+    if (isMobile && mobileStep === designStepIndex && n !== designStepIndex) {
+      requestAnimationFrame(() => sectionRef.current?.scrollIntoView({ block: "start" }));
+    }
     setMobileStep(n);
     track("customizer_step", { step: n, step_name: wizardLabels[n - 1] });
+    if (n === designStepIndex && !designReachedRef.current) {
+      designReachedRef.current = true;
+      track("design_reached", { ms: viewStartRef.current === null ? null : Math.round(performance.now() - viewStartRef.current) });
+    }
   };
+  const designReachedRef = useRef(false);
+  const vp = useVisualViewport();
+  /** Alto del visor en la pantalla de Diseño del celular: ~40 % de lo visible. */
+  const mobileViewerH = Math.round(Math.min(340, Math.max(150, vp.height * (vp.keyboard ? 0.38 : 0.42))));
 
   // Keep the step in range if the product kind changes the step count.
   React.useEffect(() => {
@@ -1806,7 +2074,7 @@ export default function Customizer() {
       const dp = getProduct(mp.drinkwareProductId);
       setSize(dp.sizes[1]?.id ?? dp.sizes[0].id);
     }
-    setMobileStep(mp.drinkwareProductId ? 3 : 2);
+    setMobileStep(2); // Diseño
     track("customizer_preset", { material: m.id, product: mp.id });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
@@ -1829,7 +2097,7 @@ export default function Customizer() {
         const dp = getProduct(mp.drinkwareProductId);
         setSize(dp.sizes.some(x => x.id === d.sizeId) ? d.sizeId : (dp.sizes[1]?.id ?? dp.sizes[0].id));
       }
-      setMobileStep(mp?.drinkwareProductId ? 3 : 2);
+      setMobileStep(2); // Diseño
     }
     if (COLORS.some(c => c.id === d.colorId)) setColor(d.colorId);
     setCustomHex(isHex(d.customHex) ? d.customHex : null);
@@ -1872,12 +2140,36 @@ export default function Customizer() {
   }, []);
   // Embudo: el personalizador se vio (una vez por carga de página).
   const viewTrackedRef = useRef(false);
+  const viewStartRef = useRef<number | null>(null);
   React.useEffect(() => {
     if (customizerInView && !viewTrackedRef.current) {
       viewTrackedRef.current = true;
+      viewStartRef.current = performance.now();
       track("customizer_view");
     }
   }, [customizerInView]);
+  // Embudo del celular: tiempo hasta tocar "Diseñar" y hasta el primer texto,
+  // y en qué paso se va la gente (pagehide sin haber enviado el pedido).
+  const msSinceView = () => (viewStartRef.current === null ? null : Math.round(performance.now() - viewStartRef.current));
+  const firstTextTracked = useRef(false);
+  React.useEffect(() => {
+    if (!text || firstTextTracked.current) return;
+    firstTextTracked.current = true;
+    track("design_first_text", { ms: msSinceView(), mobile: isMobile });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+  const leaveRef = useRef({ step: mobileStep, name: "", ordered: false, mobile: isMobile });
+  leaveRef.current = { step: mobileStep, name: wizardLabels[mobileStep - 1] ?? "", ordered: isOrdered, mobile: isMobile };
+  React.useEffect(() => {
+    const onHide = () => {
+      const l = leaveRef.current;
+      if (!viewTrackedRef.current || l.ordered || !l.mobile) return;
+      track("customizer_leave", { step: l.step, step_name: l.name, ms: msSinceView() });
+    };
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   React.useEffect(() => {
     document.body.classList.toggle("wa-fab-hidden", isMobile && customizerInView);
     return () => document.body.classList.remove("wa-fab-hidden");
@@ -1947,9 +2239,8 @@ export default function Customizer() {
     [product, textSpec, textPlacement, singleFace, fontTick],
   );
   const artExtents = React.useMemo<MarkHalfExtents>(
-    // El arte se edita siempre en una cara (la edición libre es solo del texto).
-    () => markHalfExtents(product, artSpec, artPlacement, true),
-    [product, artSpec, artPlacement],
+    () => markHalfExtents(product, artSpec, artPlacement, artSingleFace),
+    [product, artSpec, artPlacement, artSingleFace],
   );
 
   // ── Texto 2 ── mismo tratamiento que el principal, con su fuente propia.
@@ -2040,41 +2331,85 @@ export default function Customizer() {
     return AH > 0 ? AW / AH : 1;
   }, [product]);
 
-  // Nearest valid placement inside the front-face rectangle for a given mark.
-  const clampTextP = React.useCallback(
-    (p: Placement) => clampPlacementToFrontArea(p, markHalfExtents(product, textSpec, p, true), product),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [product, textSpec, fontTick],
+  // ── Zonas sin grabado (ubicación libre) ────────────────────────────────────
+  // Las del producto (cargadas a mano / manija de los modelos sin .glb) más las
+  // que mide el visor sobre las piezas del modelo: logo y marca, manija,
+  // etiqueta y relieves.
+  const [modelZones, setModelZones] = useState<{ id: string; zones: KeepOutZone[] }>({ id: "", zones: [] });
+  const onModelKeepOut = React.useCallback((id: string, zones: KeepOutZone[]) => {
+    setModelZones(prev => (prev.id === id && JSON.stringify(prev.zones) === JSON.stringify(zones) ? prev : { id, zones }));
+  }, []);
+  const keepOutZones = React.useMemo<KeepOutZone[]>(
+    () => (!isDrinkware || !FREE_PLACEMENT ? [] : [...staticZones(product), ...(modelZones.id === product.id ? modelZones.zones : [])]),
+    [isDrinkware, product, modelZones],
   );
-  const clampArtP = React.useCallback(
-    (p: Placement) => clampPlacementToFrontArea(p, markHalfExtents(product, artSpec, p, true), product),
-    [product, artSpec],
-  );
-  const clampText2P = React.useCallback(
-    (p: Placement) => clampPlacementToFrontArea(p, markHalfExtents(product, text2Spec, p, true), product),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [product, text2Spec, fontTick],
+  // El Envolvente 360° da la vuelta entera: no se lo frena con zonas.
+  const zonesFor = React.useCallback(
+    (p: Placement) => ((p.layout ?? "auto") === "wrap360" ? [] : keepOutZones),
+    [keepOutZones],
   );
 
-  // Setters that keep placements inside the rectangle while in single-face mode.
-  // Flat blanks skip it: their face renderer clamps against the real face edges.
-  // El arte (ícono/imagen) se clampa SIEMPRE: la edición libre del Envolvente
-  // 360° aplica únicamente al texto.
-  const applyTextPlacement = (next: Placement) => setTextPlacement(singleFace && !is3DObject ? clampTextP(next) : next);
+  // Nearest valid placement for a given mark: inside the front-face rectangle
+  // (una cara) or anywhere on the band outside the keep-out zones (libre).
+  // `from`: the previous placement while dragging (slides along a zone edge).
+  const clampTextR = React.useCallback(
+    (p: Placement, from?: Placement): FreeClampResult => singleFace
+      ? { placement: clampPlacementToFrontArea(p, markHalfExtents(product, textSpec, p, true), product), blockedBy: null }
+      : clampFree(p, markHalfExtents(product, textSpec, p, false), zonesFor(p), from),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [product, textSpec, singleFace, zonesFor, fontTick],
+  );
+  const clampArtR = React.useCallback(
+    (p: Placement, from?: Placement): FreeClampResult => artSingleFace
+      ? { placement: clampPlacementToFrontArea(p, markHalfExtents(product, artSpec, p, true), product), blockedBy: null }
+      : clampFree(p, markHalfExtents(product, artSpec, p, false), keepOutZones, from),
+    [product, artSpec, artSingleFace, keepOutZones],
+  );
+  const clampText2R = React.useCallback(
+    (p: Placement, from?: Placement): FreeClampResult => singleFace
+      ? { placement: clampPlacementToFrontArea(p, markHalfExtents(product, text2Spec, p, true), product), blockedBy: null }
+      : clampFree(p, markHalfExtents(product, text2Spec, p, false), keepOutZones, from),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [product, text2Spec, singleFace, keepOutZones, fontTick],
+  );
+  const clampTextP = React.useCallback((p: Placement) => clampTextR(p).placement, [clampTextR]);
+  const clampArtP = React.useCallback((p: Placement) => clampArtR(p).placement, [clampArtR]);
+  const clampText2P = React.useCallback((p: Placement) => clampText2R(p).placement, [clampText2R]);
+
+  // Setters that keep placements valid (rectangle or keep-out zones). Flat
+  // blanks skip it: their face renderer clamps against the real face edges.
+  const applyTextPlacement = (next: Placement) => setTextPlacement(!is3DObject && (singleFace || FREE_PLACEMENT) ? clampTextP(next) : next);
   const applyArtPlacement = (next: Placement) => setArtPlacement(!is3DObject ? clampArtP(next) : next);
-  const applyText2Placement = (next: Placement) => setText2Placement(singleFace ? clampText2P(next) : next);
+  const applyText2Placement = (next: Placement) => setText2Placement(singleFace || FREE_PLACEMENT ? clampText2P(next) : next);
 
   // Re-clamp when growing the mark or the product changes could push the box out
-  // of bounds (typing a longer name, a bigger plan image, switching size, …).
+  // of bounds (typing a longer name, a bigger plan image, switching size, the
+  // model's zones arriving, …).
   React.useEffect(() => {
-    if (singleFace && !is3DObject) setTextPlacement(p => clampTextP(p));
+    if ((singleFace || FREE_PLACEMENT) && !is3DObject) setTextPlacement(p => clampTextP(p));
   }, [singleFace, is3DObject, clampTextP]);
   React.useEffect(() => {
     if (!is3DObject) setArtPlacement(p => clampArtP(p));
   }, [is3DObject, clampArtP]);
   React.useEffect(() => {
-    if (singleFace) setText2Placement(p => clampText2P(p));
+    if (singleFace || FREE_PLACEMENT) setText2Placement(p => clampText2P(p));
   }, [singleFace, clampText2P]);
+
+  // Choque contra una zona sin grabado: se resalta su contorno, vibra una vez
+  // y se explica debajo del visor ("Ahí está el logo de la marca…").
+  const [keepOutHit, setKeepOutHit] = useState<KeepOutZone | null>(null);
+  const keepOutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const keepOutLast = useRef<KeepOutZone | null>(null);
+  const bumpKeepOut = React.useCallback((z: KeepOutZone) => {
+    if (keepOutLast.current !== z) {
+      keepOutLast.current = z;
+      try { navigator.vibrate?.(12); } catch { /* sin vibración */ }
+      track("keep_out_hit", { kind: z.kind });
+    }
+    setKeepOutHit(z);
+    if (keepOutTimer.current) clearTimeout(keepOutTimer.current);
+    keepOutTimer.current = setTimeout(() => { setKeepOutHit(null); keepOutLast.current = null; }, 1400);
+  }, []);
 
   // ── Design drag / nudge (posicionamiento sobre el 3D) ───────────────────────
   // Which mark a drag-on-3D gesture or the floating d-pad moves: follow the open
@@ -2098,7 +2433,7 @@ export default function Customizer() {
   // Envolvente 360° es exclusiva del texto: al pasar a Íconos o Imagen (arte
   // activo) volvemos al rectángulo de una cara para poder arrastrar el ícono o
   // la foto, aunque el texto siga envolviendo el producto.
-  const editSingleFace = activeDesignKind === "art" ? true : singleFace;
+  const editSingleFace = activeDesignKind === "art" ? artSingleFace : singleFace;
 
   // Cara del texto. Si el producto nuevo no la ofrece (ej. el dorso de un termo
   // con logo atrás), vuelve al frente.
@@ -2118,6 +2453,11 @@ export default function Customizer() {
   React.useEffect(() => {
     if (!is3DObject && (artPlacement.face ?? "front") !== artFace) setArtPlacement(p => clampArtP({ ...p, face: artFace }));
   }, [is3DObject, artPlacement.face, artFace, clampArtP]);
+  /** Cara más cercana a un punto de la vuelta (resumen con ubicación libre). */
+  const faceAtU = (u: number): FaceId => {
+    const d = (f: FaceId) => { const c = faceCenterU(product, f); return Math.abs(nearU(u, c) - c); };
+    return (["front", "left", "back", "right"] as FaceId[]).reduce((a, b) => (d(b) < d(a) ? b : a));
+  };
   /** Lleva un elemento a otra cara, en el mismo lugar dentro del rectángulo. */
   const moveToFace = (p: Placement, from: FaceId, face: FaceId): Placement =>
     ({ ...p, face, u: p.u + faceCenterU(product, face) - faceCenterU(product, from) });
@@ -2146,7 +2486,8 @@ export default function Customizer() {
   };
   // Con un diseño en el lado del logo, el 3D oculta el logo de la marca: el
   // diseño va en su lugar.
-  const designOnLogoSide = !!product.logoBack && !is3DObject && (
+  // (Con la ubicación libre el logo es zona sin grabado: nunca queda tapado.)
+  const designOnLogoSide = !FREE_PLACEMENT && !!product.logoBack && !is3DObject && (
     (hasText && (!singleFace || textFace === "back"))
     || (hasText2 && (!singleFace || text2Face === "back"))
     || (hasArt && artFace === "back"));
@@ -2160,12 +2501,15 @@ export default function Customizer() {
     if (guidesTimer.current) clearTimeout(guidesTimer.current);
     guidesTimer.current = setTimeout(() => setGuidesActive(false), 1100);
   }, []);
+  // Arrastrando (ubicación libre): la pieza gira para seguir al diseño.
+  const [designDragging, setDesignDragging] = useState(false);
   const beginDesignDrag = React.useCallback(() => {
     if (guidesTimer.current) { clearTimeout(guidesTimer.current); guidesTimer.current = null; }
     setGuidesActive(true);
+    setDesignDragging(true);
     setHistory(h => [...h.slice(-29), snapshotRef.current]);
   }, []);
-  const endDesignDrag = React.useCallback(() => { flashGuides(); }, [flashGuides]);
+  const endDesignDrag = React.useCallback(() => { setDesignDragging(false); flashGuides(); }, [flashGuides]);
 
   // Move the active mark by a delta in pad space (0..1 across the front-face
   // rectangle). Shared by the drag-on-3D and the floating d-pad. In single-face
@@ -2204,6 +2548,22 @@ export default function Customizer() {
   }, [singleFace, is3DObject, product, activeDesignKind, clampTextP, clampText2P, clampArtP]);
 
   const centerActivePlacement = React.useCallback(() => {
+    if (FREE_PLACEMENT && !is3DObject) {
+      // Libre: al centro de la cara donde está (frente, costado o dorso), a
+      // media altura; si ahí hay una zona sin grabado, a la salida más cercana.
+      const toFace = (p: Placement): Placement => {
+        const f0 = faceCenterU(product, "front");
+        const k = Math.round((nearU(p.u, f0) - f0) * 4);
+        return { ...p, u: f0 + k / 4, v: 0.5 };
+      };
+      const cur = activeDesignKind === "text" ? textPlacement : activeDesignKind === "text2" ? text2Placement : artPlacement;
+      if (activeDesignKind === "text") setTextPlacement(clampTextP(toFace(cur)));
+      else if (activeDesignKind === "text2") setText2Placement(clampText2P({ ...cur, u: toFace(cur).u }));
+      else if (activeDesignKind === "art") setArtPlacement(clampArtP(toFace(cur)));
+      thermosSnapRef.current?.(toFace(cur).u);
+      flashGuides();
+      return;
+    }
     // Face centre for flat blanks; centre of the front-face rectangle (same
     // u, product-tuned v centre, run through the clamp) for drinkware.
     const c = is3DObject ? { u: 0.5, v: 0.5 } : padToPlacement(0.5, 0.5, product);
@@ -2218,7 +2578,7 @@ export default function Customizer() {
     else if (activeDesignKind === "text2") setText2Placement(p => (is3DObject ? p : singleFace ? clampText2P({ ...p, u: c2.u }) : { ...p, u: c2.u }));
     else if (activeDesignKind === "art") setArtPlacement(p => clampA({ ...p, u: ca.u, v: ca.v }));
     flashGuides();
-  }, [is3DObject, product, activeDesignKind, clampTextP, clampText2P, clampArtP, flashGuides, textPlacement.face, text2Placement.face, artPlacement.face, singleFace]);
+  }, [is3DObject, product, activeDesignKind, clampTextP, clampText2P, clampArtP, flashGuides, textPlacement, text2Placement, artPlacement, singleFace]);
 
   // Objetos planos (billetera, tabla…): delta del arrastre como fracción del
   // canvas → delta del pad. La cara ocupa más o menos la mitad del visor.
@@ -2229,6 +2589,18 @@ export default function Customizer() {
   // Drinkware: el visor ya convierte el arrastre 1:1 a u (vuelta) y v (banda),
   // así el diseño queda pegado al dedo. En una cara se re-encuadra en el área.
   const onDesignMoveUV = React.useCallback((du: number, dv: number) => {
+    if (FREE_PLACEMENT) {
+      // Libre: el paso se "resbala" por el borde de las zonas sin grabado.
+      const step = (p: Placement, clampR: (q: Placement, from?: Placement) => FreeClampResult) => {
+        const r = clampR({ ...p, u: p.u + du, v: p.v + dv }, p);
+        if (r.blockedBy) bumpKeepOut(r.blockedBy);
+        return r.placement;
+      };
+      if (activeDesignKind === "text") setTextPlacement(step(textPlacement, clampTextR));
+      else if (activeDesignKind === "text2") setText2Placement(step(text2Placement, clampText2R));
+      else if (activeDesignKind === "art") setArtPlacement(step(artPlacement, clampArtR));
+      return;
+    }
     const apply = (p: Placement, clampFn: (q: Placement) => Placement, sf: boolean): Placement => {
       if (sf) return clampFn({ ...p, u: p.u + du, v: p.v + dv });
       let u = p.u + du; u -= Math.floor(u);
@@ -2237,7 +2609,7 @@ export default function Customizer() {
     if (activeDesignKind === "text") setTextPlacement(p => apply(p, clampTextP, singleFace));
     else if (activeDesignKind === "text2") setText2Placement(p => apply(p, clampText2P, singleFace));
     else if (activeDesignKind === "art") setArtPlacement(p => apply(p, clampArtP, true));
-  }, [activeDesignKind, clampTextP, clampText2P, clampArtP, singleFace]);
+  }, [activeDesignKind, clampTextP, clampText2P, clampArtP, singleFace, textPlacement, text2Placement, artPlacement, clampTextR, clampText2R, clampArtR, bumpKeepOut]);
 
   // ── Deshacer ────────────────────────────────────────────────────────────────
   // Una foto del diseño antes de cada acción (arrastre, tamaño, centrar,
@@ -2299,7 +2671,12 @@ export default function Customizer() {
   const textFaceU = faceCenterU(product, textFace);
   const text2FaceU = faceCenterU(product, text2Face);
   const artFaceU = faceCenterU(product, artFace);
-  const designFaceU = activeDesignKind === "art"
+  const designFaceU = FREE_PLACEMENT && !is3DObject
+    ? (activeDesignKind === "text" ? textPlacement.u
+      : activeDesignKind === "text2" ? text2Placement.u
+      : activeDesignKind === "art" ? artPlacement.u
+      : hasText ? textPlacement.u : hasText2 ? text2Placement.u : hasArt ? artPlacement.u : frontU)
+    : activeDesignKind === "art"
     ? artFaceU
     : !singleFace
       ? (activeDesignKind === "text" ? textPlacement.u : activeDesignKind === "text2" ? text2Placement.u : frontU)
@@ -2314,11 +2691,11 @@ export default function Customizer() {
     thermosSnapRef.current?.(
       kind === "text" ? (singleFace ? textFaceU : textPlacement.u)
       : kind === "text2" ? (singleFace ? text2FaceU : text2Placement.u)
-      : artFaceU,
+      : artSingleFace ? artFaceU : artPlacement.u,
     );
     flashGuides();
     track("design_select", { kind, source });
-  }, [singleFace, textPlacement.u, text2Placement.u, textFaceU, text2FaceU, artFaceU, flashGuides]);
+  }, [singleFace, artSingleFace, textPlacement.u, text2Placement.u, artPlacement.u, textFaceU, text2FaceU, artFaceU, flashGuides]);
 
   const finishEditing = React.useCallback(() => {
     setSelected(null);
@@ -2379,21 +2756,118 @@ export default function Customizer() {
   }, [activeDesignKind, textPlacement, text2Placement, artPlacement, textExtents, text2Extents, artExtents]);
 
   // Acciones de la barra de edición.
+  const scaleOf = (kind: DesignKind | null) => kind === "text" ? textPlacement.scale
+    : kind === "text2" ? text2Placement.scale
+    : artPlacement.scale;
+  const activeScale = scaleOf(activeDesignKind);
+  /**
+   * Lleva el elemento a ese tamaño (dentro de sus límites). Devuelve si quedó
+   * en el mínimo o el máximo (el pellizco vibra al llegar).
+   */
+  const scaleActiveTo = (target: number, kind: DesignKind | null = activeDesignKind): "min" | "max" | null => {
+    const r = Math.round(target * 100) / 100;
+    const [lo, hi] = kind === "text" ? [TEXT_SCALE_MIN, Math.min(TEXT_SCALE_MAX, wrapMaxScale)]
+      : kind === "text2" ? [TEXT_SCALE_MIN, TEXT_SCALE_MAX]
+      : [0.3, 1.5];
+    const s = Math.max(lo, Math.min(hi, r));
+    if (kind === "text") applyTextPlacement({ ...textPlacement, scale: s });
+    else if (kind === "text2") applyText2Placement({ ...text2Placement, scale: s });
+    else if (kind === "art") applyArtPlacement({ ...artPlacement, scale: s });
+    else return null;
+    return r <= lo ? "min" : r >= hi ? "max" : null;
+  };
   const resizeActive = (delta: number) => {
     pushHistory();
-    if (activeDesignKind === "text") {
-      const max = Math.min(TEXT_SCALE_MAX, wrapMaxScale);
-      const scale = Math.max(TEXT_SCALE_MIN, Math.min(max, Math.round((textPlacement.scale + delta) * 100) / 100));
-      applyTextPlacement({ ...textPlacement, scale });
-    } else if (activeDesignKind === "text2") {
-      const scale = Math.max(TEXT_SCALE_MIN, Math.min(TEXT_SCALE_MAX, Math.round((text2Placement.scale + delta) * 100) / 100));
-      applyText2Placement({ ...text2Placement, scale });
-    } else if (activeDesignKind === "art") {
-      const scale = Math.max(0.3, Math.min(1.5, Math.round((artPlacement.scale + delta) * 100) / 100));
-      applyArtPlacement({ ...artPlacement, scale });
-    }
+    scaleActiveTo(activeScale + delta);
     flashGuides();
   };
+  // Pellizco sobre el visor (celular): el tamaño sigue a los dedos desde el
+  // que tenía al apoyarlos. Un solo paso de "Deshacer" por pellizco.
+  const pinchBaseRef = useRef(1);
+  // Diseño que tomó el pellizco al apoyar los dedos (puede haberse
+  // seleccionado en ese mismo gesto, antes de que React lo refleje).
+  const pinchKindRef = useRef<DesignKind | null>(null);
+  const pinchLimitRef = useRef<"min" | "max" | null>(null);
+  const pinchPreselectedRef = useRef(true);
+  const onDesignPinch = (phase: PinchPhase, factor: number) => {
+    const kind = phase === "start" ? (pinchKindRef.current ?? activeDesignKind) : pinchKindRef.current;
+    if (!kind) return;
+    if (phase === "start") {
+      pinchPreselectedRef.current = !pinchKindRef.current;
+      pinchKindRef.current = kind;
+      pinchLimitRef.current = null;
+      pushHistory();
+      pinchBaseRef.current = scaleOf(kind);
+      if (guidesTimer.current) { clearTimeout(guidesTimer.current); guidesTimer.current = null; }
+      setGuidesActive(true);
+      dismissPinchHint();
+      return;
+    }
+    const limit = scaleActiveTo(pinchBaseRef.current * factor, kind);
+    // Vibración corta al llegar al tamaño mínimo o máximo (una vez por tope).
+    if (limit && limit !== pinchLimitRef.current) {
+      try { navigator.vibrate?.(10); } catch { /* sin vibración */ }
+    }
+    pinchLimitRef.current = limit;
+    if (phase === "end") {
+      pinchKindRef.current = null;
+      flashGuides();
+      track("design_pinch", { kind, preselected: pinchPreselectedRef.current });
+    }
+  };
+  /**
+   * Dos dedos sin nada seleccionado: si caen sobre un diseño (o uno a cada
+   * lado), se selecciona y el mismo gesto lo escala. En billeteras y tablas
+   * (una sola cara, sin puntos) toma el de la pestaña abierta.
+   */
+  const onPinchSelect = (hits: ({ u: number; v: number } | null)[]): boolean => {
+    let kind: DesignKind | null = null;
+    if (is3DObject) {
+      kind = idleEditKind;
+    } else {
+      const pts = hits.filter((h): h is { u: number; v: number } => !!h);
+      // También el punto medio: los dedos suelen quedar a los costados del diseño.
+      if (pts.length === 2) pts.push({ u: pts[0].u + (pts[1].u - pts[0].u - Math.round(pts[1].u - pts[0].u)) / 2, v: (pts[0].v + pts[1].v) / 2 });
+      const order: DesignKind[] = ["text", "text2", "art"];
+      for (const k of order) {
+        const has = k === "text" ? hasText : k === "text2" ? hasText2 : hasArt;
+        const p = k === "text" ? textPlacement : k === "text2" ? text2Placement : artPlacement;
+        const ext = k === "text" ? textExtents : k === "text2" ? text2Extents : artExtents;
+        if (!has) continue;
+        const over = pts.some(h => {
+          const du = h.u - p.u - Math.round(h.u - p.u);
+          return Math.abs(du) <= ext.halfU + 0.05 && Math.abs(h.v - p.v) <= ext.halfV + 0.1;
+        });
+        if (over) { kind = k; break; }
+      }
+    }
+    if (!kind) return false;
+    pinchKindRef.current = kind;
+    setSelected(kind);
+    setUndoDeleteUntil(0);
+    track("design_select", { kind, source: "pinch" });
+    return true;
+  };
+
+  // Pista de primer uso: la primera vez que se edita un diseño en el celular,
+  // 3 segundos sobre la pieza "Pellizcá para cambiar el tamaño" (en lugar de
+  // explicarlo antes). No vuelve a aparecer.
+  const [pinchHint, setPinchHint] = useState(false);
+  const pinchHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissPinchHint = () => {
+    if (pinchHintTimer.current) { clearTimeout(pinchHintTimer.current); pinchHintTimer.current = null; }
+    setPinchHint(false);
+  };
+  React.useEffect(() => {
+    if (!isMobile || !designActive) return;
+    try {
+      if (localStorage.getItem("cs-pinch-hint") === "1") return;
+      localStorage.setItem("cs-pinch-hint", "1");
+    } catch { /* sin storage: se muestra igual, una vez por carga */ }
+    setPinchHint(true);
+    pinchHintTimer.current = setTimeout(() => setPinchHint(false), 3000);
+  }, [isMobile, designActive]);
+  React.useEffect(() => () => { if (pinchHintTimer.current) clearTimeout(pinchHintTimer.current); }, []);
   const deleteActive = () => {
     pushHistory();
     if (activeDesignKind === "text") setText("");
@@ -2414,7 +2888,7 @@ export default function Customizer() {
     // Va en la misma cara que el texto 1 (frente, lado del logo o costado).
     const face = hasText && singleFace ? textFace : "front";
     const c = padToPlacement(0.5, 0.5, product, face);
-    const nextToText1 = hasText && singleFace;
+    const nextToText1 = hasText && (singleFace || FREE_PLACEMENT);
     const gap = textExtents.halfV + 0.07;
     let main = textPlacement;
     let v2 = c.v;
@@ -2467,6 +2941,64 @@ export default function Customizer() {
   const idleEditKind: DesignKind | null =
     (drinkTab === "icons" || drinkTab === "media") ? (hasArt ? "art" : hasText ? "text" : hasText2 ? "text2" : null)
     : hasText ? "text" : hasText2 ? "text2" : hasArt ? "art" : null;
+
+  // ── Editor simple del celular (pestaña Texto) ───────────────────────────────
+  // El campo y las letras editan el texto que se tocó sobre la pieza: el 1 o
+  // el 2. Así no hay que buscar en las pestañas cuál es cuál.
+  const [textTarget, setTextTarget] = useState<"text" | "text2">("text");
+  React.useEffect(() => {
+    if (activeDesignKind === "text" || activeDesignKind === "text2") setTextTarget(activeDesignKind);
+  }, [activeDesignKind]);
+  React.useEffect(() => {
+    if (!text2Open && textTarget === "text2") setTextTarget("text");
+  }, [text2Open, textTarget]);
+  const editingText2 = textTarget === "text2" && text2Open;
+  const [moreOpen, setMoreOpen] = useState(false);
+  const textInputRef = useRef<HTMLTextAreaElement>(null);
+  const fontGridRef = useRef<HTMLDivElement>(null);
+  /** Barra sobre el diseño: "Letra" lleva a la pestaña Texto (o "Cambiar" al ícono / la imagen). */
+  const styleActive = () => {
+    if (activeDesignKind === "art") { setDrinkTab(iconId ? "icons" : "media"); return; }
+    if (activeDesignKind) setTextTarget(activeDesignKind);
+    setDrinkTab("text");
+    requestAnimationFrame(() => fontGridRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }));
+    track("design_style", { kind: activeDesignKind ?? "" });
+  };
+
+  // Diseños rápidos: un toque y la pieza ya tiene un ejemplo para editar (en
+  // las pruebas nadie quería arrancar con la pieza vacía). El ejemplo queda
+  // seleccionado en el campo: lo que se escriba lo reemplaza. Después se
+  // arrastra libre por toda la pieza, como cualquier diseño.
+  const QUICK_STARTS = [
+    { id: "name", title: "Nombre", sample: "“Sofía”" },
+    { id: "date", title: "Nombre + fecha", sample: `“Sofía · ${new Date().getFullYear()}”` },
+    { id: "phrase", title: "Frase + ícono", sample: "“Mate y amigos” + mate" },
+    canUploadImage
+      ? { id: "logo", title: "Logo", sample: "Subí tu imagen" }
+      : { id: "icon", title: "Solo un ícono", sample: "Corazón, estrella…" },
+  ] as const;
+  const applyQuickStart = (id: (typeof QUICK_STARTS)[number]["id"]) => {
+    track("design_quickstart", { id, product: productId });
+    if (id === "logo") { setDrinkTab("media"); return; }
+    if (id === "icon") { setDrinkTab("icons"); return; }
+    pushHistory();
+    setTextTarget("text");
+    if (id === "date") {
+      handleEngravingText("Sofía");
+      setPendingText2(String(new Date().getFullYear()));
+    } else {
+      handleEngravingText(id === "phrase" ? "Mate y amigos" : "Sofía");
+    }
+    if (id === "phrase") {
+      handlePickIcon("mate");
+      applyArtPlacement({ ...DEFAULT_ART_PLACEMENT, u: textPlacement.u });
+    }
+    // Foco en el mismo toque (iOS abre el teclado solo así) y el ejemplo
+    // seleccionado, para escribir encima.
+    const el = textInputRef.current;
+    el?.focus();
+    requestAnimationFrame(() => el?.select());
+  };
 
   // ── Preview capture ─────────────────────────────────────────────────────────
   // Grab a PNG of the live 3D canvas (the termo draws a fresh frame right before
@@ -2729,12 +3261,14 @@ export default function Customizer() {
     const trimmedText = text.trim();
     const trimmedText2 = text2.trim();
     if (trimmedText) rows.push([trimmedText2 ? "Texto 1" : "Texto", `${trimmedText} (${activeFont.name})`]);
-    if (trimmedText && isDrinkware && !isWrap360 && textFaces.length > 1) rows.push(["Ubicación del texto", faceLabel(product, textFace)]);
+    // Libre: la cara más cercana a donde quedó cada elemento (para el taller).
+    const where = (p: Placement, face: FaceId) => faceLabel(product, FREE_PLACEMENT ? faceAtU(p.u) : face);
+    if (trimmedText && isDrinkware && !isWrap360 && textFaces.length > 1) rows.push(["Ubicación del texto", where(textPlacement, textFace)]);
     if (trimmedText2) rows.push(["Texto 2", `${trimmedText2} (${activeFont2.name})`]);
-    if (trimmedText2 && isDrinkware && text2Face !== textFace) rows.push(["Ubicación del texto 2", faceLabel(product, text2Face)]);
+    if (trimmedText2 && isDrinkware && where(text2Placement, text2Face) !== where(textPlacement, textFace)) rows.push(["Ubicación del texto 2", where(text2Placement, text2Face)]);
     if (selectedIcon) rows.push(["Ícono", selectedIcon.name]);
     else if (customImage) rows.push(["Logo/foto adjunta", "Sí"]);
-    if (hasArt && isDrinkware && artFace !== "front") rows.push([selectedIcon ? "Ubicación del ícono" : "Ubicación de la imagen", faceLabel(product, artFace)]);
+    if (hasArt && isDrinkware && (FREE_PLACEMENT ? faceAtU(artPlacement.u) : artFace) !== "front") rows.push([selectedIcon ? "Ubicación del ícono" : "Ubicación de la imagen", where(artPlacement, artFace)]);
     if (extraLidText !== null) rows.push(["Grabado en tapa", extraLidText || "Sí (texto a definir)"]);
     if (extraBaseText !== null) rows.push(["Grabado en base", extraBaseText || "Sí (texto a definir)"]);
     return rows;
@@ -2778,6 +3312,9 @@ export default function Customizer() {
         simpleKind,
         textPlacement,
         artPlacement,
+        // Ubicación libre: u/v son de toda la vuelta (archivo de producción de
+        // 360°) y las zonas sin grabado van como referencia para el taller.
+        ...(FREE_PLACEMENT && isDrinkware ? { placementMode: "free", keepOut: keepOutZones } : {}),
         // Texto 2 (empresa / nombre, etc.): también va al archivo de producción.
         ...(trimmedText2 ? { text2: trimmedText2, text2FontId: text2Font, text2Placement } : {}),
         // Grabado extra (no está en el 3D): también va al archivo de producción.
@@ -3147,7 +3684,9 @@ export default function Customizer() {
         )}
       </div>
 
-      {/* Fine-tune the exact tone within the selected colour family */}
+      {/* Fine-tune the exact tone within the selected colour family. En el
+          celular no: confundía y la paleta del producto alcanza. */}
+      {!isMobile && (
       <div className="pt-4 border-t border-border">
         <div className="flex items-baseline justify-between mb-1">
           <Label className="text-sm font-medium text-foreground">Tono exacto</Label>
@@ -3206,6 +3745,7 @@ export default function Customizer() {
           </div>
         </div>
       </div>
+      )}
     </>
   );
 
@@ -3214,7 +3754,7 @@ export default function Customizer() {
       <Label className="text-sm font-medium mb-2 block">Técnica de grabado</Label>
       {canColor ? (
         <>
-          <TechniqueSelector value={effectiveTechnique} onChange={setTechnique} />
+          <TechniqueSelector value={effectiveTechnique} onChange={setTechnique} compact={isMobile} />
           {effectiveTechnique === "color" && (
             <p className="text-xs text-muted-foreground mt-2">
               La impresión UV a todo color se cotiza por WhatsApp según el diseño.
@@ -3237,6 +3777,166 @@ export default function Customizer() {
       )}
     </div>
   );
+
+  // Pestaña Texto en el celular: lo esencial a la vista (diseños rápidos, el
+  // campo y 6 letras); el resto, a un toque en "Más opciones". El tamaño se
+  // cambia pellizcando la pieza (el control deslizante queda en "Más opciones").
+  // La ubicación es libre: no hay "frente / dorso", se arrastra a cualquier
+  // lugar de la pieza menos el logo y la marca.
+  const renderMobileTextTab = () => {
+    const t2 = editingText2;
+    const value = t2 ? text2 : text;
+    const placement = t2 ? text2Placement : textPlacement;
+    const applyP = t2 ? applyText2Placement : applyTextPlacement;
+    return (
+      <div className="space-y-5">
+        {isEmptyDesign && (
+          <div>
+            <Label className="text-sm font-medium text-foreground mb-2 block">Empezá con un diseño</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {QUICK_STARTS.map(q => (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => applyQuickStart(q.id)}
+                  className={`min-h-14 px-3 py-2 border rounded-xl text-left transition-all ${idleCard}`}
+                >
+                  <span className="block text-sm font-semibold text-foreground leading-tight">{q.title}</span>
+                  <span className="block text-xs text-muted-foreground leading-tight mt-0.5 truncate">{q.sample}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              O escribí lo que quieras. Después lo arrastrás a cualquier lugar {productArticle(product.singular)} {product.singular.toLowerCase()}.
+            </p>
+          </div>
+        )}
+
+        {text2Open && (
+          <div role="tablist" aria-label="Qué texto editar" className="flex gap-1 rounded-xl bg-secondary/50 p-1">
+            {(["text", "text2"] as const).map(k => {
+              const on = (k === "text2") === t2;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  onClick={() => {
+                    setTextTarget(k);
+                    if (k === "text" ? hasText : hasText2) selectDesign(k, "text_switch");
+                  }}
+                  className={`flex-1 min-h-10 rounded-lg text-sm font-medium transition-colors ${on ? "bg-white text-primary shadow-sm" : "text-muted-foreground"}`}
+                >
+                  {k === "text" ? "Texto 1" : "Texto 2"}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div>
+          <EngravingTextField
+            key={t2 ? "t2" : "t1"}
+            inputRef={textInputRef}
+            text={value}
+            onText={t2 ? setText2 : handleEngravingText}
+            layout={t2 ? "auto" : textPlacement.layout}
+            onFocusChange={t2 ? undefined : setTextFieldFocused}
+            limitNotice={!t2 && wrapLimitHit ? "El texto alcanzó el máximo para envolver el producto." : null}
+            placeholder={t2 ? "Segundo texto (ej. una fecha)" : "Tu nombre o texto"}
+          />
+          {!t2 && <AiPhraseIdeas product={product.singular} twoLines={text2Open} onPick={pickPhraseIdea} />}
+        </div>
+
+        {isColorPrint && <TextColorPicker value={textColor} onChange={setTextColor} />}
+
+        <div ref={fontGridRef} className="scroll-mt-16">
+          <Label className="text-sm font-medium text-foreground mb-2 block">Letra</Label>
+          <FontQuickGrid fonts={FONTS} value={t2 ? text2Font : font} onChange={t2 ? setText2Font : setFont} sampleText={value} />
+        </div>
+
+        {!t2 && textLayout.shrunk && (
+          <p className="text-xs text-primary/90 flex items-center gap-1.5 rounded-lg bg-[#f5eaec] border border-primary/20 px-3 py-2">
+            <Info className="w-3.5 h-3.5 shrink-0" />
+            Tamaño ajustado automáticamente para que entre en el área.
+          </p>
+        )}
+
+        <button
+          type="button"
+          onClick={() => { setMoreOpen(true); track("design_more_options"); }}
+          className="w-full min-h-12 flex items-center gap-3 rounded-xl border border-border px-4 py-2.5 text-left active:bg-secondary/50"
+        >
+          <Settings2 className="w-4 h-4 text-primary shrink-0" />
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-medium text-foreground">Más opciones</span>
+            <span className="block text-xs text-muted-foreground truncate">Tamaño, orientación, disposición, otro texto, tapa o base</span>
+          </span>
+          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+        </button>
+
+        <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+          <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto rounded-t-3xl px-5 pt-5" style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}>
+            <SheetTitle className="text-base font-semibold text-foreground">Más opciones{text2Open ? (t2 ? " · Texto 2" : " · Texto 1") : ""}</SheetTitle>
+            <SheetDescription className="sr-only">Tamaño, orientación y disposición del texto, otro texto y grabado en tapa o base</SheetDescription>
+            <div className="mt-2 space-y-6">
+              <div>
+                <TextSizeSlider
+                  scale={placement.scale}
+                  onScale={(s) => applyP({ ...placement, scale: s })}
+                  maxScale={!t2 && isWrap360 ? wrapMaxScale : undefined}
+                />
+                <p className="text-xs text-muted-foreground mt-1.5">También podés pellizcar la pieza con dos dedos.</p>
+              </div>
+              {!t2 && (
+                <OrientationToggle
+                  value={textPlacement.orientation}
+                  onChange={(o) => applyTextPlacement({ ...textPlacement, orientation: o })}
+                  verticalDisabledReason={isWrap360 ? "El texto envolvente 360° va en horizontal alrededor del cuerpo" : undefined}
+                />
+              )}
+              {!t2 && (
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-2 block">Disposición e interlineado</Label>
+                  <TextDispositionToolbar placement={textPlacement} onChange={applyTextPlacement} />
+                </div>
+              )}
+              {text2Open ? (
+                <button
+                  type="button"
+                  onClick={() => { removeText2(); setMoreOpen(false); }}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground active:bg-secondary/50"
+                >
+                  <Trash2 className="w-4 h-4 text-primary" /> Quitar el texto 2
+                </button>
+              ) : !isWrap360 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    openText2();
+                    setTextTarget("text2");
+                    setMoreOpen(false);
+                    textInputRef.current?.focus();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-3 text-sm font-medium text-foreground active:bg-secondary/50"
+                >
+                  <Plus className="w-4 h-4 text-primary" />
+                  Agregar otro texto
+                  {effectiveTechnique === "laser" && (
+                    <span className="text-xs font-normal text-muted-foreground">+ {formatGs(PRICING.laser.extraText)}</span>
+                  )}
+                </button>
+              )}
+              {extraEngraving && (
+                <ExtraEngravingFields lid={extraLid} base={extraBase} onLid={setExtraLid} onBase={setExtraBase} />
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
+    );
+  };
 
   /** Estado mínimo para el link del diseño (sin el logo subido: no entra en una URL). */
   const sharedDesignState = (): SharedDesign => ({
@@ -3449,21 +4149,22 @@ export default function Customizer() {
     </>
   );
 
-  // Mini-preview 3D del wizard móvil (Paso 1 y Paso 2 "Estilo"): una
-  // vista compacta del producto elegido que se actualiza en vivo. Los pasos del
-  // wizard son mutuamente excluyentes, así que nunca hay dos canvas WebGL
-  // montados a la vez (este o el grande del paso de Diseño, jamás ambos).
-  // NO es sticky: en celular el visor pegado arriba seguía al scroll ("el termo
-  // se va para abajo") y tapaba los controles. Scrollea con la página.
-  const renderMiniPreview = () => (
-    <div className="relative bg-white pt-1 pb-0.5">
+  // Mini-preview 3D del wizard móvil (Paso 1 "Tu pieza"): una vista compacta
+  // del producto elegido que se actualiza en vivo. Los pasos del wizard son
+  // mutuamente excluyentes, así que nunca hay dos canvas WebGL montados a la
+  // vez (este o el grande del paso de Diseño, jamás ambos).
+  // `sticky`: queda fija debajo del header mientras las opciones scrollean,
+  // así cada color se ve al instante. Es chica (≈ un cuarto de la pantalla)
+  // para no tapar las opciones, que era el problema del visor grande pegado.
+  const renderMiniPreview = (sticky = false) => (
+    <div className={sticky ? "sticky top-16 z-30 bg-white pt-1 pb-1 -mx-4 px-4 sm:-mx-6 sm:px-6 border-b border-border/60" : "relative bg-white pt-1 pb-0.5"}>
       <div className="relative isolate [transform:translateZ(0)] bg-secondary/30 rounded-2xl border border-border overflow-hidden shadow-lg shadow-black/5">
         {isGlass ? (
           <div className="absolute inset-0 rounded-2xl" style={{ background: "radial-gradient(circle at 50% 38%, #eef2f6 0%, #d3dae2 55%, #aeb8c4 100%)" }} />
         ) : (
           <div className="absolute inset-0 opacity-[0.07] transition-colors duration-500 rounded-2xl" style={{ backgroundColor: isDrinkware ? activeColorHex : "#C1121F" }} />
         )}
-        <div className="relative z-10" style={{ height: "32vh", minHeight: 210, maxHeight: 320 }}>
+        <div className="relative z-10" style={sticky ? { height: "24vh", minHeight: 150, maxHeight: 210 } : { height: "32vh", minHeight: 210, maxHeight: 320 }}>
           {isDrinkware ? (
             <Thermos3D
               colorHex={activeColorHex}
@@ -3486,6 +4187,7 @@ export default function Customizer() {
               frontFaceU={designFaceU}
               hideLogo={designOnLogoSide}
               glass={isGlass}
+              onModelKeepOut={onModelKeepOut}
             />
           ) : is3DObject && activeObject ? (
             <Object3D
@@ -3516,11 +4218,59 @@ export default function Customizer() {
           )}
         </div>
       </div>
-      <p className="text-center text-xs text-muted-foreground mt-1">
-        {isDrinkware || is3DObject ? "Vista en vivo · arrastre para girar" : "Vista previa referencial"}
-      </p>
+      {!sticky && (
+        <p className="text-center text-xs text-muted-foreground mt-1">
+          {isDrinkware || is3DObject ? "Vista en vivo · arrastre para girar" : "Vista previa referencial"}
+        </p>
+      )}
     </div>
   );
+
+  const renderPinchHint = () => (
+    <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center">
+      <span role="status" className="inline-flex items-center gap-1.5 rounded-full bg-black/60 px-3.5 py-2 text-[13px] font-medium text-white backdrop-blur-sm">
+        <Maximize2 className="w-4 h-4" aria-hidden /> Pellizcá para cambiar el tamaño
+      </span>
+    </div>
+  );
+
+  // "Traigo el mío" en el celular: una línea al final de "Tu pieza" (antes
+  // eran dos tarjetas arriba de todo, y casi nadie lo usa).
+  const renderOwnProductLine = () => canBringOwn && (
+    <div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={ownProduct}
+        onClick={() => { setOwnProduct(o => !o); track("customizer_own_product", { own: !ownProduct }); }}
+        className="w-full min-h-12 flex items-center justify-between gap-3 rounded-xl border border-border px-4 py-2.5 text-left active:bg-secondary/50"
+      >
+        <span className="text-sm text-foreground leading-tight">
+          ¿Ya tenés tu {orderProductName.toLowerCase()}? <span className="text-muted-foreground">Traelo y lo grabamos</span>
+        </span>
+        <span aria-hidden className={`shrink-0 w-10 h-6 rounded-full p-0.5 transition-colors ${ownProduct ? "bg-primary" : "bg-border"}`}>
+          <span className={`block w-5 h-5 rounded-full bg-white shadow transition-transform ${ownProduct ? "translate-x-4" : ""}`} />
+        </span>
+      </button>
+      {ownProduct && (
+        <p className="text-xs text-muted-foreground mt-2">
+          Pagás solo el grabado. Elegí arriba el modelo y el color más parecidos al tuyo para ver cómo queda.
+        </p>
+      )}
+    </div>
+  );
+
+  // Resumen de la pieza con el precio, antes de diseñar.
+  const renderPieceSummaryLine = () => {
+    const sizeName = odooMode ? odooSize : product.sizes.length > 1 ? activeSize.name : null;
+    const parts = [odooProduct?.name ?? activeMProduct?.name ?? product.singular, sizeName, isGlass ? "Cristal" : activeColorName.split(" · ")[0], activeTechnique.name];
+    return (
+      <div className="flex items-baseline justify-between gap-3 rounded-xl bg-secondary/40 px-4 py-3">
+        <span className="text-xs text-muted-foreground leading-snug">{parts.filter(Boolean).join(" · ")}</span>
+        {estimate.price && <span className="shrink-0 text-sm font-semibold text-primary tabular-nums">{estimate.price}</span>}
+      </div>
+    );
+  };
 
   // Paso 4 — Resumen: imagen del diseño + detalle legible + envío por WhatsApp.
   // (Sin planes ni precios: eso vive en la sección "Tarifas".) Los campos salen
@@ -3555,6 +4305,61 @@ export default function Customizer() {
 
       {renderOrderActions()}
     </div>
+  );
+
+  // Barra inferior del asistente del celular (fija sobre la página, o dentro
+  // de la pantalla de Diseño con `inline`).
+  const renderWizardNav = (inline: boolean) => (
+    <WizardNav
+      step={mobileStep}
+      total={wizardLabels.length}
+      onBack={() => goToStep(Math.max(1, mobileStep - 1))}
+      onNext={() => {
+        // Leaving the design step: swing the personalized area to face the
+        // camera, wait for the repaint, THEN snapshot the live canvas — so
+        // the Step 4 image always shows the design completely, no matter
+        // how the user left the piece rotated.
+        if (mobileStep === designStepIndex) {
+          // Terminar la edición: sin guías ni selección en la foto.
+          if (activeDesignKind) finishEditing();
+          thermosSnapRef.current?.(captureFaceU);
+          setTimeout(() => {
+            const img = capturePreview();
+            if (img) { setPreviewImg(img); previewImgRef.current = img; }
+            goToStep(Math.min(wizardLabels.length, mobileStep + 1));
+          }, 150);
+          return;
+        }
+        goToStep(Math.min(wizardLabels.length, mobileStep + 1));
+      }}
+      nextLabel={mobileStep === designStepIndex ? "Continuar"
+        : mobileStep === designStepIndex - 1 ? "Diseñar" : "Siguiente"}
+      design={mobileStep === designStepIndex - 1}
+      inline={inline}
+      final={{
+        label: isPreparing
+          ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando tu pedido...</>
+          : isOrdered
+            ? (lastOrderNumber ? `Pedido ${lastOrderNumber} ✓` : "Abriendo WhatsApp...")
+            : isSoldOut ? "Agotado" : <><MessageCircle className="w-4 h-4" /> Enviar por WhatsApp</>,
+        onClick: () => handleOrder(),
+        disabled: isOrdered || isPreparing || isSoldOut,
+      }}
+    />
+  );
+  // Celular: el paso de Diseño es una pantalla fija aparte (MobileDesignScreen).
+  const wrapDesignStep = (content: React.ReactNode) => !isMobile ? content : (
+    <MobileDesignScreen
+      title={`Diseñá tu ${(isDrinkware ? product.singular : orderProductName).toLowerCase()}`}
+      step={mobileStep}
+      total={wizardLabels.length}
+      top={vp.top}
+      height={vp.height}
+      onBack={() => goToStep(Math.max(1, designStepIndex - 1))}
+      nav={vp.keyboard ? null : renderWizardNav(true)}
+    >
+      {content}
+    </MobileDesignScreen>
   );
 
   return (
@@ -3705,13 +4510,13 @@ export default function Customizer() {
         </>
         )}
 
-        {/* Mobile Step 1 — Producto: material + product as scrollable chips. */}
+        {/* Mobile Step 1 — "Tu pieza": material, producto, tamaño, color y
+            técnica en una sola pantalla, con la pieza chica fija arriba para
+            ver cada cambio en el momento (antes eran dos pasos). */}
         {isMobile && mobileStep === 1 && (
-          <motion.div key="wiz-1" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-6 pb-28">
-            {/* Vista 3D en vivo del producto elegido — se actualiza al cambiar
-                material/producto, así se ve qué se está eligiendo. */}
-            {renderMiniPreview()}
-            <div className="space-y-8">
+          <motion.div key="wiz-1" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="pb-28">
+            {renderMiniPreview(true)}
+            <div className="space-y-7 pt-4">
               <MaterialChips materials={MATERIALS} value={materialId} onChange={handleSelectMaterial} />
               {shopMode && shopItem ? (
                 <div>
@@ -3729,33 +4534,28 @@ export default function Customizer() {
               ) : (
                 <>
                   <ProductChips material={material} value={materialProductId} onChange={handleSelectMaterialProduct} />
-                  {material.desc && <p className="text-xs text-muted-foreground">{material.desc}</p>}
+                  {material.desc && <p className="text-xs text-muted-foreground -mt-4">{material.desc}</p>}
                   {renderOdooModel()}
                 </>
               )}
-              {renderOwnProduct()}
+              {isDrinkware ? (
+                <>
+                  {renderDrinkSize()}
+                  {renderDrinkColor()}
+                  {renderDrinkTechnique()}
+                  {renderOwnProductLine()}
+                  {renderPieceSummaryLine()}
+                </>
+              ) : renderOwnProduct()}
             </div>
           </motion.div>
         )}
 
-        {/* Mobile Step 2 — Color base del producto (drinkware only). La técnica de
-            grabado vive ahora en el Paso 3, bajo "Texto Personalizado". */}
-        {isMobile && isDrinkware && mobileStep === 2 && (
-          <motion.div key="wiz-2" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-5 pb-28">
-            {/* Live mini-preview — the same compact 3D as Step 1, updating
-                as the colour changes. Only ONE 3D canvas is ever mounted at a time
-                (the wizard steps are exclusive), so no second renderer. */}
-            {renderMiniPreview()}
-            {renderDrinkSize()}
-            {renderDrinkColor()}
-          </motion.div>
-        )}
-
         {/* Design step — 3D preview + editor. Step 3 on drinkware, Step 2 otherwise. */}
-        {(!isMobile || mobileStep === designStepIndex) && (
-        <div className={isMobile ? "pb-28" : undefined}>
+        {(!isMobile || mobileStep === designStepIndex) && wrapDesignStep(
+        <div className={isMobile ? "flex-1 min-h-0 flex flex-col" : undefined}>
         {/* STEP 3 — CUSTOMIZE */}
-        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 lg:gap-8 lg:items-start">
+        <div className={isMobile ? "flex-1 min-h-0 flex flex-col" : "flex flex-col lg:grid lg:grid-cols-12 gap-6 lg:gap-8 lg:items-start"}>
 
           {/* PREVIEW AREA */}
           {/* En celular el visor NO es sticky: scrollea con la página (pegado
@@ -3766,8 +4566,10 @@ export default function Customizer() {
               <ShopRail items={shopItems} value={shopKey} initialBrand={shopItem?.brand ?? shopBrands(shopItems)[0]} onPick={pickShopItem} />
             </div>
           )}
-          <div className="w-full min-w-0 lg:col-span-4 relative max-lg:bg-white max-lg:pt-1 lg:self-start">
-            <div ref={previewPanelRef} className="lg:sticky lg:top-24 z-20 isolate [transform:translateZ(0)] bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[280px] md:min-h-[520px] max-lg:shadow-lg max-lg:shadow-black/5">
+          <div className={isMobile ? "w-full shrink-0 relative" : "w-full min-w-0 lg:col-span-4 relative max-lg:bg-white max-lg:pt-1 lg:self-start"}>
+            <div ref={previewPanelRef} className={isMobile
+              ? "relative z-20 isolate [transform:translateZ(0)] bg-secondary/30 border-b border-border flex flex-col items-center overflow-hidden"
+              : "lg:sticky lg:top-24 z-20 isolate [transform:translateZ(0)] bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[280px] md:min-h-[520px] max-lg:shadow-lg max-lg:shadow-black/5"}>
               {isGlass ? (
                 // Glass needs an environment to reflect and a graded backdrop to
                 // read against — on flat white the transparency disappears. A soft
@@ -3786,7 +4588,7 @@ export default function Customizer() {
               {isDrinkware ? (
                 <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
                   {/* 3D Canvas — taller for bigger sizes; compact on phones */}
-                  <div className="relative w-full" style={{ height: (isMobile ? 300 : 480) + Math.round((activeSize.scale - 0.84) * (isMobile ? 110 : 200)) }}>
+                  <div className="relative w-full" style={{ height: isMobile ? mobileViewerH : 480 + Math.round((activeSize.scale - 0.84) * 200) }}>
                     <Thermos3D
                       colorHex={activeColorHex}
                       finish={finish}
@@ -3812,6 +4614,13 @@ export default function Customizer() {
                       glass={isGlass}
                       designActive={designActive}
                       onDesignMove={onDesignMoveUV}
+                      onDesignPinch={isMobile ? onDesignPinch : undefined}
+                      onPinchSelect={isMobile ? onPinchSelect : undefined}
+                      freePlacement={FREE_PLACEMENT}
+                      keepOutZones={keepOutZones}
+                      keepOutHit={keepOutHit}
+                      onModelKeepOut={onModelKeepOut}
+                      followU={designDragging && activeDesignKind ? designFaceU : null}
                       onDesignDragStart={beginDesignDrag}
                       onDesignDragEnd={endDesignDrag}
                       onTap={handleViewerTap}
@@ -3823,21 +4632,31 @@ export default function Customizer() {
                       autoSpin={wrapSpin}
                       rotationLocked={wrapSpin}
                     />
+                    {pinchHint && renderPinchHint()}
                   </div>
 
-                  {/* Debajo del visor (no encima): la barra nunca tapa la pieza. */}
-                  <div className="-mt-1 mb-2 min-h-6 flex flex-col items-center gap-1.5">
+                  {/* Debajo del visor (no encima): la barra nunca tapa la pieza.
+                      Con el teclado abierto se oculta: el lugar es del texto. */}
+                  <div className={`-mt-1 mb-2 min-h-6 flex-col items-center gap-1.5 ${isMobile && vp.keyboard ? "hidden" : "flex"}`}>
+                    {keepOutHit && (
+                      <p role="status" className="text-xs font-medium text-primary text-center px-3">
+                        Ahí está {KEEP_OUT_LABEL[keepOutHit.kind]}: no se puede grabar encima.
+                      </p>
+                    )}
                     {wrapSpin ? (
                       <p className="text-xs text-muted-foreground">Girando para mostrar el texto envolvente…</p>
                     ) : designActive ? (
                       <DesignEditBar
                         kindLabel={editLabel}
+                        pinch={isMobile}
                         onSmaller={() => resizeActive(-0.1)}
                         onBigger={() => resizeActive(0.1)}
                         onCenter={centerWithHistory}
                         onUndo={history.length ? undo : null}
                         onDelete={deleteActive}
                         onDone={finishEditing}
+                        onStyle={isMobile ? styleActive : undefined}
+                        styleLabel={activeDesignKind === "art" ? "Cambiar" : "Letra"}
                       />
                     ) : (
                       <>
@@ -3883,7 +4702,7 @@ export default function Customizer() {
                 </div>
               ) : is3DObject && activeObject ? (
                 <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
-                  <div className="relative w-full" style={{ height: isMobile ? 300 : 460 }}>
+                  <div className="relative w-full" style={{ height: isMobile ? mobileViewerH : 460 }}>
                     <Object3D
                       objectId={activeObject.id}
                       colorHex={activeObject.colorable ? activeColorHex : undefined}
@@ -3895,15 +4714,19 @@ export default function Customizer() {
                       artPlacement={artPlacement}
                       designActive={designActive}
                       onDesignMove={onDesignMove}
+                      onDesignPinch={isMobile ? onDesignPinch : undefined}
+                      onPinchSelect={isMobile ? onPinchSelect : undefined}
                       onDesignDragStart={beginDesignDrag}
                       onDesignDragEnd={endDesignDrag}
                     />
+                    {pinchHint && renderPinchHint()}
                   </div>
 
                   <div className="-mt-1 mb-2 min-h-6 flex flex-col items-center gap-1.5">
                     {designActive ? (
                       <DesignEditBar
                         kindLabel={editLabel}
+                        pinch={isMobile}
                         onSmaller={() => resizeActive(-0.1)}
                         onBigger={() => resizeActive(0.1)}
                         onCenter={centerWithHistory}
@@ -3922,7 +4745,7 @@ export default function Customizer() {
                     )}
                   </div>
 
-                  <div className="flex flex-wrap gap-2 justify-center px-4 pb-4">
+                  <div className="hidden md:flex flex-wrap gap-2 justify-center px-4 pb-4">
                     <span className="text-xs bg-white border border-border rounded-full px-3 py-1 text-muted-foreground">
                       {material.pens ? "Bolígrafo" : activeMProduct?.name ?? activeObject.singular}
                     </span>
@@ -3997,10 +4820,12 @@ export default function Customizer() {
           </div>
 
           {/* CONTROLS AREA */}
-          <div className={`w-full min-w-0 ${shopMode && !isMobile ? "lg:col-span-5" : "lg:col-span-8"} bg-white rounded-2xl border border-border`}>
+          <div className={isMobile
+            ? "w-full flex-1 min-h-0 overflow-y-auto overscroll-contain bg-white"
+            : `w-full min-w-0 ${shopMode ? "lg:col-span-5" : "lg:col-span-8"} bg-white rounded-2xl border border-border`}>
             {isDrinkware ? (
               <Tabs value={drinkTab} onValueChange={setDrinkTab} className="w-full">
-                <div className="px-4 sm:px-6 pt-4 pb-1">
+                <div className={isMobile ? "sticky top-0 z-10 bg-white px-3 pt-2 pb-1" : "px-4 sm:px-6 pt-4 pb-1"}>
                   <TabsList className="w-full flex gap-1 bg-secondary/50 rounded-xl p-1 h-auto">
                     {/* On mobile "Color" moves to the Estilo step. All segments are
                         equal-width and always visible — no arrows, no scroll. */}
@@ -4032,7 +4857,11 @@ export default function Customizer() {
                   </TabsContent>
                   )}
 
-                  {/* TEXT TAB */}
+                  {/* TEXT TAB — en el celular, la versión simple. */}
+                  {isMobile && (
+                    <TabsContent value="text" className="mt-0">{renderMobileTextTab()}</TabsContent>
+                  )}
+                  {!isMobile && (
                   <TabsContent value="text" className="mt-0 space-y-5">
                     {/* BÁSICO — escribir, elegir técnica de grabado y orientación. */}
                     <div className="space-y-4">
@@ -4051,7 +4880,8 @@ export default function Customizer() {
                       {/* Técnica de grabado — global (afecta texto, ícono e imagen).
                           En impresión UV aparece el color del texto/diseño; en láser
                           el diseño queda monocromático. */}
-                      {renderDrinkTechnique()}
+                      {/* En el celular la técnica se elige en "Tu pieza". */}
+                      {!isMobile && renderDrinkTechnique()}
                       {isColorPrint && (
                         <TextColorPicker value={textColor} onChange={setTextColor} />
                       )}
@@ -4064,7 +4894,7 @@ export default function Customizer() {
                       />
                       {/* Dónde va el texto: frente, dorso o costado (el Envolvente 360°
                           ya rodea todo el cuerpo). */}
-                      {!isWrap360 && textFaces.length > 1 && (
+                      {!FREE_PLACEMENT && !isWrap360 && textFaces.length > 1 && (
                         <FaceSelector faces={textFaces} value={textFace} onChange={selectTextFace} product={product} />
                       )}
                     </div>
@@ -4155,6 +4985,7 @@ export default function Customizer() {
                       <ExtraEngravingFields lid={extraLid} base={extraBase} onLid={setExtraLid} onBase={setExtraBase} />
                     )}
                   </TabsContent>
+                  )}
 
                   {/* ICONS TAB */}
                   <TabsContent value="icons" className="mt-0 space-y-5">
@@ -4166,7 +4997,7 @@ export default function Customizer() {
                       <IconPicker value={iconId} onChange={handlePickIcon} />
                     </div>
 
-                    {selectedIcon && textFaces.length > 1 && (
+                    {!FREE_PLACEMENT && selectedIcon && textFaces.length > 1 && (
                       <FaceSelector faces={textFaces} value={artFace} onChange={selectArtFace} product={product} label="Ubicación del ícono" />
                     )}
 
@@ -4211,7 +5042,7 @@ export default function Customizer() {
                         aiStyle={effectiveTechnique === "color" ? "color" : "laser"}
                       />
 
-                      {customImage && textFaces.length > 1 && (
+                      {!FREE_PLACEMENT && customImage && textFaces.length > 1 && (
                         <div className="pt-4 mt-4 border-t border-border">
                           <FaceSelector faces={textFaces} value={artFace} onChange={selectArtFace} product={product} label="Ubicación de la imagen" />
                         </div>
@@ -4542,7 +5373,7 @@ export default function Customizer() {
         )}
 
         {/* Mobile Step 4 — Resumen (drinkware only): inferred plan + price + WhatsApp. */}
-        {isMobile && isDrinkware && mobileStep === 4 && (
+        {isMobile && isDrinkware && mobileStep === 3 && (
           <motion.div key="wiz-4" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-4 pb-28">
             <p className="text-sm text-muted-foreground">
               Revisá tu diseño y envialo por WhatsApp. Coordinamos los detalles al instante.
@@ -4552,42 +5383,9 @@ export default function Customizer() {
         )}
 
         {/* Solo con el personalizador en pantalla: si no, la barra fija quedaba
-            flotando sobre el hero, Tarifas, la Galería y el footer. */}
-        {isMobile && customizerInView && (
-          <WizardNav
-            step={mobileStep}
-            total={wizardLabels.length}
-            onBack={() => goToStep(Math.max(1, mobileStep - 1))}
-            onNext={() => {
-              // Leaving the design step: swing the personalized area to face the
-              // camera, wait for the repaint, THEN snapshot the live canvas — so
-              // the Step 4 image always shows the design completely, no matter
-              // how the user left the piece rotated.
-              if (mobileStep === designStepIndex) {
-                // Terminar la edición: sin guías ni selección en la foto.
-                if (activeDesignKind) finishEditing();
-                thermosSnapRef.current?.(captureFaceU);
-                setTimeout(() => {
-                  const img = capturePreview();
-                  if (img) { setPreviewImg(img); previewImgRef.current = img; }
-                  goToStep(Math.min(wizardLabels.length, mobileStep + 1));
-                }, 150);
-                return;
-              }
-              goToStep(Math.min(wizardLabels.length, mobileStep + 1));
-            }}
-            nextLabel={mobileStep === designStepIndex ? "Continuar" : mobileStep === 1 ? "Diseñar" : "Siguiente"}
-            final={{
-              label: isPreparing
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando tu pedido...</>
-                : isOrdered
-                  ? (lastOrderNumber ? `Pedido ${lastOrderNumber} ✓` : "Abriendo WhatsApp...")
-                  : isSoldOut ? "Agotado" : <><MessageCircle className="w-4 h-4" /> Enviar por WhatsApp</>,
-              onClick: () => handleOrder(),
-              disabled: isOrdered || isPreparing || isSoldOut,
-            }}
-          />
-        )}
+            flotando sobre el hero, Tarifas, la Galería y el footer. En el paso
+            de Diseño la barra va dentro de su pantalla (ver wrapDesignStep). */}
+        {isMobile && customizerInView && mobileStep !== designStepIndex && renderWizardNav(false)}
 
         </>
         )}

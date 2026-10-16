@@ -11,6 +11,11 @@
  *   customizer_material_select{ material }
  *   customizer_product_select { material, product }
  *   customizer_size_select    { product, size }
+ *   design_reached            { ms }                    celular: tiempo desde customizer_view hasta tocar "Diseñar"
+ *   design_first_text         { ms, mobile }            tiempo desde customizer_view hasta la primera letra
+ *   design_quickstart         { id, product }           diseño rápido elegido (name, date, phrase, logo, icon)
+ *   design_pinch              { kind, preselected }     pellizco; preselected=false si el gesto mismo lo seleccionó
+ *   customizer_leave          { step, step_name, ms }   celular: se fue de la página sin enviar el pedido
  *   order_submit              { product, material, technique, has_text, has_icon, has_image }
  *   order_created             { order_number, product }
  *   order_fallback            { product }               backend caído/lento: salió solo por WhatsApp

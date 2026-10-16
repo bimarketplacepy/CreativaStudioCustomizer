@@ -7,6 +7,7 @@ import { getObject, type ObjectDef } from "@/lib/objects";
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
 import { makeFaceMaps } from "@/lib/engraving-face";
+import { trackPinch, type PinchPhase } from "@/lib/pinch";
 import { makeLeatherGrain } from "@/lib/leather-texture";
 
 class WebGLErrorBoundary extends Component<
@@ -34,6 +35,10 @@ interface Object3DProps {
   designActive?: boolean;
   /** Drag delta as a fraction of the canvas while moving a design. */
   onDesignMove?: (dxFrac: number, dyFrac: number) => void;
+  /** Pellizco con dos dedos sobre el diseño en edición (ver lib/pinch.ts). */
+  onDesignPinch?: (phase: PinchPhase, factor: number) => void;
+  /** Dos dedos sin nada en edición: el padre selecciona el diseño (true) y el gesto lo escala. */
+  onPinchSelect?: (hits: ({ u: number; v: number } | null)[]) => boolean;
   onDesignDragStart?: () => void;
   onDesignDragEnd?: () => void;
 }
@@ -314,13 +319,15 @@ function Blank({ obj, baseColor }: { obj: ObjectDef; baseColor: string }) {
 
 function ObjectMesh({
   obj, baseColor, text, fontFamily, customImageUrl, imageSize, textPlacement, artPlacement,
-  designActive, onDesignMove, onDesignDragStart, onDesignDragEnd,
+  designActive, onDesignMove, onDesignPinch, onPinchSelect, onDesignDragStart, onDesignDragEnd,
 }: {
   obj: ObjectDef; baseColor: string; text: string; fontFamily?: string;
   customImageUrl: string | null; imageSize: "none" | "small" | "large";
   textPlacement: Placement; artPlacement: Placement;
   designActive: boolean;
   onDesignMove?: (dxFrac: number, dyFrac: number) => void;
+  onDesignPinch?: (phase: PinchPhase, factor: number) => void;
+  onPinchSelect?: (hits: ({ u: number; v: number } | null)[]) => boolean;
   onDesignDragStart?: () => void;
   onDesignDragEnd?: () => void;
 }) {
@@ -334,8 +341,8 @@ function ObjectMesh({
   const { gl } = useThree();
 
   // Latest design-drag inputs, read inside the stable pointer listeners.
-  const designRef = useRef({ designActive, onDesignMove, onDesignDragStart, onDesignDragEnd });
-  designRef.current = { designActive, onDesignMove, onDesignDragStart, onDesignDragEnd };
+  const designRef = useRef({ designActive, onDesignMove, onDesignPinch, onPinchSelect, onDesignDragStart, onDesignDragEnd });
+  designRef.current = { designActive, onDesignMove, onDesignPinch, onPinchSelect, onDesignDragStart, onDesignDragEnd };
 
   // Seat the blank at its resting tilt so a top-engraved face reads to camera.
   useEffect(() => {
@@ -415,14 +422,33 @@ function ObjectMesh({
       canvas.setPointerCapture(e.pointerId);
     };
 
+    // Dos dedos con un diseño en edición: tamaño (corta el arrastre del primero).
+    const pinch = trackPinch(canvas, {
+      enabled: () => !!designRef.current.designActive && !!designRef.current.onDesignPinch,
+      // Una sola cara plana: el padre elige qué diseño escalar.
+      claim: () => {
+        const d = designRef.current;
+        return !d.designActive && !!d.onDesignPinch && !!d.onPinchSelect && d.onPinchSelect([]);
+      },
+      onPinch: (phase, factor) => {
+        if (phase === "start") {
+          if (isDragging.current && dragMode.current === "design") designRef.current.onDesignDragEnd?.();
+          isDragging.current = false;
+          dragMode.current = "rotate";
+        }
+        designRef.current.onDesignPinch?.(phase, factor);
+      },
+    });
+
     const onDown = (e: PointerEvent) => {
+      if (pinch.isActive()) return;
       // Objects have a single flat engraving face, so an active design always
       // drags rather than rotates.
       const mode = designRef.current.designActive ? "design" : "rotate";
       startDrag(e, mode);
     };
     const onMove = (e: PointerEvent) => {
-      if (!isDragging.current) return;
+      if (!isDragging.current || pinch.isActive()) return;
       const dx = e.clientX - lastX.current;
       const dy = e.clientY - lastY.current;
       lastX.current = e.clientX; lastY.current = e.clientY;
@@ -453,6 +479,7 @@ function ObjectMesh({
     // pointercancel: el sistema cortó el gesto.
     canvas.addEventListener("pointercancel", onUp);
     return () => {
+      pinch.dispose();
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);
@@ -464,8 +491,8 @@ function ObjectMesh({
   // Modo diseño: el gesto es todo del visor (mover el diseño en las dos
   // direcciones); si no, el contenedor deja el desliz vertical a la página.
   useEffect(() => {
-    gl.domElement.style.touchAction = designActive ? "none" : "";
-  }, [gl, designActive]);
+    gl.domElement.style.touchAction = designActive || (!!onDesignPinch && !!onPinchSelect) ? "none" : "";
+  }, [gl, designActive, onDesignPinch, onPinchSelect]);
 
   useFrame((_, delta) => {
     if (!groupRef.current || isDragging.current) return;
@@ -611,6 +638,8 @@ function ThreeCanvas({ obj, onContextLost, onContextRestored, ...props }: Object
           designActive={props.designActive ?? false}
           onDesignMove={props.onDesignMove}
           onDesignDragStart={props.onDesignDragStart}
+          onDesignPinch={props.onDesignPinch}
+          onPinchSelect={props.onPinchSelect}
           onDesignDragEnd={props.onDesignDragEnd}
         />
         {/* Single, stable ground shadow — re-renders each frame, no real-time

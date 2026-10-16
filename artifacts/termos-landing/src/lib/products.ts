@@ -1,4 +1,5 @@
 import type { FaceId } from "./placement";
+import type { KeepOutZone } from "./keep-out";
 
 export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee";
 
@@ -50,6 +51,12 @@ export interface ProductDef {
    * (el diseño va en su lugar).
    */
   logoBack?: boolean;
+  /**
+   * Zonas sin grabado cargadas a mano (ver lib/keep-out.ts): relieves u otras
+   * partes que el .glb no trae como pieza aparte. El logo, la manija y las
+   * piezas "label*" / "relieve*" del modelo se detectan solas.
+   */
+  keepOut?: KeepOutZone[];
   sizes: ProductSize[];
   /**
    * Modelo 3D real (.glb, ver GUIA-MODELOS-3D.md) en lugar del lathe generado.

@@ -7,7 +7,9 @@ import { getProduct, getSize, resampledProfile, type ProductDef } from "@/lib/pr
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, bandRange, vForY, type FaceId, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
 import { makeBodyMaps, makeGlassEngraving, type EngraveStyle, type TextMark } from "@/lib/engraving-maps";
-import { FRONT_FACE, frontAreaBounds } from "@/lib/face-area";
+import { FRONT_FACE, frontAreaBounds, nearU } from "@/lib/face-area";
+import { trackPinch, type PinchPhase } from "@/lib/pinch";
+import { keepOutKindOf, zoneFromVertices, type KeepOutZone } from "@/lib/keep-out";
 import { layoutText, fillLinesAligned, measureLinesWidth, LINE_HEIGHT } from "@/lib/engraving-text";
 
 class WebGLErrorBoundary extends Component<
@@ -51,6 +53,22 @@ interface Thermos3DProps {
   editSingleFace?: boolean;
   /** Draw the dashed front-face guide (single-face mode only). */
   showGuides?: boolean;
+  /**
+   * Ubicación libre (sin el recuadro de una cara): el diseño seleccionado se
+   * arrastra por toda la banda y las guías muestran las zonas sin grabado.
+   */
+  freePlacement?: boolean;
+  /** Zonas sin grabado a dibujar mientras se mueve el diseño (ver lib/keep-out.ts). */
+  keepOutZones?: KeepOutZone[];
+  /** Zona contra la que chocó el diseño: se resalta un momento. */
+  keepOutHit?: KeepOutZone | null;
+  /** Avisa las zonas medidas sobre las piezas del .glb (logo, manija, relieves). */
+  onModelKeepOut?: (productId: string, zones: KeepOutZone[]) => void;
+  /**
+   * u del diseño que se está arrastrando (ubicación libre): si se acerca al
+   * borde de lo que se ve, la pieza gira para seguirlo. null = no seguir.
+   */
+  followU?: number | null;
   /** Which u faces the camera when single-face is entered. Defaults to config. */
   frontFaceU?: number;
   /** Cara sobre la que se dibuja la guía punteada (la del elemento en edición). */
@@ -82,6 +100,17 @@ interface Thermos3DProps {
    * lado, el desliz vertical scrollea la página.
    */
   isOverDesign?: (hit: { u: number; v: number }) => boolean;
+  /**
+   * Pellizco con dos dedos mientras se edita un diseño: `factor` = distancia
+   * actual entre los dedos / inicial. Ver lib/pinch.ts.
+   */
+  onDesignPinch?: (phase: PinchPhase, factor: number) => void;
+  /**
+   * Dos dedos sin nada en edición: los puntos del cuerpo bajo cada dedo. Si
+   * caen sobre un diseño, el padre lo selecciona y devuelve true (y ese mismo
+   * gesto ya lo escala). Ver lib/pinch.ts.
+   */
+  onPinchSelect?: (hits: ({ u: number; v: number } | null)[]) => boolean;
   /** A design drag started (used to flash the front-face guides). */
   onDesignDragStart?: () => void;
   /** A design drag ended. */
@@ -383,7 +412,7 @@ function useModelGeometries(product: ProductDef, sil: Silhouette) {
  * texturas de color y grabado que usa el lathe; el resto son piezas fijas.
  */
 function ModelPieces({
-  product, sil, colorHex, finish, bodyMaterial, hideLogo,
+  product, sil, colorHex, finish, bodyMaterial, hideLogo, onKeepOut,
 }: {
   product: ProductDef;
   sil: Silhouette;
@@ -391,8 +420,26 @@ function ModelPieces({
   finish: string;
   bodyMaterial: ReactNode;
   hideLogo?: boolean;
+  onKeepOut?: (productId: string, zones: KeepOutZone[]) => void;
 }) {
   const parts = useModelGeometries(product, sil);
+  // Zonas sin grabado medidas sobre el propio modelo: logo y marca, manija,
+  // etiqueta y relieves (por el nombre de la pieza, ver keepOutKindOf).
+  const zones = useMemo(() => {
+    const [botY, topY] = sil.band;
+    const vOfY = (y: number) => (topY - y) / Math.max(1e-6, topY - botY);
+    const out: KeepOutZone[] = [];
+    for (const [name, part] of Object.entries(parts)) {
+      const kind = keepOutKindOf(name);
+      if (!kind) continue;
+      const z = zoneFromVertices(kind, part.geometry.attributes.position.array, vOfY);
+      if (z) out.push(z);
+    }
+    return out;
+  }, [parts, sil]);
+  const onKeepOutRef = useRef(onKeepOut);
+  onKeepOutRef.current = onKeepOut;
+  useEffect(() => { onKeepOutRef.current?.(product.id, zones); }, [product.id, zones]);
   const steel = { color: "#c9cdd1", roughness: 0.3, metalness: 1.0, envMapIntensity: 1.9 };
   return (
     <>
@@ -530,11 +577,63 @@ function FrontFaceGuide({ sil, product, face }: { sil: Silhouette; product: Prod
   return <primitive object={object} />;
 }
 
+/**
+ * Ubicación libre: el contorno de cada zona sin grabado (logo, manija,
+ * relieve) pegado al cuerpo, mientras se mueve el diseño. La zona contra la
+ * que chocó se ve más fuerte.
+ */
+function KeepOutGuides({ sil, zones, hit }: { sil: Silhouette; zones: KeepOutZone[]; hit?: KeepOutZone | null }) {
+  const lines = useMemo(() => {
+    const [botY, topY] = sil.band;
+    const yAtV = (v: number) => topY + (botY - topY) * v;
+    const pts = sil.points;
+    const radiusAtY = (y: number) => {
+      if (y <= pts[0].y) return pts[0].x;
+      if (y >= pts[pts.length - 1].y) return pts[pts.length - 1].x;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const y0 = pts[i].y, y1 = pts[i + 1].y;
+        if (y >= y0 && y <= y1) return pts[i].x + (pts[i + 1].x - pts[i].x) * (y1 === y0 ? 0 : (y - y0) / (y1 - y0));
+      }
+      return pts[pts.length - 1].x;
+    };
+    const at = (u: number, v: number) => {
+      const phi = u * Math.PI * 2;
+      const y = yAtV(v);
+      const r = radiusAtY(y) * 1.016;
+      return new THREE.Vector3(r * Math.sin(phi), y, r * Math.cos(phi));
+    };
+    return zones.map(z => {
+      const u0 = z.u - z.halfU, u1 = z.u + z.halfU;
+      const NH = 20, NV = 10;
+      const verts: THREE.Vector3[] = [];
+      for (let i = 0; i <= NH; i++) verts.push(at(u0 + (u1 - u0) * (i / NH), z.v0));
+      for (let i = 1; i <= NV; i++) verts.push(at(u1, z.v0 + (z.v1 - z.v0) * (i / NV)));
+      for (let i = 1; i <= NH; i++) verts.push(at(u1 - (u1 - u0) * (i / NH), z.v1));
+      for (let i = 1; i < NV; i++) verts.push(at(u0, z.v1 - (z.v1 - z.v0) * (i / NV)));
+      const isHit = !!hit && hit.u === z.u && hit.v0 === z.v0 && hit.kind === z.kind;
+      const mat = new THREE.LineDashedMaterial({
+        color: isHit ? "#C1121F" : "#9a8f8c",
+        dashSize: 0.04 * sil.scale,
+        gapSize: (isHit ? 0.015 : 0.035) * sil.scale,
+        transparent: true,
+        opacity: isHit ? 1 : 0.7,
+        depthWrite: false,
+      });
+      const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(verts), mat);
+      line.computeLineDistances();
+      return line;
+    });
+  }, [sil, zones, hit]);
+  useEffect(() => () => lines.forEach(l => { l.geometry.dispose(); (l.material as THREE.Material).dispose(); }), [lines]);
+  return <>{lines.map((l, i) => <primitive key={i} object={l} />)}</>;
+}
+
 function ThermosMesh({
   colorHex, finish, text, product, sil, fontFamily, customImageUrl, imageSize,
   textPlacement, artPlacement, extraTexts, colorPrint, textColor, engraveStyle, singleFace, editSingleFace, showGuides, frontFaceU, guideFace, hideLogo = false, glass,
-  designActive, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, snapToURef, renderNowRef, onReady,
+  designActive, onDesignMove, onDesignPinch, onPinchSelect, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, snapToURef, renderNowRef, onReady,
   autoSpin = false, rotationLocked = false, onMotionChange, arModelRef,
+  freePlacement = false, keepOutZones, keepOutHit, onModelKeepOut, followU = null,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
@@ -544,6 +643,8 @@ function ThermosMesh({
   singleFace: boolean; editSingleFace: boolean; showGuides: boolean; frontFaceU: number; guideFace: FaceId; hideLogo?: boolean; glass: boolean;
   designActive: boolean;
   onDesignMove?: (du: number, dv: number) => void;
+  onDesignPinch?: Thermos3DProps["onDesignPinch"];
+  onPinchSelect?: Thermos3DProps["onPinchSelect"];
   onDesignDragStart?: () => void;
   onDesignDragEnd?: () => void;
   onTap?: (hit: { u: number; v: number } | null) => void;
@@ -555,6 +656,11 @@ function ThermosMesh({
   /** La pieza empezó (true) o terminó (false) de moverse: giro, arrastre, inercia. */
   onMotionChange?: (moving: boolean) => void;
   arModelRef?: Thermos3DProps["arModelRef"];
+  freePlacement?: boolean;
+  keepOutZones?: KeepOutZone[];
+  keepOutHit?: KeepOutZone | null;
+  onModelKeepOut?: Thermos3DProps["onModelKeepOut"];
+  followU?: number | null;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
@@ -571,8 +677,11 @@ function ThermosMesh({
 
   // Latest design-drag inputs, read inside the (stable) pointer listeners so we
   // don't re-attach them every render when the callbacks change identity.
-  const designRef = useRef({ designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, sil, product });
-  designRef.current = { designActive, editSingleFace, rotationLocked, onDesignMove, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, sil, product };
+  // Ubicación libre: se arrastra igual que en "una cara" (el diseño se mueve
+  // por toda la banda y la pieza gira para seguirlo, ver followU).
+  const dragEdit = editSingleFace || freePlacement;
+  const designRef = useRef({ designActive, editSingleFace: dragEdit, rotationLocked, onDesignMove, onDesignPinch, onPinchSelect, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, sil, product });
+  designRef.current = { designActive, editSingleFace: dragEdit, rotationLocked, onDesignMove, onDesignPinch, onPinchSelect, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, sil, product };
 
   const bodyGeo = useMemo(() => {
     const geo = new THREE.LatheGeometry(sil.points, 128);
@@ -874,7 +983,33 @@ function ThermosMesh({
     /** El dedo se apoyó sobre el diseño en edición (lo mueve en vez de girar). */
     let touchOnDesign = false;
 
+    // Dos dedos sobre el visor con un diseño en edición: tamaño. Corta el
+    // arrastre que haya empezado el primer dedo y anula el "toque" al soltar.
+    let pinched = false;
+    const pinch = trackPinch(canvas, {
+      enabled: () => !!designRef.current.designActive && !!designRef.current.onDesignPinch,
+      claim: (points) => {
+        const d = designRef.current;
+        if (d.designActive || !d.onDesignPinch || !d.onPinchSelect || d.rotationLocked) return false;
+        return d.onPinchSelect(points.map(p => pick({ clientX: p.x, clientY: p.y })));
+      },
+      onPinch: (phase, factor) => {
+        if (phase === "start") {
+          pinched = true;
+          const wasDesign = isDragging.current && dragMode.current === "design" && designMoving;
+          flushMove();
+          if (wasDesign) designRef.current.onDesignDragEnd?.();
+          isDragging.current = false;
+          dragMode.current = "rotate";
+          designMoving = false;
+        }
+        designRef.current.onDesignPinch?.(phase, factor);
+      },
+    });
+
     const onDown = (e: PointerEvent) => {
+      if (pinch.isActive()) return;
+      if (!isDragging.current) pinched = false;
       down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
       // Con un diseño seleccionado (en una cara), el gesto lo mueve; si no, gira.
       // Con el dedo, solo si se apoyó sobre el diseño (ver onTouchStart).
@@ -892,7 +1027,7 @@ function ThermosMesh({
       startDrag(e, mode);
     };
     const onMove = (e: PointerEvent) => {
-      if (!isDragging.current) return;
+      if (!isDragging.current || pinch.isActive()) return;
       if (dragMode.current === "design" && !designMoving) {
         if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) < DESIGN_SLOP) return;
         designMoving = true;
@@ -958,7 +1093,7 @@ function ThermosMesh({
       const wasDesign = isDragging.current && dragMode.current === "design" && designMoving;
       flushMove();
       if (wasDesign) designRef.current.onDesignDragEnd?.();
-      const tap = !!down && e.type === "pointerup" && e.pointerId === down.id
+      const tap = !pinched && !!down && e.type === "pointerup" && e.pointerId === down.id
         && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8
         && performance.now() - down.t < 500;
       down = null;
@@ -993,6 +1128,7 @@ function ThermosMesh({
     canvas.addEventListener("pointercancel", onUp);
     return () => {
       if (moveRaf) cancelAnimationFrame(moveRaf);
+      pinch.dispose();
       canvas.removeEventListener("touchstart", onTouchStart);
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointermove", onMove);
@@ -1001,6 +1137,31 @@ function ThermosMesh({
       canvas.removeEventListener("pointercancel", onUp);
     };
   }, [gl, get, invalidate]);
+
+  // Ubicación libre: mientras se arrastra, si el diseño se acerca al borde de
+  // lo que se ve, la pieza gira lo justo para mantenerlo a la vista. Así se lo
+  // puede llevar alrededor de todo el cuerpo con un solo dedo.
+  useEffect(() => {
+    if (followU == null || !groupRef.current) return;
+    const g = groupRef.current;
+    const facing = -g.rotation.y / (Math.PI * 2);
+    const off = nearU(followU, facing) - facing;
+    const LIM = 0.07; // ≈ 25° del centro
+    if (Math.abs(off) <= LIM) return;
+    g.rotation.y = -(nearU(followU, facing) - Math.sign(off) * LIM) * Math.PI * 2;
+    velYaw.current = 0;
+    spinLeft.current = 0;
+    invalidate();
+  }, [followU, invalidate]);
+
+  // Con pellizco (editor de una pantalla del celular) el gesto es todo del
+  // visor: no hay página que scrollear detrás y así el navegador no se queda
+  // con el primer dedo antes de que llegue el segundo. Con onPinchSelect se
+  // puede pellizcar un diseño sin seleccionarlo antes, así que vale siempre.
+  const pinchable = !!onDesignPinch && (designActive || !!onPinchSelect);
+  useEffect(() => {
+    gl.domElement.style.touchAction = pinchable ? "none" : "";
+  }, [gl, pinchable]);
 
   // "Edición en una cara": swing the front face to the camera when the mode is
   // entered (and if the configured front angle changes), so the customer looks
@@ -1224,7 +1385,7 @@ function ThermosMesh({
              al pasar de `material={…}` a un material hijo R3F repone la prop
              quitada con el default de THREE.Mesh: un MeshBasicMaterial blanco
              (la tapa del Termo Mate salía blanca y sin luz). */
-          <ModelPieces key={product.id} product={product} sil={sil} colorHex={colorHex} finish={finish} bodyMaterial={bodyMaterial} hideLogo={hideLogo} />
+          <ModelPieces key={product.id} product={product} sil={sil} colorHex={colorHex} finish={finish} bodyMaterial={bodyMaterial} hideLogo={hideLogo} onKeepOut={onModelKeepOut} />
         ) : (
           <mesh geometry={bodyGeo} castShadow receiveShadow userData={ENGRAVE_BODY}>
             {bodyMaterial}
@@ -1276,6 +1437,9 @@ function ThermosMesh({
 
       {/* Front-face editable area outline (edit mode una-cara, guides visible) */}
       {editSingleFace && showGuides && <FrontFaceGuide sil={sil} product={product} face={guideFace} />}
+      {freePlacement && (showGuides || !!keepOutHit) && !!keepOutZones?.length && (
+        <KeepOutGuides sil={sil} zones={keepOutZones} hit={keepOutHit} />
+      )}
     </group>
   );
 }
@@ -1669,6 +1833,8 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           glass={props.glass ?? false}
           designActive={props.designActive ?? false}
           onDesignMove={props.onDesignMove}
+          onDesignPinch={props.onDesignPinch}
+          onPinchSelect={props.onPinchSelect}
           onDesignDragStart={props.onDesignDragStart}
           onDesignDragEnd={props.onDesignDragEnd}
           onTap={props.onTap}
@@ -1680,6 +1846,11 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           rotationLocked={props.rotationLocked ?? false}
           onMotionChange={onMotionChange}
           arModelRef={props.arModelRef}
+          freePlacement={props.freePlacement ?? false}
+          keepOutZones={props.keepOutZones}
+          keepOutHit={props.keepOutHit}
+          onModelKeepOut={props.onModelKeepOut}
+          followU={props.followU ?? null}
         />
 
         {/* Single, stable ground shadow, anchored to the floor plane — no

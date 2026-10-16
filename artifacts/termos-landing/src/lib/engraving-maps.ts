@@ -364,6 +364,15 @@ export function computeFaceTextLayout(
     return { ...fit, align };
   }
 
+  // Ubicación libre: corta en media vuelta y, si el bloque no entra en el alto
+  // de la banda (entre la tapa y la base), achica la letra.
+  if (opts.text) {
+    const bandHsq = ((m.botPx - m.topPx) / m.aspect) * 0.92;
+    const wrapW = W * TEXT_WRAP_FRAC;
+    const fit = fitText(ctx, opts.text, (px) => makeTextFont(px, fontFamily), requestedFont, rot ? bandHsq : wrapW, rot ? wrapW : bandHsq, layout, lhMul);
+    return { ...fit, align };
+  }
+
   const fontPx = Math.round(requestedFont);
   ctx.font = makeTextFont(fontPx, fontFamily);
   const lineHeight = fontPx * lhMul;
