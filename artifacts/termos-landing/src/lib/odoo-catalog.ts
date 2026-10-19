@@ -65,10 +65,16 @@ export function colorHexOf(v: Pick<CatalogVariant, "colorHex" | "colorName">): s
 
 export interface ColorOption { name: string; hex: string; inStock: boolean }
 
-/** Colores distintos del producto (en el orden de Odoo); con stock si alguna variante lo tiene. */
-export function colorOptions(p: CatalogProduct): ColorOption[] {
+/**
+ * Colores distintos del producto (en el orden de Odoo); con stock si alguna
+ * variante lo tiene. Con `size`, solo los que vienen en ese tamaño (si el
+ * producto lo tiene).
+ */
+export function colorOptions(p: CatalogProduct, size?: string | null): ColorOption[] {
   const out = new Map<string, ColorOption>();
+  const bySize = size !== undefined && p.variants.some(v => (v.size ?? null) === size);
   for (const v of p.variants) {
+    if (bySize && (v.size ?? null) !== size) continue;
     if (!v.colorName) continue;
     const prev = out.get(v.colorName);
     out.set(v.colorName, { name: v.colorName, hex: prev?.hex ?? colorHexOf(v), inStock: (prev?.inStock ?? false) || v.inStock });

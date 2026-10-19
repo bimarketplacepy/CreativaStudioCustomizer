@@ -1786,16 +1786,15 @@ export default function Customizer() {
   const [odooSize, setOdooSize] = useState<string | null>(null);
   const odooProduct = odooProducts.find(p => p.id === odooTemplateId) ?? odooProducts[0] ?? null;
   const odooMode = !!odooProduct;
-  const odooColors = useMemo(() => (odooProduct ? colorOptions(odooProduct) : []), [odooProduct]);
+  // Solo los colores del tamaño elegido: elegir un color nunca cambia el tamaño.
+  const odooColors = useMemo(() => (odooProduct ? colorOptions(odooProduct, odooSize) : []), [odooProduct, odooSize]);
   const odooSizes = useMemo(() => (odooProduct ? sizeOptions(odooProduct) : []), [odooProduct]);
   const odooVariant = odooProduct ? findVariant(odooProduct, odooColor, odooSize) : null;
   const odooAllOut = !!odooProduct && odooProduct.variants.every(v => !v.inStock);
-  /** ¿Hay stock de este color en el tamaño elegido? Si el color no viene en ese
-   *  tamaño, cuenta el stock en cualquier tamaño (al elegirlo cambia de tamaño). */
+  /** ¿Hay stock de este color en el tamaño elegido? (solo se listan los de ese tamaño). */
   const odooColorInStock = (name: string) => {
     if (!odooProduct) return true;
-    const v = findVariant(odooProduct, name, odooSize);
-    return v ? v.inStock : odooProduct.variants.some(x => x.colorName === name && x.inStock);
+    return findVariant(odooProduct, name, odooSize)?.inStock ?? false;
   };
   // Al cambiar de producto (o al llegar el catálogo), si la combinación elegida
   // no existe en ese producto, arrancar en su primera variante con stock.
@@ -1813,16 +1812,10 @@ export default function Customizer() {
     if (v) { setOdooColor(v.colorName ?? null); setOdooSize(v.size ?? null); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [odooProduct]);
-  /** Elegir color: mantiene el tamaño si existe con ese color; si no, el primero con stock. */
+  /** Elegir color: siempre en el tamaño elegido (solo se listan los colores de ese tamaño). */
   const selectOdooColor = (name: string) => {
     if (!odooProduct) return;
-    const same = findVariant(odooProduct, name, odooSize);
-    const v = (same?.inStock ? same : null)
-      ?? odooProduct.variants.find(x => x.colorName === name && x.inStock)
-      ?? same
-      ?? odooProduct.variants.find(x => x.colorName === name);
     setOdooColor(name);
-    setOdooSize(v?.size ?? null);
     track("customizer_color_select", { source: "odoo", color: name });
   };
   /** Elegir tamaño: mantiene el color si existe en ese tamaño; si no, el primero con stock. */
