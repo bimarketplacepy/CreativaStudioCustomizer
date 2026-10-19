@@ -52,6 +52,7 @@ export const MATERIALS: MaterialDef[] = [
       { id: "mini-coffee", name: "Vaso Mini Coffee Mug", desc: "Taza térmica chica con manija lateral y tapa.", drinkwareProductId: "mini-coffee" },
       { id: "vaso-taza", name: "Vaso Taza", desc: "Jarro térmico con manija lateral y tapa.", drinkwareProductId: "vaso-taza" },
       { id: "coffee-cup", name: "Vaso Coffee Cup", desc: "Vaso térmico para café con tapa deslizable.", drinkwareProductId: "coffee-cup" },
+      { id: "vaso-shaker", name: "Vaso Shaker", desc: "Vaso térmico shaker con tapa de pico y asa.", drinkwareProductId: "vaso-shaker" },
       { id: "vaso-manija", name: "Vaso con manija", desc: "Vaso térmico de 887 ml con manija lateral y tapa transparente.", drinkwareProductId: "vaso-manija" },
       { id: "hoppie-hydrate", name: "Hoppie", desc: "Botella térmica con tapa de pico y asa.", drinkwareProductId: "hoppie-hydrate" },
       { id: "hoppie",  name: "Hoppie V2 Pro",  drinkwareProductId: "hoppie" },

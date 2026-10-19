@@ -1,7 +1,7 @@
 import type { FaceId } from "./placement";
 import type { KeepOutZone } from "./keep-out";
 
-export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup";
+export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -798,6 +798,39 @@ export const PRODUCTS: ProductDef[] = [
     logoBack: true,
     sizes: [
       { id: "coffee-cup-236", name: "236ml", label: "Clásico", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-shaker",
+    name: "Vasos Shaker",
+    singular: "Vaso Shaker",
+    // Hydrate "Vaso Shaker" (artifacts/3D/vaso-shaker.glb): vaso cónico (se
+    // abre hacia arriba), junta de goma, tapa con pico, tapita y asa sobre la
+    // tapa. El cuerpo no tiene manija. Perfil = radio del cuerpo medido sobre
+    // el .glb (m × 10, centrado en 0,1124 m). Logo atrás (yawDeg 180).
+    desc: "Vaso térmico shaker con tapa de pico y asa.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.295, -1.124], [0.315, -1.084], [0.320, -1.002], [0.336, -0.797],
+      [0.352, -0.592], [0.368, -0.387], [0.384, -0.183], [0.401,  0.022],
+      [0.417,  0.268], [0.433,  0.473], [0.437,  0.514],
+    ],
+    band: [-1.00, 0.45],
+    model: {
+      url: "/models/vaso-shaker.glb?v=1",
+      exactFor: ["Vaso Shaker"],
+      unitsPerMeter: 10,
+      centerYm: 0.1124,
+      heightM: 0.2249,
+      reachM: 0.0595,
+      yawDeg: 180,
+    },
+    // Caras de grabado: las cuatro (el dorso es el lado del logo).
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
+    sizes: [
+      { id: "vaso-shaker-591", name: "591ml", label: "Clásico", scale: 1.00 },
     ],
   },
   {
