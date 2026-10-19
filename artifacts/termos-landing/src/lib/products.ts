@@ -14,6 +14,12 @@ export interface ProductSize {
   label: string;
   /** Uniform scale applied to the product profile. */
   scale: number;
+  /**
+   * Modelo 3D propio de ESTE tamaño (otro .glb, con su perfil medido): pisa el
+   * del producto. Va con scale 1, el .glb ya tiene la medida real. Ver
+   * productForSize.
+   */
+  shape?: Pick<ProductDef, "profile" | "band" | "model" | "frontFace">;
 }
 
 export interface ProductDef {
@@ -585,8 +591,10 @@ export const PRODUCTS: ProductDef[] = [
     name: "Vasos Hydrate",
     singular: "Vaso",
     // Hydrate "Vaso" con tapa transparente deslizable (artifacts/3D/
-    // vaso-hydrate-verde-landing.glb). Mismo cuerpo que el vaso con manija,
-    // sin manija. El logo del modelo queda atrás (yawDeg 180): adelante, la cara libre.
+    // vaso-hydrate-verde-landing.glb, el de 900 ml). Mismo cuerpo que el vaso
+    // con manija, sin manija. El logo del modelo queda atrás (yawDeg 180):
+    // adelante, la cara libre. El de 470 y el de 600 ml tienen modelo propio
+    // (shape del tamaño), en la misma escala (m × 12).
     desc: "Vaso térmico con tapa transparente deslizable.",
     cap: "none",
     handle: "none",
@@ -612,8 +620,54 @@ export const PRODUCTS: ProductDef[] = [
     engraveFaces: ["front", "left", "back", "right"],
     logoBack: true,
     sizes: [
-      { id: "vaso-hydrate-470", name: "470ml", label: "Chico",   scale: 0.84 },
-      { id: "vaso-hydrate-600", name: "600ml", label: "Mediano", scale: 0.91 },
+      {
+        id: "vaso-hydrate-470", name: "470ml", label: "Chico", scale: 1.00,
+        // artifacts/3D/vaso-470ml.glb: vaso cónico sin tapa, aro de acero arriba.
+        // Perfil medido sobre el .glb (m × 12, centrado en 0,0811 m).
+        shape: {
+          profile: [
+            [0.379, -0.973], [0.390, -0.820], [0.399, -0.667], [0.412, -0.514],
+            [0.424, -0.361], [0.433, -0.208], [0.446, -0.055], [0.455,  0.098],
+            [0.467,  0.251], [0.476,  0.403], [0.489,  0.556], [0.502,  0.709],
+            [0.510,  0.862],
+          ],
+          band: [-0.90, 0.79],
+          frontFace: { uHalfWidth: 0.2 },
+          model: {
+            url: "/models/vaso-470ml.glb?v=1",
+            unitsPerMeter: 12,
+            centerYm: 0.0811,
+            heightM: 0.1621,
+            reachM: 0.0435,
+            exactFor: ["Vaso"],
+            yawDeg: 180,
+          },
+        },
+      },
+      {
+        id: "vaso-hydrate-600", name: "600ml", label: "Mediano", scale: 1.00,
+        // artifacts/3D/vaso-600ml.glb: vaso cónico con base de acero, aro y tapa
+        // con deslizador. Perfil medido sobre el .glb (m × 12, centrado en 0,088 m).
+        shape: {
+          profile: [
+            [0.437, -0.929], [0.456, -0.779], [0.471, -0.630], [0.483, -0.480],
+            [0.493, -0.331], [0.501, -0.181], [0.508, -0.032], [0.513,  0.118],
+            [0.517,  0.267], [0.521,  0.417], [0.525,  0.566], [0.529,  0.716],
+            [0.530,  0.767],
+          ],
+          band: [-0.86, 0.70],
+          frontFace: { uHalfWidth: 0.2 },
+          model: {
+            url: "/models/vaso-600ml.glb?v=1",
+            unitsPerMeter: 12,
+            centerYm: 0.088,
+            heightM: 0.176,
+            reachM: 0.0442,
+            exactFor: ["Vaso"],
+            yawDeg: 180,
+          },
+        },
+      },
       { id: "vaso-hydrate-900", name: "900ml", label: "Grande",  scale: 1.00 },
     ],
   },
@@ -804,7 +858,7 @@ export const PRODUCTS: ProductDef[] = [
     id: "vaso-shaker",
     name: "Vasos Shaker",
     singular: "Vaso Shaker",
-    // Hydrate "Vaso Shaker" (artifacts/3D/vaso-shaker.glb): vaso cónico (se
+    // Hydrate "Vaso Shaker" (artifacts/3D/shaker.glb): vaso cónico (se
     // abre hacia arriba), junta de goma, tapa con pico, tapita y asa sobre la
     // tapa. El cuerpo no tiene manija. Perfil = radio del cuerpo medido sobre
     // el .glb (m × 10, centrado en 0,1124 m). Logo atrás (yawDeg 180).
@@ -818,7 +872,7 @@ export const PRODUCTS: ProductDef[] = [
     ],
     band: [-1.00, 0.45],
     model: {
-      url: "/models/vaso-shaker.glb?v=1",
+      url: "/models/vaso-shaker.glb?v=2",
       exactFor: ["Vaso Shaker"],
       unitsPerMeter: 10,
       centerYm: 0.1124,
@@ -884,8 +938,27 @@ export function getSize(product: ProductDef, sizeId: string): ProductSize {
   return product.sizes.find(s => s.id === sizeId) ?? product.sizes[1] ?? product.sizes[0];
 }
 
+const sizedCache = new WeakMap<ProductSize, ProductDef>();
+
+/**
+ * El producto tal como se ve en ese tamaño: si el tamaño tiene modelo propio
+ * (`shape`), su perfil, banda y .glb pisan los del producto. Sin `shape`, el
+ * mismo producto. Siempre el mismo objeto por tamaño (sirve de clave de caché).
+ */
+export function productForSize(product: ProductDef, sizeId: string): ProductDef {
+  const size = getSize(product, sizeId);
+  if (!size.shape) return product;
+  let sized = sizedCache.get(size);
+  if (!sized) {
+    sized = { ...product, ...size.shape };
+    sizedCache.set(size, sized);
+  }
+  return sized;
+}
+
 const RESAMPLE_POINTS = 64;
-const resampleCache = new Map<ProductId, [number, number][]>();
+// Por objeto, no por id: un tamaño con modelo propio tiene otro perfil.
+const resampleCache = new WeakMap<ProductDef, [number, number][]>();
 
 /**
  * The same silhouette, resampled at even arc-length steps.
@@ -896,7 +969,7 @@ const resampleCache = new Map<ProductId, [number, number][]>();
  * proportions close to the real product.
  */
 export function resampledProfile(product: ProductDef): [number, number][] {
-  const cached = resampleCache.get(product.id);
+  const cached = resampleCache.get(product);
   if (cached) return cached;
 
   const pts = product.profile;
@@ -919,6 +992,6 @@ export function resampledProfile(product: ProductDef): [number, number][] {
     ]);
   }
 
-  resampleCache.set(product.id, out);
+  resampleCache.set(product, out);
   return out;
 }

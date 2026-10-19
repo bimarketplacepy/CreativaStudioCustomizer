@@ -13,7 +13,7 @@
  *  - El servidor graba los dpi en el PNG para que RIPrint lo abra a tamaño real.
  */
 import { drawColorLayer, bandMetrics, TEXTURE_H, TEXTURE_W, type ColorLayerInput } from "./engraving-maps";
-import { getProduct, getSize } from "./products";
+import { getProduct, getSize, productForSize } from "./products";
 import { printSpecFor } from "./print-specs";
 
 export interface DacenPrintFile {
@@ -40,7 +40,7 @@ export function dacenPrintSize(productId: string, sizeId: string): { circumferen
     // Cónico: el ancho se toma del Ø mayor (DACEN.md §10, pregunta 1).
     return { circumferenceMm: Math.PI * Math.max(top, bot), heightMm: h, approx: false };
   }
-  const product = getProduct(productId);
+  const product = productForSize(getProduct(productId), sizeId);
   const scale = getSize(product, sizeId).scale;
   const mmPerUnit = (1000 * scale) / (product.model?.unitsPerMeter ?? 10);
   const maxR = Math.max(...product.profile.map(p => p[0]));
@@ -83,7 +83,7 @@ export async function renderDacenPng(
 ): Promise<DacenPrintFile | null> {
   const hasArt = !!design.artImage && design.imageSize !== "none";
   if (!design.text.trim() && !hasArt) return null;
-  const product = getProduct(productId);
+  const product = productForSize(getProduct(productId), sizeId);
   const m = bandMetrics(product, TEXTURE_W, TEXTURE_H);
   const size = dacenPrintSize(productId, sizeId);
   const bandPx = m.botPx - m.topPx;

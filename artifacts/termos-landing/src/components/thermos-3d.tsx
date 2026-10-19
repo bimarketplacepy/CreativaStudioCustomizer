@@ -3,7 +3,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, PerspectiveCamera, useGLTF } from "@react-three/drei";
 import { StudioLighting } from "./studio-lighting";
 import * as THREE from "three";
-import { getProduct, getSize, resampledProfile, type ProductDef } from "@/lib/products";
+import { getProduct, getSize, productForSize, resampledProfile, type ProductDef } from "@/lib/products";
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, bandRange, vForY, type FaceId, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
 import { makeBodyMaps, makeGlassEngraving, type EngraveStyle, type TextMark } from "@/lib/engraving-maps";
@@ -1250,7 +1250,7 @@ function ThermosMesh({
   // cargado): avisar para que la captura del resumen no salga vacía.
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
-  useEffect(() => { onReadyRef.current?.(); }, [product.id]);
+  useEffect(() => { onReadyRef.current?.(); }, [product.id, product.model?.url]);
 
   const motionRef = useRef({ moving: false, onMotionChange });
   motionRef.current.onMotionChange = onMotionChange;
@@ -1435,7 +1435,7 @@ function ThermosMesh({
              al pasar de `material={…}` a un material hijo R3F repone la prop
              quitada con el default de THREE.Mesh: un MeshBasicMaterial blanco
              (la tapa del Termo Mate salía blanca y sin luz). */
-          <ModelPieces key={product.id} product={product} sil={sil} colorHex={colorHex} finish={finish} bodyMaterial={bodyMaterial} hideLogo={hideLogo} onKeepOut={onModelKeepOut} />
+          <ModelPieces key={product.model.url} product={product} sil={sil} colorHex={colorHex} finish={finish} bodyMaterial={bodyMaterial} hideLogo={hideLogo} onKeepOut={onModelKeepOut} />
         ) : (
           <mesh geometry={bodyGeo} castShadow receiveShadow userData={ENGRAVE_BODY}>
             {bodyMaterial}
@@ -1926,7 +1926,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
 }
 
 export default function Thermos3D(props: Thermos3DProps) {
-  const product = getProduct(props.productId);
+  const product = productForSize(getProduct(props.productId), props.sizeId);
   const sil = useMemo(
     () => buildSilhouette(product, getSize(product, props.sizeId).scale),
     [product, props.sizeId]

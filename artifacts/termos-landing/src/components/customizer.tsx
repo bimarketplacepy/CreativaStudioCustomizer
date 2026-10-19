@@ -28,7 +28,7 @@ import Object3D from "./object-3d";
 import ImageUpload from "./image-upload";
 import { ENGRAVING_PLANS, type EngravingPlanId } from "@/lib/engraving-plans";
 import type { ProcessedImage } from "@/lib/image-processing";
-import { DEFAULT_PRODUCT_ID, getProduct, getSize, type ProductDef } from "@/lib/products";
+import { DEFAULT_PRODUCT_ID, getProduct, getSize, productForSize, type ProductDef } from "@/lib/products";
 import { getObject } from "@/lib/objects";
 import {
   DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, LINE_HEIGHT_PRESETS, DEFAULT_LINE_HEIGHT,
@@ -1760,9 +1760,10 @@ export default function Customizer() {
   // anneals dark (grafito) instead of revealing bright metal.
   const drinkwareEngraveStyle = materialId === "cuero" ? "leather" : isInox ? "inox" : "steel";
 
-  // Drinkware base product (drives the 3D preview, sizes, band)
+  // Drinkware base product (drives the 3D preview, sizes, band). `product` is
+  // the one for the size on view (a size can bring its own model): see below.
   const productId = activeMProduct?.drinkwareProductId ?? DEFAULT_PRODUCT_ID;
-  const product = getProduct(productId);
+  const baseProduct = getProduct(productId);
   const [size, setSize] = useState(() => {
     const sizes = getProduct(productId).sizes;
     return (sizes[1] ?? sizes[0]).id;
@@ -1877,13 +1878,15 @@ export default function Customizer() {
           .filter(Boolean).join(" · ")
       : "";
   /** Sin modelo 3D propio, la vista usa la forma genérica del tipo: avisarlo. */
-  const approxNote = shopMode && !genericPick && odooProduct && !product.model?.exactFor?.includes(odooProduct.name)
+  const approxNote = shopMode && !genericPick && odooProduct && !baseProduct.model?.exactFor?.includes(odooProduct.name)
     ? `La vista 3D de ${odooProduct.name} es aproximada; el diseño y el grabado son los reales.`
     : null;
 
   // Tamaño que dibuja el 3D: el de Odoo mapeado al perfil, o el elegido a mano.
-  const viewSize = odooMode ? viewSizeId(product, odooSizes, odooSize) : size;
-  const activeSize = getSize(product, viewSize);
+  const viewSize = odooMode ? viewSizeId(baseProduct, odooSizes, odooSize) : size;
+  const activeSize = getSize(baseProduct, viewSize);
+  // El producto en ese tamaño: perfil, banda y modelo del tamaño si tiene propio.
+  const product = productForSize(baseProduct, viewSize);
 
   const [color, setColor] = useState(COLORS.find(c => c.name.startsWith(START_COLOR_NAME))?.id ?? COLORS[0].id);
   const [customHex, setCustomHex] = useState<string | null>(null);
