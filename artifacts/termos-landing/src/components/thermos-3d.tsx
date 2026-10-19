@@ -864,7 +864,7 @@ function ThermosMesh({
     const base = { roughness: 0.35, metalness: 0.15, clearcoat: 0.8, clearcoatRoughness: 0.15 };
     if (finish === "matte") {
       // Hoppie, chopera y vaso con manija llevan powder-coat real: mate con cuerpo, no tiza.
-      if (product.id === "hoppie" || product.id === "botella-ancha" || product.id === "chopera" || product.id === "vaso-manija" || product.id === "vaso-hydrate" || product.id === "vaso-sunbeam" || product.id === "termo-mate" || product.id === "termo-mate-forge" || product.id === "termo-kids" || product.id === "hoppie-hydrate" || product.id === "copa-hydrate" || product.id === "vaso-espresso" || product.id === "taza-manija" || product.id === "mini-coffee" || product.id === "guampa")
+      if (product.id === "hoppie" || product.id === "botella-ancha" || product.id === "chopera" || product.id === "vaso-manija" || product.id === "vaso-hydrate" || product.id === "vaso-sunbeam" || product.id === "termo-mate" || product.id === "termo-mate-forge" || product.id === "termo-kids" || product.id === "hoppie-hydrate" || product.id === "copa-hydrate" || product.id === "vaso-espresso" || product.id === "taza-manija" || product.id === "mini-coffee" || product.id === "vaso-taza" || product.id === "coffee-cup" || product.id === "guampa")
         return { ...base, roughness: 0.6, metalness: 0.1, clearcoat: 0.06, clearcoatRoughness: 0.7 };
       return { ...base, roughness: 0.88, metalness: 0.0, clearcoat: 0.0, clearcoatRoughness: 0.8 };
     }

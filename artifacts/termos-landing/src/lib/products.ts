@@ -1,7 +1,7 @@
 import type { FaceId } from "./placement";
 import type { KeepOutZone } from "./keep-out";
 
-export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee";
+export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -406,7 +406,7 @@ export const PRODUCTS: ProductDef[] = [
     // Zona grabable: el cuerpo pintado (17–82 mm) menos ~3 mm arriba y abajo.
     band: [-0.492, 0.320],
     model: {
-      url: "/models/guampa.glb?v=2",
+      url: "/models/guampa.glb?v=3",
       unitsPerMeter: 14,
       centerYm: 0.05565,
       heightM: 0.1113,
@@ -726,6 +726,78 @@ export const PRODUCTS: ProductDef[] = [
     logoBack: true,
     sizes: [
       { id: "mini-coffee-unico", name: "Único", label: "Clásico", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-taza",
+    name: "Vasos Taza",
+    singular: "Vaso Taza",
+    // Hydrate "Vaso Taza" (artifacts/3D/Vaso-Taza.glb): jarro cilíndrico recto
+    // Ø 84 mm con base redondeada, aro de acero arriba, tapa y manija lateral.
+    // Perfil = radio del cuerpo medido sobre el .glb (m × 20, centrado en
+    // 0,0566 m). Logo atrás (yawDeg 180); con ese giro la manija (+X en el
+    // .glb) queda en u 0.25.
+    desc: "Jarro térmico con manija lateral y tapa.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.742, -1.132], [0.787, -1.100], [0.806, -1.069], [0.831, -1.037],
+      [0.838, -1.005], [0.840, -0.973], [0.840,  0.772],
+    ],
+    band: [-0.95, 0.70],
+    // Cara frontal a 90° de la manija (u 0.25): el área no toca la manija.
+    frontFace: { uHalfWidth: 0.16 },
+    model: {
+      url: "/models/vaso-taza.glb?v=1",
+      exactFor: ["Vaso Taza"],
+      unitsPerMeter: 20,
+      centerYm: 0.0566,
+      heightM: 0.1132,
+      reachM: 0.0725,
+      yawDeg: 180,
+    },
+    // Caras de grabado: manija a la derecha (u 0.25); el dorso es el lado del logo.
+    engraveFaces: ["front", "left", "back"],
+    logoBack: true,
+    sizes: [
+      { id: "vaso-taza-unico", name: "Único", label: "Clásico", scale: 1.00 },
+    ],
+  },
+  {
+    id: "coffee-cup",
+    name: "Vasos Coffee Cup",
+    singular: "Vaso Coffee Cup",
+    // Hydrate "Vaso Coffee Cup" (artifacts/3D/vaso-coffee-cup.glb): vaso de café
+    // sin manija, cónico abajo con un escalón a media altura, aro de acero y
+    // tapa con deslizador. Perfil = radio del cuerpo medido sobre el .glb
+    // (m × 16, centrado en 0,0687 m). Logo atrás (yawDeg 180).
+    desc: "Vaso térmico para café con tapa deslizable.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.326, -1.100], [0.434, -1.055], [0.471, -1.011], [0.485, -0.967],
+      [0.511, -0.879], [0.526, -0.747], [0.542, -0.615], [0.558, -0.439],
+      [0.571, -0.219], [0.582, -0.043], [0.623,  0.001], [0.627,  0.134],
+      [0.634,  0.354], [0.639,  0.574], [0.640,  0.662],
+    ],
+    band: [-0.95, 0.60],
+    // Área en la parte de arriba (sobre el escalón), donde el cuerpo es casi
+    // recto: así el diseño no baja a la zona cónica.
+    frontFace: { uHalfWidth: 0.18, vCenter: 0.3, vHeightFrac: 0.5 },
+    model: {
+      url: "/models/vaso-coffee-cup.glb?v=1",
+      exactFor: ["Vaso Coffee Cup"],
+      unitsPerMeter: 16,
+      centerYm: 0.0687,
+      heightM: 0.1374,
+      reachM: 0.0475,
+      yawDeg: 180,
+    },
+    // Caras de grabado: las cuatro (el dorso es el lado del logo).
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
+    sizes: [
+      { id: "coffee-cup-236", name: "236ml", label: "Clásico", scale: 1.00 },
     ],
   },
   {
