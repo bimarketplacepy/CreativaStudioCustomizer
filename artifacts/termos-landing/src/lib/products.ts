@@ -872,13 +872,15 @@ export const PRODUCTS: ProductDef[] = [
     ],
     band: [-1.00, 0.45],
     model: {
-      url: "/models/vaso-shaker.glb?v=2",
+      url: "/models/vaso-shaker.glb?v=3",
       exactFor: ["Vaso Shaker"],
       unitsPerMeter: 10,
       centerYm: 0.1124,
       heightM: 0.2249,
       reachM: 0.0595,
       yawDeg: 180,
+      // La tapa va del color elegido, como el cuerpo (el asa ya se pinta sola).
+      paint: ["lid", "lid_top", "spout", "cap", "hinge"],
     },
     // Caras de grabado: las cuatro (el dorso es el lado del logo).
     engraveFaces: ["front", "left", "back", "right"],

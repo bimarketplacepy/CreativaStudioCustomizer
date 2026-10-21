@@ -61,10 +61,11 @@ import {
   useCatalog, viewSizeId, type CatalogSection, type ShopItem,
 } from "@/lib/odoo-catalog";
 import { track } from "@/lib/analytics";
+import { submitOrder } from "@/lib/submit-order";
 import { AiPhraseIdeas } from "./ai-tools";
 import type { PhraseIdea } from "@/lib/ai";
 import { dataUrlToJpeg, downloadDataUrl } from "@/lib/share";
-import { useCreateOrder, type CreateOrderRequest } from "@workspace/api-client-react";
+import type { CreateOrderRequest } from "@workspace/api-client-react";
 import { Download, Loader2 } from "lucide-react";
 
 /** Text scale bounds. Capped low so a name never blows out past the band. */
@@ -1905,8 +1906,6 @@ export default function Customizer() {
   // paso; null cuando el POST falló y el mensaje salió por el fallback.
   const [lastOrderNumber, setLastOrderNumber] = useState<string | null>(null);
   const [orderFallback, setOrderFallback] = useState(false);
-  // Hook tipado generado por Orval (react-query) para POST /api/orders.
-  const { mutateAsync: createOrderAsync } = useCreateOrder();
   // Subida del preview al tocar "Continuar por WhatsApp": estado de carga del botón.
   const [isPreparing, setIsPreparing] = useState(false);
   // PNG snapshot of the finished 3D piece, shown in the Step 4 summary and sent
@@ -3358,11 +3357,6 @@ export default function Customizer() {
     return parts.join("\n\n");
   };
 
-  /** Máximo que esperamos al backend de pedidos. Pasado esto, el mensaje sale
-   *  igual por WhatsApp sin número de pedido ni URL de imagen: el cliente
-   *  SIEMPRE llega a WhatsApp aunque el backend esté caído. */
-  const ORDER_TIMEOUT_MS = 8000;
-
   /** Captura el diseño de frente, crea el pedido (POST /api/orders con specs +
    *  imagen) y abre WhatsApp con el número de pedido y la URL permanente del
    *  preview. Si el POST falla o tarda de más, fallback: mensaje solo con las
@@ -3433,19 +3427,17 @@ export default function Customizer() {
       let orderNumber: string | null = null;
       let imageUrl: string | null = null;
       try {
-        const created = await Promise.race([
-          createOrderAsync({ data: orderPayload(jpeg, dacenFile) }),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("order timeout")), ORDER_TIMEOUT_MS),
-          ),
-        ]);
+        // submitOrder espera hasta 30 s y reintenta sin imágenes; si todo
+        // falla, el mensaje sale igual por WhatsApp sin número: el cliente
+        // SIEMPRE llega a WhatsApp aunque el backend esté caído.
+        const created = await submitOrder(orderPayload(jpeg, dacenFile));
         orderNumber = created.orderNumber;
         imageUrl = created.previewImageUrl ?? null;
         track("order_created", { order_number: orderNumber, product: orderProductName });
-      } catch {
+      } catch (err) {
         // Backend caído o lento: aviso sutil y el mensaje sale solo con specs.
         setOrderFallback(true);
-        track("order_fallback", { product: orderProductName });
+        track("order_fallback", { product: orderProductName, reason: err instanceof Error ? err.message.slice(0, 80) : "unknown" });
       }
 
       setLastOrderNumber(orderNumber);

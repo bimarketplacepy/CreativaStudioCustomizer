@@ -141,14 +141,53 @@ const TOKEN_FLAG = "_imageTokenRequired";
 
 const ORDER_NUMBER_RE = /^CS-\d{4,}$/;
 
-// POST /api/orders — máx. 10 pedidos por IP por hora.
-router.post("/orders", rateLimit({ max: 10, windowMs: 60 * 60 * 1000 }), async (req, res) => {
+/** Id que la landing manda en designState.requestId para no duplicar pedidos
+ *  cuando reintenta (el primer intento puede haber llegado igual). */
+const REQUEST_ID_RE = /^[a-z0-9-]{8,64}$/i;
+
+/** Pedido ya creado con ese requestId (últimas 24 h), si lo hay. */
+async function findByRequestId(requestId: string) {
+  return db.query.ordersTable.findFirst({
+    where: sql`${ordersTable.designState}->>'requestId' = ${requestId}
+      and ${ordersTable.createdAt} > now() - interval '1 day'`,
+  });
+}
+
+const responseFor = (req: Request, order: Order) => ({
+  orderNumber: order.orderNumber,
+  previewImageUrl: isEufySticker(order.designState, order.productionFilePath)
+    ? stickerPngUrlFor(req, order.orderNumber)
+    : imageUrlFor(req, order),
+});
+
+/** Pedidos en curso por requestId en esta instancia: un reintento que llega
+ *  mientras el primero todavía guarda imágenes espera ese mismo resultado. */
+const inflight = new Map<string, Promise<Order | null>>();
+
+// POST /api/orders — máx. 30 pedidos por IP por hora. Con 10, clientes detrás
+// de la misma IP (CGNAT de las operadoras móviles, una oficina) se bloqueaban
+// entre sí.
+router.post("/orders", rateLimit({ max: 30, windowMs: 60 * 60 * 1000 }), async (req, res) => {
   const parsed = CreateOrderBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ message: "Datos de pedido inválidos" });
     return;
   }
   const body = parsed.data;
+
+  const rawRequestId = (body.designState as Record<string, unknown>)?.requestId;
+  const requestId = typeof rawRequestId === "string" && REQUEST_ID_RE.test(rawRequestId) ? rawRequestId : null;
+  if (requestId) {
+    try {
+      const existing = (await inflight.get(requestId)) ?? (await findByRequestId(requestId));
+      if (existing) {
+        res.status(201).json(responseFor(req, existing));
+        return;
+      }
+    } catch (err) {
+      logger.warn({ err }, "orders: requestId lookup failed");
+    }
+  }
 
   // Validate the image up front (before burning an order number on bad input).
   let image = null;
@@ -164,6 +203,9 @@ router.post("/orders", rateLimit({ max: 10, windowMs: 60 * 60 * 1000 }), async (
     }
     image = result;
   }
+
+  let settle: (order: Order | null) => void = () => {};
+  if (requestId) inflight.set(requestId, new Promise<Order | null>((r) => { settle = r; }));
 
   try {
     // `nextval()` es atómico: pedidos simultáneos nunca colisionan de número.
@@ -206,17 +248,17 @@ router.post("/orders", rateLimit({ max: 10, windowMs: 60 * 60 * 1000 }), async (
         .update(ordersTable)
         .set({ productionFilePath: productionPath })
         .where(eq(ordersTable.id, order.id));
+      order.productionFilePath = productionPath;
     }
 
-    res.status(201).json({
-      orderNumber: order.orderNumber,
-      previewImageUrl: isEufySticker(order.designState, productionPath)
-        ? stickerPngUrlFor(req, order.orderNumber)
-        : imageUrlFor(req, order),
-    });
+    settle(order);
+    res.status(201).json(responseFor(req, order));
   } catch (err) {
+    settle(null);
     logger.error({ err }, "orders: create failed");
     res.status(500).json({ message: "No se pudo crear el pedido" });
+  } finally {
+    if (requestId) inflight.delete(requestId);
   }
 });
 

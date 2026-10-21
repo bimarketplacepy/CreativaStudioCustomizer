@@ -1,9 +1,9 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, Check, ChevronRight, Contrast, HandCoins, ImagePlus, Layers, Loader2, MapPin,
+  AlertTriangle, Check, ChevronRight, Contrast, Download, HandCoins, ImagePlus, Layers, Loader2, MapPin,
   MessageCircle, Minus, Plus, RefreshCw, Sparkles, X,
 } from "lucide-react";
-import { useCreateOrder, type CreateOrderRequest } from "@workspace/api-client-react";
+import type { CreateOrderRequest } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { MobileDesignScreen, useVisualViewport } from "@/components/mobile-screen";
@@ -16,8 +16,9 @@ import {
 } from "@/lib/sticker-pricing";
 import { formatGs } from "@/lib/odoo-catalog";
 import { ADDRESS, whatsappUrl } from "@/lib/contact";
-import { dataUrlToJpeg } from "@/lib/share";
+import { dataUrlToJpeg, downloadDataUrl } from "@/lib/share";
 import { track } from "@/lib/analytics";
+import { submitOrder } from "@/lib/submit-order";
 import { cn } from "@/lib/utils";
 
 /**
@@ -41,7 +42,6 @@ const MIN_DPI = 150;
 const MAX_PRODUCTION_DATAURL = 4_200_000;
 /** Resoluciones del PNG de producción, de la ideal hacia abajo. */
 const PRODUCTION_DPI_STEPS = [300, 240, 200, 150];
-const ORDER_TIMEOUT_MS = 8000;
 
 const cmLabel = (mm: number) => (mm / 10).toLocaleString("es-PY", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const pct = (d: number) => `${Math.round(d * 100)}%`;
@@ -290,7 +290,9 @@ export default function Stickers() {
   const [isOrdered, setIsOrdered] = useState(false);
   const [lastOrderNumber, setLastOrderNumber] = useState<string | null>(null);
   const [orderFallback, setOrderFallback] = useState(false);
-  const { mutateAsync: createOrderAsync } = useCreateOrder();
+  /** PNG del sticker cuando el pedido no se pudo registrar: el cliente lo
+   *  descarga y lo adjunta en el chat (wa.me solo admite texto). */
+  const [fallbackPng, setFallbackPng] = useState<string | null>(null);
 
   // La imagen del arte (para la máscara y el PNG de producción).
   useEffect(() => {
@@ -387,7 +389,7 @@ export default function Stickers() {
   const isPresetSize = STICKER_SIZE_PRESETS.includes(sizeCm);
   const toggleBg = () => setBgChoice(dark ? "light" : "dark");
 
-  const buildMessage = (orderNumber: string | null, imageUrl: string | null) => {
+  const buildMessage = (orderNumber: string | null, imageUrl: string | null, downloaded = false) => {
     // Corto a propósito: el detalle completo queda guardado en el pedido
     // (panel /admin). *negrita* es el formato de WhatsApp.
     const parts = [
@@ -398,7 +400,11 @@ export default function Stickers() {
         `Corte ${cutDef.name.toLowerCase()} · ${finishDef.name}`,
         `${quantity} ${quantity === 1 ? "unidad" : "unidades"} · ${STICKER_PRICES_ENABLED ? `precio estimado ${formatGs(quote.total)}` : "precio a cotizar"}`,
       ].filter(Boolean).join("\n"),
-      imageUrl ? `*Diseño:* ${imageUrl}` : "*Diseño:* se los envío por este chat.",
+      imageUrl
+        ? `*Diseño:* ${imageUrl}`
+        : downloaded
+          ? "*Diseño:* les adjunto el PNG que descargué de la web 👇"
+          : "*Diseño:* se los envío por este chat.",
       "¿Me confirman diseño y precio? ¡Gracias!",
     ];
     return parts.join("\n\n");
@@ -408,6 +414,7 @@ export default function Stickers() {
     if (isPreparing || isOrdered) return;
     setIsPreparing(true);
     setOrderFallback(false);
+    setFallbackPng(null);
     setLastOrderNumber(null);
     track("sticker_order_submit", { size_mm: Math.round(Math.max(widthMm, heightMm)), quantity, finish, cut, has_image: !!art });
 
@@ -415,18 +422,19 @@ export default function Stickers() {
     const win = window.open("", "_blank");
     if (win) {
       try {
-        win.document.write('<title>Creando tu pedido…</title><body style="margin:0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;color:#5f574d">Creando tu pedido…</body>');
+        win.document.write('<title>Creando tu pedido…</title><body style="margin:0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;color:#5f574d">Subiendo tu diseño…</body>');
       } catch { /* pestaña en blanco un instante */ }
     }
 
     try {
       let orderNumber: string | null = null;
       let imageUrl: string | null = null;
+      let downloaded = false;
       if (art && shape && artImg) {
+        const production = stickerToPng(artImg, shape);
         try {
           const png = svgRef.current ? await svgToPng(svgRef.current, 1080) : null;
           const preview = png ? await dataUrlToJpeg(png, 1080) : null;
-          const production = stickerToPng(artImg, shape);
           const payload: CreateOrderRequest = {
             product: "Sticker",
             material: "Film UV DTF",
@@ -458,21 +466,26 @@ export default function Stickers() {
             // PNG listo para la eufyMake E1 (el server lo guarda como archivo de producción).
             customImage: production?.dataUrl ?? undefined,
           };
-          const created = await Promise.race([
-            createOrderAsync({ data: payload }),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("order timeout")), ORDER_TIMEOUT_MS)),
-          ]);
+          const created = await submitOrder(payload);
           orderNumber = created.orderNumber;
           imageUrl = created.previewImageUrl ?? null;
-          track("order_created", { order_number: orderNumber, product: "Sticker" });
-        } catch {
+          track("order_created", { order_number: orderNumber, product: "Sticker", with_image: !!imageUrl });
+        } catch (err) {
           setOrderFallback(true);
-          track("order_fallback", { product: "Sticker" });
+          track("order_fallback", { product: "Sticker", reason: err instanceof Error ? err.message.slice(0, 80) : "unknown" });
+        }
+        // Sin link al diseño (falló el pedido, o el reintento salió sin
+        // imágenes): se descarga el PNG para que el cliente lo adjunte en el
+        // chat, en vez de llegar solo el texto.
+        if (!imageUrl && production) {
+          setOrderFallback(true);
+          setFallbackPng(production.dataUrl);
+          try { downloadDataUrl(production.dataUrl, "mi-sticker.png"); downloaded = true; } catch { /* queda el botón */ }
         }
       }
 
       setLastOrderNumber(orderNumber);
-      const url = whatsappUrl(buildMessage(orderNumber, imageUrl));
+      const url = whatsappUrl(buildMessage(orderNumber, imageUrl, downloaded));
       if (win && !win.closed) win.location.replace(url);
       else window.open(url, "_blank", "noopener");
       setIsOrdered(true);
@@ -684,9 +697,20 @@ export default function Stickers() {
             {!vp.keyboard && (
               <div className="shrink-0 bg-white border-t border-border px-4 pt-2.5" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
                 {orderFallback && (
-                  <p className="text-xs text-amber-700 mb-2 leading-snug">
-                    No pudimos registrar tu pedido online, pero los datos salen igual por WhatsApp. Mandanos tu diseño en el chat.
-                  </p>
+                  <div className="mb-2">
+                    <p className="text-xs text-amber-700 leading-snug">
+                      No pudimos subir tu diseño. {fallbackPng ? "Descargalo y adjuntalo en el chat de WhatsApp." : "Mandanos tu diseño en el chat."}
+                    </p>
+                    {fallbackPng && (
+                      <button
+                        type="button"
+                        onClick={() => downloadDataUrl(fallbackPng, "mi-sticker.png")}
+                        className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary underline underline-offset-2"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Descargar mi diseño (PNG)
+                      </button>
+                    )}
+                  </div>
                 )}
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -988,9 +1012,16 @@ export default function Stickers() {
           </Button>
 
           {orderFallback && (
-            <p className="text-xs text-amber-700 text-center leading-relaxed">
-              No pudimos registrar tu pedido online, pero los datos salen igual por WhatsApp. Mandanos tu diseño en el chat.
-            </p>
+            <div className="text-center space-y-1.5">
+              <p className="text-xs text-amber-700 leading-relaxed">
+                No pudimos subir tu diseño. {fallbackPng ? "Descargalo y adjuntalo en el chat de WhatsApp." : "Mandanos tu diseño en el chat."}
+              </p>
+              {fallbackPng && (
+                <Button variant="outline" size="sm" onClick={() => downloadDataUrl(fallbackPng, "mi-sticker.png")}>
+                  <Download className="w-4 h-4" /> Descargar mi diseño (PNG)
+                </Button>
+              )}
+            </div>
           )}
 
           <ul className="space-y-1.5 text-xs text-muted-foreground">
