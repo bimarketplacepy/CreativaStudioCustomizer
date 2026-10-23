@@ -53,6 +53,7 @@ export const MATERIALS: MaterialDef[] = [
       { id: "vaso-taza", name: "Vaso Taza", desc: "Jarro térmico con manija lateral y tapa.", drinkwareProductId: "vaso-taza" },
       { id: "coffee-cup", name: "Vaso Coffee Cup", desc: "Vaso térmico para café con tapa deslizable.", drinkwareProductId: "coffee-cup" },
       { id: "vaso-shaker", name: "Vaso Shaker", desc: "Vaso térmico shaker con tapa de pico y asa.", drinkwareProductId: "vaso-shaker" },
+      { id: "vaso-whisky", name: "Vaso Whisky", desc: "Vaso térmico bajo para whisky, sin tapa.", drinkwareProductId: "vaso-whisky" },
       { id: "vaso-manija", name: "Vaso con manija", desc: "Vaso térmico de 887 ml con manija lateral y tapa transparente.", drinkwareProductId: "vaso-manija" },
       { id: "hoppie-hydrate", name: "Hoppie", desc: "Botella térmica con tapa de pico y asa.", drinkwareProductId: "hoppie-hydrate" },
       { id: "hoppie",  name: "Hoppie V2 Pro",  drinkwareProductId: "hoppie" },
@@ -60,6 +61,10 @@ export const MATERIALS: MaterialDef[] = [
       { id: "guampa",  name: "Guampa",  drinkwareProductId: "guampa" },
       { id: "copa-hydrate", name: "Copa", desc: "Copa térmica de vino sin tallo con tapa transparente.", drinkwareProductId: "copa-hydrate" },
       { id: "chopera", name: "Chopera", desc: "Chopera térmica de 710 ml con manija angular y tapa transparente.", drinkwareProductId: "chopera" },
+      { id: "jug", name: "Jarra / Growler", desc: "Jarra térmica de gran capacidad con asa.", drinkwareProductId: "jug" },
+      { id: "food-flask", name: "Food Flask", desc: "Termo de comida con tapa a rosca.", drinkwareProductId: "food-flask" },
+      { id: "bowl", name: "Bowl", desc: "Bowl de acero, bajo y ancho.", drinkwareProductId: "bowl" },
+      { id: "ice-bucket", name: "Hielera", desc: "Hielera de acero con tapa.", drinkwareProductId: "ice-bucket" },
     ],
   },
   // "Acero inoxidable" (acabado natural cepillado) se quitó del selector por

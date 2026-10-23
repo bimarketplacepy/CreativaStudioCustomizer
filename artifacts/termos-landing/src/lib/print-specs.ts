@@ -78,11 +78,17 @@ export const PRINT_SPECS: Record<ProductId, PrintSpecEntry> = {
   "vaso-taza": steel({ dacen: false, consult: "handle" }),
   "coffee-cup": steel({ dacen: false, consult: "shape" }),
   "vaso-shaker": steel(),
+  "vaso-whisky": steel(),
   "chopera": steel({ dacen: false, consult: "handle" }),
   "copa": steel({ dacen: false, consult: "shape" }),
   "copa-hydrate": steel({ dacen: false, consult: "shape" }),
   // Base redondeada y paredes que se abren.
   "guampa": steel({ dacen: false, consult: "shape" }),
+  "food-flask": steel(),
+  // Paredes que se abren hacia el borde.
+  "bowl": steel({ dacen: false, consult: "shape" }),
+  // Seguramente más ancha que lo que entra en la Dacen (máx. 125 mm): medir.
+  "ice-bucket": steel({ dacen: false, consult: "shape" }),
 };
 
 /** Medidas de un producto en un tamaño (la base, pisada por las del tamaño). */

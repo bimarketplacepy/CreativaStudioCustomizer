@@ -1,7 +1,7 @@
 import type { FaceId } from "./placement";
 import type { KeepOutZone } from "./keep-out";
 
-export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker";
+export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "bowl" | "ice-bucket" | "vaso-whisky";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -271,27 +271,32 @@ export const PRODUCTS: ProductDef[] = [
     id: "hoppie",
     name: "Hoppies V2 Pro",
     singular: "Hoppie V2 Pro",
-    // Hydrate Hoppie V2 Pro Series con tapa de asa (artifacts/3D/forma-botella.glb).
+    // Hydrate Hoppie V2 Pro Series con tapa de asa (artifacts/3D/Termogv2pro.glb).
     // El Hoppie común tiene otra tapa: usa la botella de boca ancha genérica.
     // Perfil = radio del cuerpo medido sobre el .glb (m × 10, centrado en
-    // 0,13 m): cilindro recto con hombro corto bajo el aro de acero.
+    // 0,1299 m): cilindro recto que cierra en un hombro corto bajo el aro de
+    // acero. Logo atrás (yawDeg 180): adelante, la cara libre.
     desc: "Botella térmica de boca ancha con tapa con asa.",
     cap: "none",
     handle: "none",
     profile: [
-      [0.423, -1.163], [0.425, -1.050], [0.425, 0.384],
-      [0.423, 0.494], [0.400, 0.550], [0.375, 0.605],
+      [0.381, -1.162], [0.383, -1.089], [0.383, 0.388],
+      [0.382, 0.532], [0.345, 0.606],
     ],
-    band: [-1.0, 0.40],
+    band: [-1.0, 0.45],
     frontFace: { uHalfWidth: 0.15 },
     model: {
-      url: "/models/forma-botella.glb?v=1",
+      url: "/models/hoppie-v2-pro.glb?v=1",
       exactFor: ["Hoppie V2 Pro Series"],
       unitsPerMeter: 10,
-      centerYm: 0.13,
-      heightM: 0.26,
-      reachM: 0.047,
+      centerYm: 0.1299,
+      heightM: 0.2598,
+      reachM: 0.042,
+      yawDeg: 180,
     },
+    // Caras de grabado: las cuatro (el dorso es el lado del logo).
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
     sizes: [
       { id: "hoppie-770",  name: "770ml", label: "Clásico", scale: 1.00 },
       { id: "hoppie-1000", name: "1L",    label: "Grande",  scale: 1.09 },
@@ -370,8 +375,8 @@ export const PRODUCTS: ProductDef[] = [
   },
   {
     id: "jug",
-    name: "Jugs",
-    singular: "Jug",
+    name: "Jarras",
+    singular: "Jarra",
     // Stanley IceMonster / Adventure — wide squat water jug, carabiner handle on cap
     desc: "Bidón térmico ancho de gran capacidad con asa.",
     cap: "screw",
@@ -389,6 +394,69 @@ export const PRODUCTS: ProductDef[] = [
       { id: "jug-48",  name: "48oz",  label: "Medio",   scale: 0.88 },
       { id: "jug-64",  name: "64oz",  label: "Grande",  scale: 1.00 },
       { id: "jug-96",  name: "96oz",  label: "XL",      scale: 1.14 },
+    ],
+  },
+  {
+    id: "food-flask",
+    name: "Food Flasks",
+    singular: "Food Flask",
+    // Termo de comida (Food Flask de Hydrate) — forma genérica: cilindro ancho y
+    // bajo con tapa a rosca casi tan ancha como el cuerpo. Sin .glb todavía.
+    desc: "Termo de comida: cilindro ancho y bajo con tapa a rosca.",
+    cap: "screw",
+    handle: "none",
+    profile: [
+      [0.00, -0.92], [0.50, -0.92],
+      [0.60, -0.86], [0.62, -0.74],
+      [0.62,  0.60], [0.58,  0.70],
+      [0.54,  0.78],
+    ],
+    band: [-0.66, 0.54],
+    sizes: [
+      { id: "food-flask-355", name: "355ml", label: "Chico",   scale: 0.76 },
+      { id: "food-flask-591", name: "591ml", label: "Mediano", scale: 0.90 },
+      { id: "food-flask-830", name: "830ml", label: "Grande",  scale: 1.00 },
+    ],
+  },
+  {
+    id: "bowl",
+    name: "Bowls",
+    singular: "Bowl",
+    // Bowl de acero (comida o mascotas) — forma genérica: cuenco bajo que se
+    // abre hacia el borde. El perfil cierra arriba con un disco al ras del borde
+    // (el cuerpo del lathe se dibuja de un solo lado: abierto se vería hueco).
+    desc: "Bowl de acero, bajo y ancho; se graba en el lateral.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.00, -0.40], [0.62, -0.40],
+      [0.70, -0.34], [0.80, -0.12],
+      [0.90,  0.16], [0.96,  0.34],
+      [0.90,  0.38], [0.00,  0.38],
+    ],
+    band: [-0.14, 0.26],
+    frontFace: { uHalfWidth: 0.16 },
+    sizes: [
+      { id: "bowl-946", name: "946ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
+    id: "ice-bucket",
+    name: "Hieleras",
+    singular: "Hielera",
+    // Ice Bucket de Hydrate (3,25 L) — forma genérica: balde ancho con tapa.
+    desc: "Hielera de acero: balde ancho con tapa.",
+    cap: "lid",
+    handle: "none",
+    profile: [
+      [0.00, -0.95], [0.78, -0.95],
+      [0.86, -0.88], [0.88, -0.76],
+      [0.90,  0.70], [0.86,  0.80],
+      [0.80,  0.84],
+    ],
+    band: [-0.66, 0.62],
+    sizes: [
+      { id: "ice-bucket-3250", name: "3250ml", label: "Único", scale: 1.00 },
     ],
   },
   {
@@ -815,6 +883,37 @@ export const PRODUCTS: ProductDef[] = [
     logoBack: true,
     sizes: [
       { id: "vaso-taza-unico", name: "Único", label: "Clásico", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-whisky",
+    name: "Vasos Whisky",
+    singular: "Vaso Whisky",
+    // Hydrate "Vaso Whisky Lowball" (artifacts/3D/vaso-whiskey-hydrate-negro.glb):
+    // vaso bajo y recto sin tapa, base y aro de acero. Perfil = radio del cuerpo
+    // medido sobre el .glb (m × 20, centrado en 0,05225 m). Logo atrás (yawDeg 180).
+    desc: "Vaso térmico bajo para whisky, sin tapa.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.860, -0.893], [0.862, -0.369], [0.866, 0.413],
+      [0.868, 0.775], [0.866, 0.861],
+    ],
+    band: [-0.82, 0.80],
+    model: {
+      url: "/models/vaso-whisky.glb?v=1",
+      exactFor: ["Vaso Whisky Lowball"],
+      unitsPerMeter: 20,
+      centerYm: 0.05225,
+      heightM: 0.1045,
+      reachM: 0.0435,
+      yawDeg: 180,
+    },
+    // Caras de grabado: las cuatro (el dorso es el lado del logo).
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
+    sizes: [
+      { id: "vaso-whisky-295", name: "295ml", label: "Clásico", scale: 1.00 },
     ],
   },
   {

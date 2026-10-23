@@ -43,10 +43,13 @@ export const ENGRAVING_CODES = {
 
 /** Texto (categoría o nombre) → perfil 3D. Gana la primera regla que coincide. */
 const TYPE_RULES: [RegExp, string][] = [
+  [/\bfood flasks?\b/, "food-flask"],
+  [/\bice buckets?\b|\bhieleras?\b/, "ice-bucket"],
+  [/\bbowls?\b/, "bowl"],
   [/\bguampas?\b|\bmate cup\b/, "guampa"],
   [/\bhopp?ies?\b/, "hoppie"],
   [/\bchop(eras?|p)\b/, "chopera"],
-  [/\bjugs?\b|\bbidon(es)?\b/, "jug"],
+  [/\bjugs?\b|\bbidon(es)?\b|\bgrowlers?\b|\bjarras?\b/, "jug"],
   [/\bcopas?\b/, "copa"],
   [/\bvasos?\b|\btumblers?\b|\bpint\b|\bquencher\b/, "vaso"],
   [/\btermos?\b|\bthermo|\bmate system\b/, "termo"],
@@ -55,8 +58,9 @@ const TYPE_RULES: [RegExp, string][] = [
 const TYPE_LABEL: Record<string, string> = {
   guampa: "Guampa", hoppie: "Hoppie", chopera: "Chopera", jug: "Jug",
   copa: "Copa", vaso: "Vaso", termo: "Termo", botella: "Botella",
+  "food-flask": "Food Flask", "ice-bucket": "Ice Bucket", bowl: "Bowl",
   "vaso-manija": "Vaso", "botella-ancha": "Botella", "vaso-hydrate": "Vaso", "vaso-sunbeam": "Vaso",
-  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso",
+  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso", "vaso-whisky": "Vaso",
 };
 
 /**
@@ -75,7 +79,7 @@ const EXACT_MODEL: Record<string, { name: string; fallback: string }> = {
  * su perfil; los demás del tipo siguen con la forma genérica.
  */
 const NAMED_MODEL: Record<string, Record<string, string>> = {
-  vaso: { "vaso": "vaso-hydrate", "vaso sunbeam": "vaso-sunbeam", "vaso taza espresso": "vaso-espresso", "vaso manija": "taza-manija", "vaso mini coffee mug": "mini-coffee", "vaso taza": "vaso-taza", "vaso coffee cup": "coffee-cup", "vaso shaker": "vaso-shaker" },
+  vaso: { "vaso": "vaso-hydrate", "vaso sunbeam": "vaso-sunbeam", "vaso taza espresso": "vaso-espresso", "vaso manija": "taza-manija", "vaso mini coffee mug": "mini-coffee", "vaso taza": "vaso-taza", "vaso coffee cup": "coffee-cup", "vaso shaker": "vaso-shaker", "vaso whisky lowball": "vaso-whisky" },
   termo: { "termo mate": "termo-mate", "termo mate forge": "termo-mate-forge" },
   "botella-ancha": { "hoppie": "hoppie-hydrate", "termo kids": "termo-kids" },
   // La "Copa" de Hydrate (vaso de vino sin tallo) puede clasificarse como copa o
@@ -123,7 +127,7 @@ const SIZE_ATTR = /tama|capacidad|medida|size|volumen|litro|\boz\b|\bml\b/;
 const norm = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
-const SMALL = new Set(["y", "con", "de", "del", "la", "el", "en", "c/"]);
+const SMALL = new Set(["y", "con", "de", "del", "la", "el", "en", "para", "c/"]);
 /** "AZUL PACIFICO" / "Rojo." → "Azul Pacifico" / "Rojo". */
 const titleCase = (s: string) =>
   s.toLowerCase().split(" ").map((w, i) =>
@@ -138,6 +142,37 @@ export function normalizeSize(raw: string): string {
   const n = m[1].replace(",", ".");
   const u = m[2].toLowerCase();
   return u === "ml" || u === "cc" ? `${n}ml` : u === "oz" ? `${n}oz` : `${n}L`;
+}
+
+/** "470ml" / "1.5L" / "20oz" → ml (null si no se puede leer). */
+export function sizeMl(size: string): number | null {
+  const m = size.match(/^(\d+(?:\.\d+)?)(ml|L|oz)$/);
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  return m[2] === "ml" ? n : m[2] === "oz" ? n * 29.57 : n * 1000;
+}
+
+/**
+ * Odoo tiene la misma capacidad cargada con dos números: "Vaso 470ml" y
+ * "VASO 473 ML" (16 oz), "900ml" y "887 ML" (30 oz), "600ml" y "591 ML"
+ * (20 oz). Dentro de un modelo, los tamaños a menos de 2% de distancia son el
+ * mismo y se muestran con la etiqueta más usada (a igualdad, la más redonda).
+ */
+export function mergeNearSizes(variants: CatalogVariant[]): CatalogVariant[] {
+  const count = new Map<string, number>();
+  for (const v of variants) if (v.size) count.set(v.size, (count.get(v.size) ?? 0) + 1);
+  const sizes = [...count.keys()]
+    .map(s => ({ s, ml: sizeMl(s), n: count.get(s)! }))
+    .filter((x): x is { s: string; ml: number; n: number } => x.ml !== null)
+    .sort((a, b) => b.n - a.n || (a.ml % 10) - (b.ml % 10));
+  const alias = new Map<string, string>();
+  const kept: { s: string; ml: number }[] = [];
+  for (const x of sizes) {
+    const twin = kept.find(k => Math.abs(k.ml - x.ml) / k.ml < 0.02);
+    if (twin) alias.set(x.s, twin.s);
+    else kept.push(x);
+  }
+  return alias.size ? variants.map(v => (v.size && alias.has(v.size) ? { ...v, size: alias.get(v.size)! } : v)) : variants;
 }
 
 /** Tipo por texto: primera regla que coincide. */
@@ -398,7 +433,7 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
       // Servida por /api/catalog/image: la tienda solo publica la foto de los
       // productos publicados (al resto le muestra un ícono gris).
       imageUrl: pictured ? `/api/catalog/image/${pictured.t.id}` : null,
-      variants: list.map(e => e.variant),
+      variants: mergeNearSizes(list.map(e => e.variant)),
     };
   })
     // Más variantes primero: la línea principal encabeza el selector de modelo.

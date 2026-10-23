@@ -52,7 +52,7 @@ La landing pasa a vivir como subdominio de Marketplace. Nombre elegido: **`creat
 - **No crear un CNAME** para `creativastudio` además del A: un nombre no puede tener las dos cosas.
 - **No tocar** los registros existentes (`@`, `www`, `mail`, `MX`, el TXT de SPF ni los de Google/Pinterest): son del sitio y el correo de Marketplace.
 
-### Paso 3 — Verificar en Replit
+### Paso 3 — Verificar en Replit — ✅ Verified (2026-10-21)
 
 1. Volver a la pantalla de Replit del Paso 1 y tocar **Verify** (Verificar).
 2. Puede tardar de 5 minutos a unas horas (hasta 24–48 h en el peor caso). Con TTL 300 suele ser rápido.
@@ -61,7 +61,7 @@ La landing pasa a vivir como subdominio de Marketplace. Nombre elegido: **`creat
 
 Si no verifica después de un par de horas: revisar en cPanel que el nombre del registro no haya quedado duplicado (`creativastudio.marketplace.com.py.marketplace.com.py`), que la IP y el TXT estén copiados sin espacios, y que no exista otro registro para `creativastudio`.
 
-### Paso 4 — Cambios en el código (después de que el dominio funcione)
+### Paso 4 — Cambios en el código — ✅ Hecho (2026-10-21, falta republicar)
 
 El dominio viejo está escrito a mano en algunos archivos. Se cambian a `https://creativastudio.marketplace.com.py` y se republica:
 
@@ -76,7 +76,7 @@ Los links de imagen de los pedidos **no** se tocan: el api-server arma la URL co
 
 **og:image nuevo:** WhatsApp cachea la vista previa por URL. Al cambiar de dominio, la tarjeta del link se regenera sola (es otra URL); no hace falta versionar la imagen.
 
-### Paso 5 — El dominio viejo
+### Paso 5 — El dominio viejo — ✅ Redirección hecha en `server.mjs` (falta republicar)
 
 - Dejar `creativastudiopy.com` conectado en Replit y agregar en `server.mjs` una **redirección 301** de `creativastudiopy.com/*` a `creativastudio.marketplace.com.py/*`, **excepto `/api/*`**: los links de pedidos ya enviados por WhatsApp (`/api/orders/CS-XXXX/image?t=…`) se siguen sirviendo tal cual en el dominio viejo.
 - Mantener el dominio viejo pago al menos 1 año (Google tarda en pasar el posicionamiento al nuevo, y quedan links viejos en Instagram, WhatsApp y tarjetas).

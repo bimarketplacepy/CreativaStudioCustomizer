@@ -28,6 +28,12 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = join(__dirname, "dist", "public");
 const PORT = Number(process.env.PORT) || 3000;
 
+// Dominio público. El viejo (creativastudiopy.com) sigue conectado en Replit
+// y redirige acá con 301, salvo /api/* y /u/*: los links de pedidos ya
+// enviados por WhatsApp se siguen sirviendo tal cual en el dominio viejo.
+const PUBLIC_HOST = process.env.PUBLIC_HOST || "creativastudio.marketplace.com.py";
+const LEGACY_HOSTS = new Set(["creativastudiopy.com", "www.creativastudiopy.com"]);
+
 // ── API server (pedidos) ────────────────────────────────────────────────────
 // El @workspace/api-server (Express + Postgres) corre como proceso hijo en un
 // puerto interno y este server le reenvía todo /api/*. Si el bundle no está o el hijo se cae, el proxy
@@ -253,6 +259,13 @@ async function serve(req, res) {
   }
   if (pathname.startsWith("/api/") || pathname === "/admin" || pathname.startsWith("/admin/")) {
     proxyToApi(req, res);
+    return;
+  }
+
+  const host = (req.headers["host"] || "").toLowerCase().replace(/:\d+$/, "");
+  if (LEGACY_HOSTS.has(host) && (method === "GET" || method === "HEAD")) {
+    res.writeHead(301, { Location: `https://${PUBLIC_HOST}${req.url || "/"}`, "Cache-Control": "public, max-age=86400" });
+    res.end();
     return;
   }
 

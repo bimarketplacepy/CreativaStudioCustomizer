@@ -2,7 +2,7 @@
 /**
  * Anti-regression gate for the landing. Run after every publish:
  *
- *   node scripts/check-prod.mjs [origin]     (default: https://creativastudiopy.com)
+ *   node scripts/check-prod.mjs [origin]     (default: https://creativastudio.marketplace.com.py)
  *   node scripts/check-prod.mjs --local      (checks only the local build budgets)
  *
  * Exits non-zero if any check fails, so it can gate CI or be run by hand.
@@ -24,7 +24,7 @@ const DIST = join(ROOT, "dist", "public");
 
 const args = process.argv.slice(2);
 const localOnly = args.includes("--local");
-const ORIGIN = args.find((a) => a.startsWith("http")) ?? "https://creativastudiopy.com";
+const ORIGIN = args.find((a) => a.startsWith("http")) ?? "https://creativastudio.marketplace.com.py";
 
 let failures = 0;
 const ok = (msg) => console.log(`  ✓ ${msg}`);

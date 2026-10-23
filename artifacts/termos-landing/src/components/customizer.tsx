@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileDesignScreen, useVisualViewport } from "@/components/mobile-screen";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -167,7 +167,7 @@ function shadeHex(hex: string, amount: number): string {
 }
 
 /** Spanish article for a drinkware product name: "del termo", "de la copa". */
-const FEMININE_PRODUCTS = new Set(["copa", "guampa", "botella", "chopera"]);
+const FEMININE_PRODUCTS = new Set(["copa", "guampa", "botella", "chopera", "jarra", "hielera"]);
 function productArticle(singular: string): string {
   return FEMININE_PRODUCTS.has(singular.toLowerCase()) ? "de la" : "del";
 }
@@ -4546,6 +4546,9 @@ export default function Customizer() {
   );
 
   return (
+    // reducedMotion="user": con prefers-reduced-motion los pasos del asistente
+    // aparecen sin deslizar (igual que Galería y Tarifas).
+    <MotionConfig reducedMotion="user">
     <section ref={sectionRef} className="py-12 md:py-16 px-4 sm:px-6 bg-white border-b border-border">
       <div className="max-w-7xl mx-auto">
         {/* Header — compact on mobile (the long copy is desktop-only). */}
@@ -5528,5 +5531,6 @@ export default function Customizer() {
         )}
       </div>
     </section>
+    </MotionConfig>
   );
 }

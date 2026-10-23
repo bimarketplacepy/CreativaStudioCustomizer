@@ -4,11 +4,11 @@
 
 ## Secciones
 
-- [Personalizador 3D](https://creativastudiopy.com/#customizer): elegí formato, color y grabado y previsualizá la pieza en 3D.
-- [Precios y grabado](https://creativastudiopy.com/#precios): planes de grabado láser e impresión a color.
-- [Trabajos realizados](https://creativastudiopy.com/#galeria): galería de piezas ya personalizadas.
-- [Stickers](https://creativastudiopy.com/#stickers): stickers personalizados con tu diseño.
-- [Contacto](https://creativastudiopy.com/#contacto): WhatsApp, Instagram y ubicación del taller.
+- [Personalizador 3D](https://creativastudio.marketplace.com.py/#customizer): elegí formato, color y grabado y previsualizá la pieza en 3D.
+- [Precios y grabado](https://creativastudio.marketplace.com.py/#precios): planes de grabado láser e impresión a color.
+- [Trabajos realizados](https://creativastudio.marketplace.com.py/#galeria): galería de piezas ya personalizadas.
+- [Stickers](https://creativastudio.marketplace.com.py/#stickers): stickers personalizados con tu diseño.
+- [Contacto](https://creativastudio.marketplace.com.py/#contacto): WhatsApp, Instagram y ubicación del taller.
 
 ## Contacto
 
