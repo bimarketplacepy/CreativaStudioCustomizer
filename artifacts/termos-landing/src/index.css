@@ -563,3 +563,10 @@ body.wa-fab-hidden .wa-fab {
 @media (prefers-reduced-motion: reduce) {
   .wiz-design-cta { animation: none; }
 }
+
+/* Botón "Listo" del diseñador del celular al encenderse (ver editor-tour.tsx). */
+@keyframes listo-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(158, 27, 62, 0.45); }
+  70% { box-shadow: 0 0 0 12px rgba(158, 27, 62, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(158, 27, 62, 0); }
+}

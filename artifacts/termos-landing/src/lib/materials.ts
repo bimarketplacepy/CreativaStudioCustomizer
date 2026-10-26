@@ -44,6 +44,7 @@ export const MATERIALS: MaterialDef[] = [
       { id: "termo-mate", name: "Termo Mate", desc: "Termo para mate con manija de correa y tapa cebadora.", drinkwareProductId: "termo-mate" },
       { id: "termo-mate-forge", name: "Termo Mate Forge", desc: "Termo para mate de 1200 ml con manija lateral.", drinkwareProductId: "termo-mate-forge" },
       { id: "termo-kids", name: "Termo Kids", desc: "Termo infantil de 355 ml con tapa de pico y asa.", drinkwareProductId: "termo-kids" },
+      { id: "hoppie-kids", name: "Hoppie Kids", desc: "Termo infantil de 350 ml con tapa de pico rebatible.", drinkwareProductId: "hoppie-kids" },
       { id: "vaso",    name: "Vaso",    drinkwareProductId: "vaso" },
       { id: "vaso-hydrate", name: "Vaso Hydrate", desc: "Vaso térmico con tapa transparente deslizable.", drinkwareProductId: "vaso-hydrate" },
       { id: "vaso-sunbeam", name: "Vaso Sunbeam", desc: "Vaso térmico con funda de silicona, tapa y pajita.", drinkwareProductId: "vaso-sunbeam" },

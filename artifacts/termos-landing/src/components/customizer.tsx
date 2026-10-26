@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileDesignScreen, useVisualViewport } from "@/components/mobile-screen";
-import { DesignTips, type DesignTip } from "@/components/design-tips";
+import { EditorTour, Hint, HINT_AR_KEY, HINT_DONE_KEY, TOUR_KEY, markSeen, seen, type TourStep } from "@/components/editor-tour";
 import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,7 @@ import {
   Minus, Plus, Move,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
   WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
-  ChevronUp, Crosshair, CirclePlay, Orbit, Link2, MessageCircle, MapPin, HandCoins,
+  ChevronUp, ChevronsLeftRight, Crosshair, CirclePlay, Orbit, Link2, MessageCircle, MapPin, HandCoins,
   Undo2, Trash2, Search, ScanEye, Maximize2, Paintbrush, X, Heart,
 } from "lucide-react";
 import Thermos3D from "./thermos-3d";
@@ -1914,16 +1914,34 @@ export default function Customizer() {
   const [previewImg, setPreviewImg] = useState<string | null>(null);
   const previewImgRef = useRef<string | null>(null);
   const previewPanelRef = useRef<HTMLDivElement>(null);
-  // Guía de primer uso de la pantalla de Diseño del celular (DesignTips).
+  // Onboarding de la pantalla de Diseño del celular (ver editor-tour.tsx):
+  // tour de 3 pasos la primera vez, avisos de AR y Listo cuando hacen falta.
   const arTipRef = useRef<HTMLSpanElement>(null);
   const addTipRef = useRef<HTMLButtonElement>(null);
+  const colorTipRef = useRef<HTMLDivElement>(null);
+  const productTipRef = useRef<HTMLDivElement>(null);
   const doneTipRef = useRef<HTMLButtonElement>(null);
-  const designTips = useMemo<DesignTip[]>(() => [
-    { target: addTipRef, text: "Agregá texto, un dibujo o tu logo", place: "left" },
-    { target: previewPanelRef, text: "Girá la pieza con el dedo y tocá tu diseño para editarlo", place: "center", shape: "none" },
-    { target: arTipRef, text: "Miralo en tu espacio, a tamaño real", place: "below-left" },
-    { target: doneTipRef, text: "Cuando termines, tocá Listo", place: "above-left" },
+  const tourSteps = useMemo<TourStep[]>(() => [
+    { target: addTipRef, title: "Agregá tu diseño", body: "Texto, un dibujo o tu logo.", placement: "top", pad: 8, radius: 999 },
+    { target: colorTipRef, title: "Elegí el color", body: "Cuatro acabados mate.", placement: "top", pad: 9, radius: 12 },
+    { target: productTipRef, title: "Girá el termo", body: "Arrastrá para ver todos los lados.", placement: "bottom", pad: 10, radius: 18 },
   ], []);
+  const [tourOpen, setTourOpen] = useState(false);
+  const [tourRun, setTourRun] = useState(0);
+  const [arHint, setArHint] = useState(false);
+  const [doneHint, setDoneHint] = useState(false);
+  const [dragTipGone, setDragTipGone] = useState(false);
+  const arHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const restartTour = () => { setArHint(false); setTourRun(n => n + 1); setTourOpen(true); };
+  const closeTour = React.useCallback(() => {
+    setTourOpen(false);
+    // Aviso de AR: 350 ms después del tour, una vez por dispositivo y solo si hay AR.
+    const r = arTipRef.current?.getBoundingClientRect();
+    if (!r || r.width === 0 || seen(HINT_AR_KEY)) return;
+    if (arHintTimer.current) clearTimeout(arHintTimer.current);
+    arHintTimer.current = setTimeout(() => { markSeen(HINT_AR_KEY); setArHint(true); }, 350);
+  }, []);
+  React.useEffect(() => () => { if (arHintTimer.current) clearTimeout(arHintTimer.current); }, []);
   const [plan, setPlan] = useState<EngravingPlanId>(ENGRAVING_PLANS[0].id);
   const [customImage, setCustomImage] = useState<ProcessedImage | null>(null);
   const [textPlacement, setTextPlacement] = useState<Placement>(DEFAULT_TEXT_PLACEMENT);
@@ -2970,6 +2988,25 @@ export default function Customizer() {
     return { u: p.u, v: p.v + ext.halfV };
   }, [activeDesignKind, designDragging, sheet, textPlacement, text2Placement, artPlacement, textExtents, text2Extents, artExtents]);
   const designElementCount = [hasText, hasText2, hasArt].filter(Boolean).length;
+
+  // Tour: al montar la pantalla de Diseño, una vez que el visor tiene la pieza
+  // (los targets ya tienen medidas). Solo la primera visita.
+  const onDesignScreen = isMobile && isDrinkware && mobileStep === designStepIndex;
+  React.useEffect(() => {
+    if (!onDesignScreen || viewerReady === 0 || seen(TOUR_KEY)) return;
+    markSeen(TOUR_KEY);
+    setTourOpen(true);
+  }, [onDesignScreen, viewerReady]);
+  // Aviso de Listo: con el PRIMER elemento de diseño, una vez por dispositivo.
+  const hadDesign = useRef(designElementCount > 0);
+  React.useEffect(() => {
+    if (designElementCount === 0) return;
+    if (hadDesign.current) return;
+    hadDesign.current = true;
+    if (!onDesignScreen || seen(HINT_DONE_KEY)) return;
+    markSeen(HINT_DONE_KEY);
+    setDoneHint(true);
+  }, [designElementCount, onDesignScreen]);
 
   // ── Preview capture ─────────────────────────────────────────────────────────
   // Grab a PNG of the live 3D canvas (the termo draws a fresh frame right before
@@ -4420,8 +4457,17 @@ export default function Customizer() {
         title={odooProduct?.name ?? activeMProduct?.name ?? product.singular}
         subtitle={designElementCount
           ? `${designElementCount} ${designElementCount === 1 ? "elemento" : "elementos"} · tocá para editar`
-          : "Tocá + para empezar"}
+          : undefined}
         right={
+          <span className="inline-flex items-center">
+          <button
+            type="button"
+            onClick={restartTour}
+            aria-label="Cómo funciona"
+            className="w-11 h-11 grid place-items-center rounded-full text-muted-foreground active:bg-secondary text-base font-semibold"
+          >
+            ?
+          </button>
           <span ref={arTipRef} className="inline-flex">
             <ArViewButton
               compact
@@ -4429,13 +4475,16 @@ export default function Customizer() {
               designKey={[productId, viewSize, activeColorHex, finish, text, font, text2, text2Font, JSON.stringify(text2Placement), iconId, artUrl?.length ?? 0, textColor, effectiveTechnique, JSON.stringify(textPlacement), JSON.stringify(artPlacement)].join("|")}
             />
           </span>
+          </span>
         }
         top={vp.top}
         height={vp.height}
         onBack={() => goToStep(designStepIndex - 1)}
         nav={null}
       >
-        <div ref={previewPanelRef} className="relative flex-1 min-h-0 isolate [transform:translateZ(0)] bg-secondary/30 overflow-hidden">
+        <div ref={previewPanelRef} onPointerDownCapture={() => setDragTipGone(true)} className="relative flex-1 min-h-0 isolate [transform:translateZ(0)] bg-secondary/30 overflow-hidden">
+          {/* Zona aproximada de la pieza en el visor: target del paso "Girá el termo". */}
+          <div ref={productTipRef} aria-hidden className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-[7%] h-[80%] w-[52%]" />
           {isGlass ? (
             <div className="absolute inset-0" style={{ background: "radial-gradient(circle at 50% 38%, #eef2f6 0%, #d3dae2 55%, #aeb8c4 100%)" }} />
           ) : (
@@ -4474,11 +4523,16 @@ export default function Customizer() {
                 <Undo2 className="w-4 h-4" /> Deshacer borrado
               </button>
             )}
-            <p className="text-xs text-muted-foreground text-center px-4">
-              {wrapSpin ? "Girando para mostrar el texto envolvente…"
-                : designActive ? "Arrastrá para mover · Pellizcá para el tamaño"
-                : "Arrastrá para girar"}
-            </p>
+            {wrapSpin || designActive ? (
+              <p className="text-xs text-muted-foreground text-center px-4">
+                {wrapSpin ? "Girando para mostrar el texto envolvente…" : "Arrastrá para mover · Pellizcá para el tamaño"}
+              </p>
+            ) : (
+              // Estado del lienzo: siempre a la vista hasta el primer toque, y no vuelve.
+              <p className={`flex items-center justify-center gap-[5px] text-[11px] text-[#7B726B] transition-opacity duration-[250ms] ${dragTipGone ? "opacity-0" : ""}`}>
+                <ChevronsLeftRight className="w-[13px] h-[13px]" aria-hidden /> Arrastrá para girar
+              </p>
+            )}
           </div>
 
           <button
@@ -4494,7 +4548,7 @@ export default function Customizer() {
 
         {!vp.keyboard && (
           <div className="shrink-0 bg-white border-t border-border px-4 pt-2.5 space-y-2.5" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
-            {renderColorDots()}
+            <div ref={colorTipRef}>{renderColorDots()}</div>
             <div className={`flex items-center justify-between gap-3 ${isGlass || isInox ? "" : "pt-2.5 border-t border-border"}`}>
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground truncate">
@@ -4508,7 +4562,8 @@ export default function Customizer() {
                 ref={doneTipRef}
                 type="button"
                 onClick={leaveDesignStep}
-                className="shrink-0 h-12 px-6 inline-flex items-center gap-1 rounded-full bg-primary text-primary-foreground text-base font-semibold shadow-sm active:scale-[0.98] transition"
+                // Apagado hasta el primer diseño; al encenderse por primera vez, 2 pulsos.
+                className={`shrink-0 h-12 px-6 inline-flex items-center gap-1 rounded-full text-base font-semibold shadow-sm active:scale-[0.98] transition-colors ${designElementCount ? "bg-primary text-primary-foreground" : "bg-[#E6E0D6] text-[#9A9188]"} ${doneHint ? "motion-safe:animate-[listo-pulse_1.5s_ease-out_2]" : ""}`}
               >
                 Listo <ChevronRight className="w-5 h-5" />
               </button>
@@ -4517,7 +4572,9 @@ export default function Customizer() {
         )}
 
         {renderDesignSheet()}
-        <DesignTips tips={designTips} enabled={designElementCount === 0} />
+        <Hint target={arTipRef} text="Vélo en tu espacio" show={arHint} ms={4000} align="below" dismissOnTap onDone={() => setArHint(false)} />
+        <Hint target={doneTipRef} text="Ya podés continuar" show={doneHint} ms={3200} align="above" onDone={() => setDoneHint(false)} />
+        <EditorTour key={tourRun} steps={tourSteps} open={tourOpen} onClose={closeTour} />
       </MobileDesignScreen>
     );
   };

@@ -34,7 +34,7 @@ export function useVisualViewport() {
  */
 export function MobileDesignScreen({ title, subtitle, right, top, height, onBack, nav, children }: {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   /** Acción a la derecha de la cabecera (Ver en AR). */
   right?: React.ReactNode;
   top: number; height: number;
@@ -84,7 +84,7 @@ export function MobileDesignScreen({ title, subtitle, right, top, height, onBack
         </button>
         <div className="flex-1 min-w-0 text-center leading-tight py-1.5">
           <p className="text-sm font-semibold text-foreground truncate">{title}</p>
-          <p className="text-[11px] text-muted-foreground truncate">{subtitle}</p>
+          {subtitle && <p className="text-[11px] text-muted-foreground truncate">{subtitle}</p>}
         </div>
         {right ?? <span className="w-11" aria-hidden />}
       </div>

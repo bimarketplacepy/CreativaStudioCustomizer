@@ -460,6 +460,7 @@ function ModelPieces({
   onKeepOutRef.current = onKeepOut;
   useEffect(() => { onKeepOutRef.current?.(product.id, zones); }, [product.id, zones]);
   const steel = { color: "#c9cdd1", roughness: 0.3, metalness: 1.0, envMapIntensity: 1.9 };
+  const darkLogo = isWhiteBody(colorHex, finish);
   return (
     <>
       {parts.body && (
@@ -493,6 +494,14 @@ function ModelPieces({
         .filter(([name]) => !BUILT_IN_PARTS.has(name) && !(hideLogo && LOGO_PARTS.has(name)))
         .map(([name, part]) => {
           const m = product.model!;
+          if (darkLogo && LOGO_PARTS.has(name)) {
+            const src = part.material as THREE.MeshStandardMaterial;
+            return (
+              <mesh key={`${name}:dark`} geometry={part.geometry}>
+                <meshStandardMaterial color={LOGO_ON_WHITE} roughness={src.roughness ?? 0.6} metalness={0} side={src.side} />
+              </mesh>
+            );
+          }
           const light = m.paintLight?.includes(name);
           const dark = m.paintDark?.includes(name);
           if (m.paint?.includes(name) || light || dark) {
@@ -518,6 +527,19 @@ function ModelPieces({
 const BUILT_IN_PARTS = new Set(["body", "steel", "interior", "handle"]);
 /** El logo de la marca sobre el cuerpo (no el de la funda, ej. "logo_funda" del Sunbeam). */
 const LOGO_PARTS = new Set(["logo", "logo_texto"]);
+/** Sobre un cuerpo blanco, el logo y la marca van en negro (pedido del dueño, 2026-10-26). */
+const LOGO_ON_WHITE = "#161616";
+
+/**
+ * Cuerpo blanco: muy claro y casi sin color ("Blanco" de Odoo #f2f2f0, "Blanco
+ * Perla" #dddddd). Los pasteles, los beige, el gris y el acero (inox) no cuentan.
+ */
+function isWhiteBody(hex: string, finish: string): boolean {
+  if (finish === "inox") return false;
+  const hsl = { h: 0, s: 0, l: 0 };
+  new THREE.Color(hex).getHSL(hsl, THREE.SRGBColorSpace);
+  return hsl.l >= 0.85 && hsl.s <= 0.2;
+}
 
 /** Mezcla un hex con blanco (0..1). */
 function lighten(hex: string, t: number): string {

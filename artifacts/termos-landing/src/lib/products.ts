@@ -1,7 +1,7 @@
 import type { FaceId } from "./placement";
 import type { KeepOutZone } from "./keep-out";
 
-export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek";
+export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -339,6 +339,39 @@ export const PRODUCTS: ProductDef[] = [
       { id: "hoppie-hydrate-620",  name: "620ml", label: "Mediano", scale: 1.00 },
       { id: "hoppie-hydrate-710",  name: "710ml", label: "Clásico", scale: 1.05 },
       { id: "hoppie-hydrate-1000", name: "1L",    label: "Grande",  scale: 1.17 },
+    ],
+  },
+  {
+    id: "hoppie-kids",
+    name: "Hoppies Kids",
+    singular: "Hoppie Kids",
+    // Hydrate Kids 350 ml (en Odoo "Kids <color>"; artifacts/3D/hoppie-kids.glb):
+    // cuerpo recto bajo, tapa con pico rebatible y aro para colgar. Perfil =
+    // radio del cuerpo medido sobre el .glb (m × 12, centrado en 0,0876 m).
+    // Logo atrás (yawDeg 180).
+    desc: "Termo infantil de 350 ml con tapa de pico rebatible.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.412, -1.051], [0.437, -1.027], [0.438, -1.015], [0.438, 0.419],
+      [0.426, 0.467], [0.403, 0.497], [0.389, 0.515], [0.403, 0.545],
+      [0.414, 0.563], [0.391, 0.587], [0.348, 0.611],
+    ],
+    band: [-0.90, 0.38],
+    frontFace: { uHalfWidth: 0.15 },
+    model: {
+      url: "/models/hoppie-kids.glb?v=1",
+      exactFor: ["Hoppie Kids"],
+      unitsPerMeter: 12,
+      centerYm: 0.0876,
+      heightM: 0.1752,
+      reachM: 0.062,
+      yawDeg: 180,
+    },
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
+    sizes: [
+      { id: "hoppie-kids-350", name: "350ml", label: "Único", scale: 1.00 },
     ],
   },
   {

@@ -81,6 +81,7 @@ export const PRINT_SPECS: Record<ProductId, PrintSpecEntry> = {
   "vaso-cafe": steel(),
   "growler": steel(),
   "termo-sleek": steel(),
+  "hoppie-kids": steel(),
   "chopera": steel({ dacen: false, consult: "handle" }),
   "copa": steel({ dacen: false, consult: "shape" }),
   "copa-hydrate": steel({ dacen: false, consult: "shape" }),

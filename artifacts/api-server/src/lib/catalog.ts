@@ -60,7 +60,7 @@ const TYPE_LABEL: Record<string, string> = {
   copa: "Copa", vaso: "Vaso", termo: "Termo", botella: "Botella",
   "food-flask": "Food Flask", "ice-bucket": "Ice Bucket", bowl: "Bowl",
   "vaso-manija": "Vaso", "botella-ancha": "Botella", "vaso-hydrate": "Vaso", "vaso-sunbeam": "Vaso",
-  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso", "vaso-whisky": "Vaso", "vaso-cafe": "Vaso", growler: "Growler", "termo-sleek": "Termo",
+  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso", "vaso-whisky": "Vaso", "vaso-cafe": "Vaso", growler: "Growler", "termo-sleek": "Termo", "hoppie-kids": "Hoppie",
 };
 
 /**
@@ -81,7 +81,7 @@ const EXACT_MODEL: Record<string, { name: string; fallback: string }> = {
 const NAMED_MODEL: Record<string, Record<string, string>> = {
   vaso: { "vaso": "vaso-hydrate", "vaso sunbeam": "vaso-sunbeam", "vaso taza espresso": "vaso-espresso", "vaso manija": "taza-manija", "vaso mini coffee mug": "mini-coffee", "vaso taza": "vaso-taza", "vaso coffee cup": "coffee-cup", "vaso shaker": "vaso-shaker", "vaso whisky lowball": "vaso-whisky", "vaso cafe": "vaso-cafe" },
   termo: { "termo mate": "termo-mate", "termo mate forge": "termo-mate-forge" },
-  "botella-ancha": { "hoppie": "hoppie-hydrate", "termo kids": "termo-kids", "termo sleek line": "termo-sleek" },
+  "botella-ancha": { "hoppie": "hoppie-hydrate", "termo kids": "termo-kids", "hoppie kids": "hoppie-kids", "termo sleek line": "termo-sleek" },
   // La "Copa" de Hydrate (vaso de vino sin tallo) puede clasificarse como copa o
   // como guampa (Odoo la tiene en "ACCESORIOS DE TERMOS / GUAMPAS").
   jug: { "growler": "growler" },
@@ -103,7 +103,10 @@ const MODEL_ALIAS: Record<string, string> = { jarra: "Growler" };
  *   ML", que si no quedarían mezclados con el Termo 473. El "Litro" del V2 PRO
  *   es de 1060 ml.
  * - Termo Sleek Line: "620ml <color>" / "710ml <color>" (sin modelo, si no
- *   caen en el Hoppie) y "TERMO 710 ML". El Hoppie es el Wide Flow (530 ml, 1 L).
+ *   caen en el Hoppie) y "TERMO 710 ML". El Hoppie es el Wide Flow (530 ml, 1 L),
+ *   y ahí va también el "TERMO 530 ML".
+ * El "Termo" que queda (473 ml) no se ofrece: el Sleek Line lo reemplaza
+ * (pedido del dueño, 2026-10-26).
  */
 const FRONTIER = "Termo Frontier";
 const FRONTIER_SIZES = new Set(["770ml", "1060ml"]);
@@ -117,6 +120,7 @@ function productLine(model: string, size: string | null): { model: string; size:
   if (m === "termo" && size && FRONTIER_SIZES.has(size)) return { model: FRONTIER, size };
   if (m === "" && size && SLEEK_SIZES.has(size)) return { model: SLEEK, size };
   if (m === "termo" && size === "710ml") return { model: SLEEK, size };
+  if (m === "termo" && size === "530ml") return { model: "", size };
   return { model: MODEL_ALIAS[m] ?? model, size };
 }
 
@@ -415,7 +419,8 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
     const colorName = attrColor ? titleCase(attrColor) : parsed.color;
     const named = productLine(parsed.model, attrSize ? normalizeSize(attrSize) : parsed.size);
     const size = named.size;
-    if (named.model === SLEEK && colorName && SLEEK_HIDDEN_COLORS.has(norm(colorName))) {
+    if (norm(named.model) === "termo"
+      || (named.model === SLEEK && colorName && SLEEK_HIDDEN_COLORS.has(norm(colorName)))) {
       excluded.add(t.name);
       continue;
     }
