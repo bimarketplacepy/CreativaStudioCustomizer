@@ -515,3 +515,107 @@ Un diseño fotográfico a 360° pesa 10–20 MB en PNG y **no entra en el JSON d
 **Precios del grabado láser ✅**
 - Nombres Gs. 35.000 · + ícono chico Gs. 40.000 · + logo Gs. 50.000 (ya estaban).
 - Nuevo: **+ Gs. 5.000 por cada escritura extra** (texto en la tapa o en la base): `PRICING.laser.extraText`. Se suma en el precio estimado, el mensaje de WhatsApp y la sección Tarifas.
+
+---
+
+## 12. Plan: diseño que cubre todo el vaso (360°) en la Dacen F5 (2026-10-26)
+
+Referencia: `diseño/ejemplo2.jpeg` (vaso Hydrate cónico tipo pinta).
+- **Foto a sangre:** cubre toda la vuelta.
+- **Encima:** logos (GR Gazoo Racing, HYDRATE), un triángulo blanco de contorno y formas rojas que siguen hacia atrás.
+- **Zona de labios:** el aro de acero de arriba (~15 mm) queda sin imprimir.
+- **Blanco:** se ve opaco sobre el acero, lo que indica una base de blanco.
+
+Retoma la fase 4a (§4.4, §10). Lo que ya está y se reusa:
+- `drawColorLayer()`;
+- `renderDacenPng()` (vuelta completa, frente en u = 0,5, costura atrás);
+- `fitsDacen()`;
+- el escalón `PRICING.dacen.tiers.wrap`.
+
+### 12.1 Dos caminos para el cliente
+
+- **A. "Subí tu diseño completo"** (empresas y diseñadores).
+  - El cliente descarga una plantilla por vaso y talle: PNG y PDF a tamaño real, con zona segura, sangrado, costura y zona de labios marcadas.
+  - Arma el arte afuera (Canva, Illustrator) y lo sube.
+  - Es la opción de más valor y menos esfuerzo.
+- **B. "Armalo acá"**:
+  - fondo 360°: foto, color o degradado;
+  - encima, el texto, ícono o logo de siempre;
+  - más adelante, varios logos.
+
+### 12.2 Modelo de datos
+
+```ts
+interface DesignWrap {
+  kind: "image" | "color" | "gradient" | "artwork"; // artwork = arte 360° completo subido
+  src?: string;
+  colors?: string[];
+  fit: "cover" | "stretch" | "tile" | "mirror";
+  repeats?: number;                // mosaico / espejo (espejo con n par: costura continua)
+  scale: number; offsetU: number; offsetV: number;
+}
+// estado del diseño: wrap?: DesignWrap; overlays?: ArtLayer[]  (fase 4: varios logos)
+```
+
+Va en `placement.ts`, en el `designState` y en `design-link.ts`.
+
+### 12.3 Geometría (`print-specs.ts`, por vaso y talle)
+
+- **Tamaño del archivo:** ancho = π × Ø; alto = alto imprimible. Es el mismo espacio u/v que la textura del 3D.
+- **Campos nuevos:**
+  - `lipZoneMm`;
+  - `bottomMarginMm`;
+  - `bleedMm` (~2 mm);
+  - `seamOverlapMm`;
+  - `ripExpects: "angle" | "developed"`;
+  - `wrapAllowed`.
+- **Cónicos:** si RIPrint espera el desarrollo plano, el PNG se curva en arco (fórmulas en §10).
+
+### 12.4 Dibujo (`drawColorLayer`)
+
+Orden: **fondo 360°** → **logos/imágenes** → **textos**.
+
+- **Fondo en mosaico:** se dibuja con `createPattern` de ancho W/n, así la costura cierra exacta.
+- **Al final:** se borran la zona de labios, los márgenes y la franja de la manija (`handleU`).
+- **Vista 3D:** con el fondo activo, la textura pasa de 1024 a 2048 px de ancho. Hay que probarlo en celulares de gama baja.
+- **Producción:** usa la imagen original en alta resolución.
+
+### 12.5 Editor móvil
+
+- **Opción nueva:** "Todo el vaso (360°)" en "Agregá tu diseño". Solo aparece con impresión a color y `fitsDacen()`.
+- **Controles:**
+  - modos Ajustar / Mosaico / Espejo;
+  - arrastrar para mover y pellizcar para hacer zoom.
+- **"Ver desplegado":** muestra el rectángulo plano con la costura punteada, la zona de labios y la manija.
+- **Aviso de resolución:**
+  - dpi efectivos = px de ancho ÷ (π × Ø ÷ 25,4).
+  - < 150 dpi: advierte. < 100 dpi: desaconseja.
+  - Ejemplo: Ø 85 mm necesita ~3150 px para 300 dpi y ~1600 px para 150 dpi.
+
+### 12.6 Pedido, archivo y panel
+
+- **Archivo:** hoy `renderDacenPng` baja hasta 150 dpi para que el PNG entre en el pedido, y una foto 360° pesa 10–20 MB.
+  - Se sube aparte (multipart o storage) y se mantiene en 300 dpi fijos.
+  - Máscara `-blanco.png` aparte, solo si RIPrint no arma el blanco desde la transparencia.
+- **Pedido:** `print.coverage = "wrap"`, más `wrap` con la fuente y los dpi efectivos.
+- **`/admin`:** avisos "360°", "baja resolución" y "medidas aproximadas".
+
+### 12.7 Fases
+
+| Fase | Qué | Esfuerzo | Depende de |
+|---|---|---|---|
+| 0 | Medidas con calibre de los vasos y respuestas del taller (12.8) | — | Negocio |
+| 1 | Plantilla descargable + "Subí tu diseño completo" + aviso de dpi | 2 días | 0 |
+| 2 | Subida aparte de archivos grandes (300 dpi fijos) | 1 día | — |
+| 3 | Fondo 360° en el editor + "Ver desplegado" | 3–4 días | 2 |
+| 4 | Varios logos encima del fondo | 2–3 días | 3 |
+| 5 | Máscaras de blanco y barniz, curvado en arco para conos (si RIPrint los pide) | 1–3 días | 12.8 |
+
+### 12.8 Preguntas para el taller
+
+1. **Cónicos:** ¿RIPrint toma rectángulo o hay que mandarlo curvado? ¿Con qué Ø escala?
+2. **Blanco:** ¿lo genera RIPrint o va en una capa aparte? ¿Debajo de todo?
+3. **Costura:** ¿cuánta superposición hace falta? ¿Se nota en fondo liso o en foto?
+4. **Márgenes:** ¿cuántos mm de labios arriba y de margen abajo?
+5. **Archivo:** ¿qué dpi, qué formato (PNG o TIFF) y qué perfil de color?
+6. **Primeros vasos:** ¿con cuáles arrancamos? Propuesta: `vaso` y `vaso-hydrate`.
