@@ -45,6 +45,11 @@ export interface TourStep {
   placement: "top" | "bottom";
   pad: number;
   radius: number;
+  /**
+   * Rectángulo a iluminar en px del viewport, si no es el del target (el
+   * producto 3D: su silueta real). null = usar el target.
+   */
+  getRect?: () => { left: number; top: number; width: number; height: number } | null;
 }
 
 interface Rect { x: number; y: number; w: number; h: number }
@@ -84,7 +89,7 @@ export function EditorTour({ steps, open, onClose }: {
     const root = rootRef.current, card = cardRef.current, el = step?.target.current;
     if (!root || !card || !el) return;
     const sb = root.getBoundingClientRect();
-    const tb = el.getBoundingClientRect();
+    const tb = step.getRect?.() ?? el.getBoundingClientRect();
     const x = tb.left - sb.left, y = tb.top - sb.top;
     const pad = step.pad;
     const cw = sb.width < 258 ? sb.width - 24 : 234;

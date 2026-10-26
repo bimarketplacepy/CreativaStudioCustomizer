@@ -17,7 +17,7 @@
  *    las del modelo 3D (aproximadas: se avisa en el pedido).
  *  - El servidor graba los dpi en el PNG para que se abra a tamaño real.
  */
-import { drawColorLayer, bandMetrics, TEXTURE_H, TEXTURE_W, type ColorLayerInput } from "./engraving-maps";
+import { drawColorLayer, bodyMetrics, TEXTURE_H, TEXTURE_W, type ColorLayerInput } from "./engraving-maps";
 import { getProduct, getSize, productForSize } from "./products";
 import { printSpecFor } from "./print-specs";
 import { matrixToMm, type VectorMark } from "./vector-marks";
@@ -55,9 +55,11 @@ export function dacenPrintSize(productId: string, sizeId: string): { circumferen
   const scale = getSize(product, sizeId).scale;
   const mmPerUnit = (1000 * scale) / (product.model?.unitsPerMeter ?? 10);
   const maxR = Math.max(...product.profile.map(p => p[0]));
+  // Alto: el cuerpo pintado entero, medido sobre la pared (el archivo cubre
+  // todo lo que se puede imprimir; textos y logos quedan en la banda).
   return {
     circumferenceMm: 2 * Math.PI * maxR * mmPerUnit,
-    heightMm: (product.band[1] - product.band[0]) * mmPerUnit,
+    heightMm: bodyMetrics(product, TEXTURE_W, TEXTURE_H).arcUnits * mmPerUnit,
     approx: true,
   };
 }
@@ -96,14 +98,14 @@ export async function renderDacenPng(
   const hasExtraText = !!design.extraTexts?.some(t => t.text.trim());
   if (!design.text.trim() && !hasExtraText && !hasArt && !design.wrap) return null;
   const product = productForSize(getProduct(productId), sizeId);
-  const m = bandMetrics(product, TEXTURE_W, TEXTURE_H);
+  const m = bodyMetrics(product, TEXTURE_W, TEXTURE_H);
   const size = dacenPrintSize(productId, sizeId);
-  const bandPx = m.botPx - m.topPx;
+  const bodyPx = m.botPx - m.topPx;
 
   for (const dpi of DPI_STEPS) {
     const outW = Math.round((size.circumferenceMm / 25.4) * dpi);
     const outH = Math.round((size.heightMm / 25.4) * dpi);
-    // Se dibuja directo la banda imprimible: escala X = archivo / textura; la Y
+    // Se dibuja directo el cuerpo pintado entero: escala X = archivo / textura; la Y
     // además deshace el estirado vertical de la textura del 3D, así el archivo
     // sale en proporción real. Un solo lienzo del tamaño final (iOS limita la
     // memoria de canvas: nada de lienzos intermedios de la textura completa).
@@ -112,7 +114,7 @@ export async function renderDacenPng(
     out.height = outH;
     const octx = out.getContext("2d");
     if (!octx) return null;
-    octx.scale(outW / TEXTURE_W, outH / bandPx);
+    octx.scale(outW / TEXTURE_W, outH / bodyPx);
     octx.translate(0, -m.topPx);
     const vectors: VectorMark[] = [];
     const mmPerPx = size.circumferenceMm / outW;
@@ -140,7 +142,7 @@ export async function renderDacenPng(
 }
 
 /**
- * Vista "Ver desplegado": la banda imprimible a `widthPx` de ancho, en las
+ * Vista "Ver desplegado": el cuerpo pintado entero a `widthPx` de ancho, en las
  * proporciones reales de la pieza (mismo dibujo que el archivo de producción).
  */
 export function renderUnwrappedPreview(
@@ -150,7 +152,7 @@ export function renderUnwrappedPreview(
   widthPx: number,
 ): { canvas: HTMLCanvasElement; widthMm: number; heightMm: number } | null {
   const product = productForSize(getProduct(productId), sizeId);
-  const m = bandMetrics(product, TEXTURE_W, TEXTURE_H);
+  const m = bodyMetrics(product, TEXTURE_W, TEXTURE_H);
   const size = dacenPrintSize(productId, sizeId);
   const outW = Math.round(widthPx);
   const outH = Math.max(1, Math.round(outW * size.heightMm / size.circumferenceMm));

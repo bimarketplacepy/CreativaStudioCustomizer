@@ -21,7 +21,7 @@ import {
   ChevronUp, ChevronsLeftRight, Crosshair, CirclePlay, Orbit, Link2, MessageCircle, MapPin, HandCoins,
   Undo2, Trash2, Search, ScanEye, Maximize2, Paintbrush, X, Heart, Repeat,
 } from "lucide-react";
-import Thermos3D from "./thermos-3d";
+import Thermos3D, { type ScreenRect } from "./thermos-3d";
 import type { PinchPhase } from "@/lib/pinch";
 // El creador de stickers baja recién al elegir el modo "Stickers".
 const StickerCreator = React.lazy(() => import("./stickers"));
@@ -1922,11 +1922,13 @@ export default function Customizer() {
   const addTipRef = useRef<HTMLButtonElement>(null);
   const colorTipRef = useRef<HTMLDivElement>(null);
   const productTipRef = useRef<HTMLDivElement>(null);
+  /** Silueta real de la pieza en pantalla (la mide el visor 3D). */
+  const thermosBoundsRef = useRef<(() => ScreenRect | null) | null>(null);
   const doneTipRef = useRef<HTMLButtonElement>(null);
   const tourSteps = useMemo<TourStep[]>(() => [
     { target: addTipRef, title: "Agregá tu diseño", body: "Texto, un dibujo o tu logo.", placement: "top", pad: 8, radius: 999 },
     { target: colorTipRef, title: "Elegí el color", body: "Cuatro acabados mate.", placement: "top", pad: 9, radius: 12 },
-    { target: productTipRef, title: "Girá el termo", body: "Arrastrá para ver todos los lados.", placement: "bottom", pad: 10, radius: 18 },
+    { target: productTipRef, title: "Girá el termo", body: "Arrastrá para ver todos los lados.", placement: "bottom", pad: 10, radius: 18, getRect: () => thermosBoundsRef.current?.() ?? null },
   ], []);
   const [tourOpen, setTourOpen] = useState(false);
   const [tourRun, setTourRun] = useState(0);
@@ -4224,6 +4226,7 @@ export default function Customizer() {
       snapToURef={thermosSnapRef}
       renderNowRef={thermosRenderRef}
       arModelRef={thermosArRef}
+      screenBoundsRef={thermosBoundsRef}
       onReady={() => setViewerReady(n => n + 1)}
       autoSpin={wrapSpin}
       rotationLocked={wrapSpin}
@@ -4581,7 +4584,8 @@ export default function Customizer() {
         nav={null}
       >
         <div ref={previewPanelRef} onPointerDownCapture={() => setDragTipGone(true)} className="relative flex-1 min-h-0 isolate [transform:translateZ(0)] bg-secondary/30 overflow-hidden">
-          {/* Zona aproximada de la pieza en el visor: target del paso "Girá el termo". */}
+          {/* Visor del paso "Girá el termo": el spotlight usa la silueta real de la
+              pieza (thermosBoundsRef); este recuadro queda de respaldo. */}
           <div ref={productTipRef} aria-hidden className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-[7%] h-[80%] w-[52%]" />
           {isGlass ? (
             <div className="absolute inset-0" style={{ background: "radial-gradient(circle at 50% 38%, #eef2f6 0%, #d3dae2 55%, #aeb8c4 100%)" }} />

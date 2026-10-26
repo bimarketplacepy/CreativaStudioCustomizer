@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { ProductDef } from "./products";
+import { resampledProfile, type ProductDef } from "./products";
 import {
   bandRange, DEFAULT_ART_PLACEMENT, DEFAULT_LINE_HEIGHT,
   type Placement, type TextAlign, type TextLayout,
@@ -69,6 +69,23 @@ export function bandMetrics(product: ProductDef, W: number, H: number) {
 }
 
 type BandMetrics = ReturnType<typeof bandMetrics>;
+
+/**
+ * El cuerpo pintado COMPLETO en la textura: v de 0 a 1, todo el alto que
+ * cubre el material del cuerpo (lathe o pieza "body" del .glb). Es el área
+ * del fondo 360° y del archivo de la Dacen; la banda grabable (bandMetrics)
+ * queda como zona segura de textos y logos. La v sigue la longitud de arco
+ * del perfil (resampledProfile), así que el alto real es la pared medida.
+ */
+export function bodyMetrics(product: ProductDef, W: number, H: number) {
+  const pts = resampledProfile(product);
+  let arc = 0;
+  for (let i = 1; i < pts.length; i++) arc += Math.hypot(pts[i]![0] - pts[i - 1]![0], pts[i]![1] - pts[i - 1]![1]);
+  const maxR = Math.max(...product.profile.map(p => p[0]));
+  const hPxPerUnit = W / (2 * Math.PI * maxR);
+  const vPxPerUnit = H / Math.max(1e-6, arc);
+  return { topPx: 0, botPx: H, aspect: vPxPerUnit / hPxPerUnit, arcUnits: arc };
+}
 
 /**
  * Draw something centred on the band at the given placement. Content is drawn
@@ -463,7 +480,9 @@ export function drawColorLayer(ctx: CanvasRenderingContext2D, product: ProductDe
   const texts: TextMark[] = [{ text, placement: textPlacement, fontFamily }, ...(o.extraTexts ?? [])];
   // Orden de las capas (DACEN.md §12.4): fondo 360°, logo/ícono, textos.
   const sink = o.vectorSink;
-  if (o.wrap) drawWrapLayer(ctx, W, m, o.wrap, sink);
+  // El fondo cubre el cuerpo pintado entero (no solo la banda): sin franjas
+  // del color de la pieza arriba ni abajo, en cualquier modelo y tamaño.
+  if (o.wrap) drawWrapLayer(ctx, W, bodyMetrics(product, W, TEXTURE_H), o.wrap, sink);
   if (artImage && imageSize !== "none") {
     const naturalW = artImage.naturalWidth || artImage.width || 1;
     const naturalH = artImage.naturalHeight || artImage.height || 1;

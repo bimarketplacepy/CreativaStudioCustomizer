@@ -689,3 +689,11 @@ Orden: **fondo 360°** → **logos/imágenes** → **textos**.
 - **Medidas con calibre:** alto y Ø de la base de cada vaso y talle.
 - **Prueba en la máquina:** imprimir un vaso con un pedido real (PNG + SVG).
 - **Monto del escalón 360°:** `PRICING.dacen.tiers.wrap`.
+
+### 12.11 Corrección: el fondo cubre el cuerpo entero (2026-10-26)
+
+- **Problema** (`diseño/bug2.png`): el fondo 360° llenaba solo la banda grabable. Arriba y abajo quedaba el color de la pieza, por ejemplo el amarillo del vaso de 473 ml.
+- **Corrección:** `bodyMetrics()` (`engraving-maps.ts`) da el cuerpo pintado completo (v 0..1, sobre la longitud de arco del perfil). El fondo, el archivo de la Dacen, el desplegado y la plantilla usan ese alto en cada modelo y tamaño.
+  - Los textos y logos siguen limitados a la banda, que queda como zona segura.
+  - Sin medidas de calibre, el alto del archivo es la pared del cuerpo medida sobre el modelo 3D.
+- **Tour** (`diseño/bug.png`): el paso «Girá el termo» iluminaba un recuadro fijo. Ahora el visor 3D mide la silueta real de la pieza (`screenBoundsRef`, que proyecta los vértices del modelo) y el spotlight se ajusta a cada producto y tamaño.

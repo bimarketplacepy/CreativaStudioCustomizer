@@ -24,6 +24,8 @@ class WebGLErrorBoundary extends Component<
   }
 }
 
+export interface ScreenRect { left: number; top: number; width: number; height: number }
+
 interface Thermos3DProps {
   colorHex: string;
   finish: string;
@@ -81,6 +83,11 @@ interface Thermos3DProps {
    */
   anchor?: { u: number; v: number } | null;
   anchorElRef?: React.RefObject<HTMLElement | null>;
+  /**
+   * Silueta de la pieza en pantalla (px del viewport), medida sobre el modelo
+   * real: el tour la usa para iluminar el producto, sea cual sea su forma.
+   */
+  screenBoundsRef?: React.MutableRefObject<(() => ScreenRect | null) | null>;
   /** Which u faces the camera when single-face is entered. Defaults to config. */
   frontFaceU?: number;
   /** Cara sobre la que se dibuja la guía punteada (la del elemento en edición). */
@@ -678,7 +685,7 @@ function ThermosMesh({
   designActive, onDesignMove, onDesignPinch, onPinchSelect, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, snapToURef, renderNowRef, onReady,
   autoSpin = false, rotationLocked = false, onMotionChange, arModelRef,
   freePlacement = false, keepOutZones, keepOutHit, onModelKeepOut, followU = null, anchor = null, anchorElRef,
-  wrap = null,
+  wrap = null, screenBoundsRef,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
@@ -709,6 +716,7 @@ function ThermosMesh({
   followU?: number | null;
   anchor?: { u: number; v: number } | null;
   anchorElRef?: React.RefObject<HTMLElement | null>;
+  screenBoundsRef?: Thermos3DProps["screenBoundsRef"];
 }) {
   const groupRef = useRef<THREE.Group>(null!);
   const velYaw = useRef(0);   // Y-axis (horizontal drag) velocity
@@ -1328,6 +1336,44 @@ function ThermosMesh({
     motionRef.current.moving = moving;
     motionRef.current.onMotionChange?.(moving);
   };
+
+  // Silueta en pantalla: se proyectan los vértices de todas las piezas (una
+  // muestra de hasta ~3000 por pieza), así la caja sigue la forma real del
+  // modelo y del tamaño, no un recuadro fijo.
+  useEffect(() => {
+    if (!screenBoundsRef) return;
+    screenBoundsRef.current = () => {
+      const g = groupRef.current;
+      if (!g) return null;
+      const { camera } = get();
+      g.updateMatrixWorld(true);
+      const rect = gl.domElement.getBoundingClientRect();
+      const v = new THREE.Vector3();
+      let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+      g.traverse(o => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh || !mesh.visible) return;
+        const pos = mesh.geometry.attributes.position;
+        if (!pos) return;
+        const step = Math.max(1, Math.floor(pos.count / 3000));
+        for (let i = 0; i < pos.count; i += step) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld).project(camera);
+          const sx = rect.left + ((v.x + 1) / 2) * rect.width;
+          const sy = rect.top + ((1 - v.y) / 2) * rect.height;
+          if (sx < x1) x1 = sx;
+          if (sx > x2) x2 = sx;
+          if (sy < y1) y1 = sy;
+          if (sy > y2) y2 = sy;
+        }
+      });
+      if (!Number.isFinite(x1)) return null;
+      // Nunca más allá del visor.
+      x1 = Math.max(rect.left, x1); y1 = Math.max(rect.top, y1);
+      x2 = Math.min(rect.right, x2); y2 = Math.min(rect.bottom, y2);
+      return x2 > x1 && y2 > y1 ? { left: x1, top: y1, width: x2 - x1, height: y2 - y1 } : null;
+    };
+    return () => { screenBoundsRef.current = null; };
+  }, [screenBoundsRef, get, gl]);
 
   // Pastilla del diseño seleccionado: pegada debajo de él en la pantalla.
   useEffect(() => { invalidate(); }, [anchor?.u, anchor?.v, invalidate]);
@@ -1973,6 +2019,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           followU={props.followU ?? null}
           anchor={props.anchor ?? null}
           anchorElRef={props.anchorElRef}
+          screenBoundsRef={props.screenBoundsRef}
         />
 
         {/* Single, stable ground shadow, anchored to the floor plane — no
