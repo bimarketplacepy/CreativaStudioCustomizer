@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileDesignScreen, useVisualViewport } from "@/components/mobile-screen";
+import { DesignTips, type DesignTip } from "@/components/design-tips";
 import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1839,7 +1840,7 @@ export default function Customizer() {
     const fromOdoo = odooShopItems(catalog, materialId, knownType);
     if (!fromOdoo.length) return [];
     // Genéricos: las formas propias que no son el modelo de un producto
-    // puntual de una marca (vaso con manija = Pico y Agarre, botella con asa = Hoppie V2 Pro).
+    // puntual de una marca (vaso con manija = Pico y Agarre, botella con asa = Termo Frontier).
     const generic: ShopItem[] = material.products
       .filter(p => p.drinkwareProductId && !getProduct(p.drinkwareProductId).model?.exactFor?.length)
       .map(p => ({
@@ -1913,6 +1914,16 @@ export default function Customizer() {
   const [previewImg, setPreviewImg] = useState<string | null>(null);
   const previewImgRef = useRef<string | null>(null);
   const previewPanelRef = useRef<HTMLDivElement>(null);
+  // Guía de primer uso de la pantalla de Diseño del celular (DesignTips).
+  const arTipRef = useRef<HTMLSpanElement>(null);
+  const addTipRef = useRef<HTMLButtonElement>(null);
+  const doneTipRef = useRef<HTMLButtonElement>(null);
+  const designTips = useMemo<DesignTip[]>(() => [
+    { target: addTipRef, text: "Agregá texto, un dibujo o tu logo", place: "left" },
+    { target: previewPanelRef, text: "Girá la pieza con el dedo y tocá tu diseño para editarlo", place: "center", shape: "none" },
+    { target: arTipRef, text: "Miralo en tu espacio, a tamaño real", place: "below-left" },
+    { target: doneTipRef, text: "Cuando termines, tocá Listo", place: "above-left" },
+  ], []);
   const [plan, setPlan] = useState<EngravingPlanId>(ENGRAVING_PLANS[0].id);
   const [customImage, setCustomImage] = useState<ProcessedImage | null>(null);
   const [textPlacement, setTextPlacement] = useState<Placement>(DEFAULT_TEXT_PLACEMENT);
@@ -3151,8 +3162,13 @@ export default function Customizer() {
   // Compartidos por el resumen visual, el mensaje de WhatsApp y el POST del
   // pedido — una única fuente, cero lógica duplicada.
   const orderProductName = isDrinkware
-    ? product.singular
+    ? (odooProduct?.name ?? product.singular)
     : material.pens ? "Bolígrafo" : (activeMProduct?.name ?? activeObject?.singular ?? material.name);
+  // Nombre en los textos ("¿Ya tenés tu Growler?", "Tamaño del Growler"): el de
+  // la tienda tal cual figura en el e-commerce; sin producto de la tienda (forma
+  // genérica), el de la forma en minúscula.
+  const productNoun = isDrinkware && odooProduct ? odooProduct.name : orderProductName.toLowerCase();
+  const productTheNoun = `${FEMININE_PRODUCTS.has(productNoun.toLowerCase()) ? "la" : "el"} ${productNoun}`;
   const orderTechniqueName = isDrinkware
     ? activeTechnique.name
     : materialId === "plastico" ? "Plotter de corte" : "Grabado láser";
@@ -3504,7 +3520,7 @@ export default function Customizer() {
   const renderDrinkSize = () => odooMode ? renderOdooSize() : product.sizes.length > 1 && (
     <div>
       <Label className="text-sm font-medium text-foreground mb-3 block">
-        Tamaño {productArticle(product.singular)} {product.singular.toLowerCase()}
+        Tamaño {productArticle(productNoun)} {productNoun}
       </Label>
       <div className="grid grid-cols-3 gap-3">
         {product.sizes.map(s => {
@@ -3601,7 +3617,7 @@ export default function Customizer() {
     // exacto" se muestra el único acabado disponible, ya seleccionado.
     <div>
       <Label className="text-sm font-medium text-foreground mb-3 block">
-        Acabado {productArticle(product.singular)} {product.singular.toLowerCase()}
+        Acabado {productArticle(productNoun)} {productNoun}
       </Label>
       <div className="flex items-center gap-3 rounded-xl border border-primary ring-1 ring-primary/30 bg-[#f5eaec]/50 px-4 py-3">
         <span
@@ -3621,7 +3637,7 @@ export default function Customizer() {
     <>
       <div>
         <Label className="text-sm font-medium text-foreground mb-3 block">
-          Color base {productArticle(product.singular)} {product.singular.toLowerCase()}
+          Color base {productArticle(productNoun)} {productNoun}
         </Label>
         <div className="grid grid-cols-6 md:grid-cols-6 gap-3">
           {COLORS.map(c => (
@@ -3800,7 +3816,7 @@ export default function Customizer() {
   const renderOwnProduct = () => canBringOwn && (
     <div>
       <Label className="text-sm font-medium text-foreground mb-3 block">
-        {material.pens ? "¿Los bolígrafos?" : `¿Ya tenés tu ${orderProductName.toLowerCase()}?`}
+        {material.pens ? "¿Los bolígrafos?" : `¿Ya tenés tu ${productNoun}?`}
       </Label>
       <div className="grid grid-cols-2 gap-3">
         {[
@@ -4101,7 +4117,7 @@ export default function Customizer() {
         className="w-full min-h-12 flex items-center justify-between gap-3 rounded-xl border border-border px-4 py-2.5 text-left active:bg-secondary/50"
       >
         <span className="text-sm text-foreground leading-tight">
-          ¿Ya tenés tu {orderProductName.toLowerCase()}? <span className="text-muted-foreground">Traelo y lo grabamos</span>
+          ¿Ya tenés tu {productNoun}? <span className="text-muted-foreground">Traelo y lo grabamos</span>
         </span>
         <span aria-hidden className={`shrink-0 w-10 h-6 rounded-full p-0.5 transition-colors ${ownProduct ? "bg-primary" : "bg-border"}`}>
           <span className={`block w-5 h-5 rounded-full bg-white shadow transition-transform ${ownProduct ? "translate-x-4" : ""}`} />
@@ -4406,11 +4422,13 @@ export default function Customizer() {
           ? `${designElementCount} ${designElementCount === 1 ? "elemento" : "elementos"} · tocá para editar`
           : "Tocá + para empezar"}
         right={
-          <ArViewButton
-            compact
-            getModel={() => thermosArRef.current?.() ?? null}
-            designKey={[productId, viewSize, activeColorHex, finish, text, font, text2, text2Font, JSON.stringify(text2Placement), iconId, artUrl?.length ?? 0, textColor, effectiveTechnique, JSON.stringify(textPlacement), JSON.stringify(artPlacement)].join("|")}
-          />
+          <span ref={arTipRef} className="inline-flex">
+            <ArViewButton
+              compact
+              getModel={() => thermosArRef.current?.() ?? null}
+              designKey={[productId, viewSize, activeColorHex, finish, text, font, text2, text2Font, JSON.stringify(text2Placement), iconId, artUrl?.length ?? 0, textColor, effectiveTechnique, JSON.stringify(textPlacement), JSON.stringify(artPlacement)].join("|")}
+            />
+          </span>
         }
         top={vp.top}
         height={vp.height}
@@ -4464,6 +4482,7 @@ export default function Customizer() {
           </div>
 
           <button
+            ref={addTipRef}
             type="button"
             onClick={openAddSheet}
             aria-label="Agregar al termo"
@@ -4486,6 +4505,7 @@ export default function Customizer() {
                 </p>
               </div>
               <button
+                ref={doneTipRef}
                 type="button"
                 onClick={leaveDesignStep}
                 className="shrink-0 h-12 px-6 inline-flex items-center gap-1 rounded-full bg-primary text-primary-foreground text-base font-semibold shadow-sm active:scale-[0.98] transition"
@@ -4497,6 +4517,7 @@ export default function Customizer() {
         )}
 
         {renderDesignSheet()}
+        <DesignTips tips={designTips} enabled={designElementCount === 0} />
       </MobileDesignScreen>
     );
   };
@@ -4534,7 +4555,7 @@ export default function Customizer() {
   // Celular: el paso de Diseño es una pantalla fija aparte (MobileDesignScreen).
   const wrapDesignStep = (content: React.ReactNode) => !isMobile ? content : (
     <MobileDesignScreen
-      title={`Diseñá tu ${(isDrinkware ? product.singular : orderProductName).toLowerCase()}`}
+      title={`Diseñá tu ${productNoun}`}
       subtitle={`Paso ${mobileStep} de ${wizardLabels.length}`}
       top={vp.top}
       height={vp.height}
@@ -5074,7 +5095,7 @@ export default function Customizer() {
                           <div>
                             <p className="text-sm font-medium text-foreground">Texto 2</p>
                             <p className="text-xs text-muted-foreground">
-                              Ej.: la empresa arriba y el nombre del empleado abajo. Tocalo sobre el {product.singular.toLowerCase()} para moverlo.
+                              Ej.: la empresa arriba y el nombre del empleado abajo. Tocalo sobre {productTheNoun} para moverlo.
                               {effectiveTechnique === "laser" && <> {formatGs(PRICING.laser.extraText)} más.</>}
                             </p>
                           </div>
@@ -5132,7 +5153,7 @@ export default function Customizer() {
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Elegí un ícono</Label>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Sumá un ícono a tu {product.singular.toLowerCase()}. Tocá de nuevo para quitarlo.
+                        Sumá un ícono a tu {productNoun}. Tocá de nuevo para quitarlo.
                       </p>
                       <IconPicker value={iconId} onChange={handlePickIcon} />
                     </div>
@@ -5147,7 +5168,7 @@ export default function Customizer() {
                       <div>
                         <Label className="text-sm font-medium text-foreground mb-1 block">Tamaño y orientación del ícono</Label>
                         <p className="text-xs text-muted-foreground mb-3">
-                          Arrastrá el ícono sobre el {product.singular.toLowerCase()} para ubicarlo, o usá el control de posición del visor. Acá ajustás su tamaño.
+                          Arrastrá el ícono sobre {productTheNoun} para ubicarlo, o usá el control de posición del visor. Acá ajustás su tamaño.
                         </p>
                         <PlacementControls
                           value={artPlacement}
@@ -5168,7 +5189,7 @@ export default function Customizer() {
                     <div>
                       <Label className="text-sm font-medium text-foreground mb-1 block">Logo o foto</Label>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Subí tu logo o tu foto: se imprime a todo color (impresión UV) sobre el {product.singular.toLowerCase()}. Podés dejarla con fondo o quitárselo.
+                        Subí tu logo o tu foto: se imprime a todo color (impresión UV) sobre {productTheNoun}. Podés dejarla con fondo o quitárselo.
                       </p>
 
                       {/* Antes se exigía un plan "con imagen", pero el plan se deduce
@@ -5192,7 +5213,7 @@ export default function Customizer() {
                         <div className="pt-4 mt-4 border-t border-border">
                           <Label className="text-sm font-medium text-foreground mb-1 block">Orientación de la imagen</Label>
                           <p className="text-xs text-muted-foreground mb-3">
-                            Arrastrá la imagen sobre el {product.singular.toLowerCase()} para ubicarla, o usá el control de posición del visor.
+                            Arrastrá la imagen sobre {productTheNoun} para ubicarla, o usá el control de posición del visor.
                           </p>
                           <PlacementControls
                             value={artPlacement}

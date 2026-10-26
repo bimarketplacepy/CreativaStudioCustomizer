@@ -261,7 +261,7 @@ Probado con `pnpm --filter @workspace/api-server run odoo:check -- hydrate` (dia
 - **Solo con stock:** stock controlado y unidades libres (`free_qty`) > 0. Lo demás se excluye.
 - **Agrupación por modelo:** cada producto-color entra como un color del mismo modelo. Color: atributo `color` de Odoo (con su hex) o, si falta, el final del nombre ("Amarillo Sol"); capacidad: atributo `size` o el nombre ("530ml", "1L"). Ej.: "Hydrate 530ml Amarillo Sol" + "Hydrate 1L Negro" → modelo **"Hoppie Hydrate"** con colores y capacidades.
 - **Perfil 3D desde la categoría interna** (`… / HOPPIE / …`), con el nombre como respaldo. Material: cuero / cristal por nombre o categoría; **inox solo si el color es acero natural** ("Inox", "Plateado"…). "DOBLE PARED INOX" en la categoría describe la construcción, no el acabado.
-- Configurable sin tocar código (Secrets opcionales): `ODOO_BRAND` (por defecto `HYDRATE`; varias separadas por coma), `ODOO_BRAND_FIELD` (por defecto `x_studio_marca`), `ODOO_ONLY_PUBLISHED=true` para exigir publicados.
+- Configurable sin tocar código (Secrets opcionales): `ODOO_BRAND` (por defecto `HYDRATE`; varias separadas por coma), `ODOO_BRAND_FIELD` (por defecto `x_studio_marca`), solo productos publicados en el e-commerce (`ODOO_ONLY_PUBLISHED=false` para incluir los no publicados).
 - **Vista previa con los datos reales:** `pnpm --filter @workspace/api-server run odoo:check -- catalogo` corre la misma sincronización que `/api/catalog` (solo lectura) y lista modelos, colores, capacidades, precios, stock y lo que quedó sin perfil 3D.
 - Verificado contra un Odoo 19 simulado con la forma real del catálogo (otra marca mezclada, un color sin stock, un accesorio sin perfil, un modelo inox, URL con `/odoo`).
 

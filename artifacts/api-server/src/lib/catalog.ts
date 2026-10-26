@@ -5,8 +5,8 @@
  * - Es el catálogo de TODAS las marcas → se filtra por marca con un campo de
  *   Studio (ODOO_BRAND_FIELD, por defecto `x_studio_marca`) = ODOO_BRAND
  *   (por defecto `HYDRATE`; admite varias separadas por coma).
- * - Solo productos CON STOCK (stock controlado y `free_qty` > 0), publicados en
- *   la web o no (ODOO_ONLY_PUBLISHED=true para exigir publicados).
+ * - Solo productos CON STOCK (stock controlado y `free_qty` > 0) y PUBLICADOS
+ *   en el e-commerce (ODOO_ONLY_PUBLISHED=false para incluir los no publicados).
  * - Cada color suele ser un producto aparte ("Hydrate 530ml Amarillo Sol", 1
  *   variante). Se AGRUPAN por modelo: el color sale del atributo "color" de
  *   Odoo o, si falta, del nombre; la capacidad del atributo "size" o del nombre.
@@ -31,7 +31,7 @@ const CACHE_MS = 10 * 60 * 1000;
 const CURRENCY = process.env.ODOO_CURRENCY_LABEL || "Gs.";
 const BRAND_FIELD = process.env.ODOO_BRAND_FIELD?.trim() || "x_studio_marca";
 const BRANDS = (process.env.ODOO_BRAND ?? "HYDRATE").split(",").map(s => s.trim()).filter(Boolean);
-const ONLY_PUBLISHED = process.env.ODOO_ONLY_PUBLISHED === "true";
+const ONLY_PUBLISHED = process.env.ODOO_ONLY_PUBLISHED !== "false";
 const MAX_TEMPLATES = 2000;
 
 /** Referencias internas de los servicios de grabado en Odoo (tipo Servicio). */
@@ -60,18 +60,18 @@ const TYPE_LABEL: Record<string, string> = {
   copa: "Copa", vaso: "Vaso", termo: "Termo", botella: "Botella",
   "food-flask": "Food Flask", "ice-bucket": "Ice Bucket", bowl: "Bowl",
   "vaso-manija": "Vaso", "botella-ancha": "Botella", "vaso-hydrate": "Vaso", "vaso-sunbeam": "Vaso",
-  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso", "vaso-whisky": "Vaso",
+  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso", "vaso-whisky": "Vaso", "vaso-cafe": "Vaso", growler: "Growler", "termo-sleek": "Termo",
 };
 
 /**
  * Perfiles con modelo 3D real de UN producto concreto: los demás modelos del
- * mismo tipo pasan a la forma genérica. Hoy: forma-botella.glb (tapa con asa)
- * es el "Hoppie V2 Pro Series"; los demás hoppies caen a la botella de boca
+ * mismo tipo pasan a la forma genérica. Hoy: Termogv2pro.glb (tapa con asa)
+ * es el "Termo Frontier" (ver frontier); los demás hoppies caen a la botella de boca
  * ancha genérica, salvo los que tienen modelo propio en NAMED_MODEL (Hoppie,
  * Termo Kids).
  */
 const EXACT_MODEL: Record<string, { name: string; fallback: string }> = {
-  hoppie: { name: "Hoppie V2 Pro Series", fallback: "botella-ancha" },
+  hoppie: { name: "Termo Frontier", fallback: "botella-ancha" },
 };
 
 /**
@@ -79,14 +79,53 @@ const EXACT_MODEL: Record<string, { name: string; fallback: string }> = {
  * su perfil; los demás del tipo siguen con la forma genérica.
  */
 const NAMED_MODEL: Record<string, Record<string, string>> = {
-  vaso: { "vaso": "vaso-hydrate", "vaso sunbeam": "vaso-sunbeam", "vaso taza espresso": "vaso-espresso", "vaso manija": "taza-manija", "vaso mini coffee mug": "mini-coffee", "vaso taza": "vaso-taza", "vaso coffee cup": "coffee-cup", "vaso shaker": "vaso-shaker", "vaso whisky lowball": "vaso-whisky" },
+  vaso: { "vaso": "vaso-hydrate", "vaso sunbeam": "vaso-sunbeam", "vaso taza espresso": "vaso-espresso", "vaso manija": "taza-manija", "vaso mini coffee mug": "mini-coffee", "vaso taza": "vaso-taza", "vaso coffee cup": "coffee-cup", "vaso shaker": "vaso-shaker", "vaso whisky lowball": "vaso-whisky", "vaso cafe": "vaso-cafe" },
   termo: { "termo mate": "termo-mate", "termo mate forge": "termo-mate-forge" },
-  "botella-ancha": { "hoppie": "hoppie-hydrate", "termo kids": "termo-kids" },
+  "botella-ancha": { "hoppie": "hoppie-hydrate", "termo kids": "termo-kids", "termo sleek line": "termo-sleek" },
   // La "Copa" de Hydrate (vaso de vino sin tallo) puede clasificarse como copa o
   // como guampa (Odoo la tiene en "ACCESORIOS DE TERMOS / GUAMPAS").
+  jug: { "growler": "growler" },
   copa: { "copa": "copa-hydrate" },
   guampa: { "copa": "copa-hydrate" },
 };
+
+/**
+ * Un mismo producto cargado en Odoo con dos nombres: se agrupa bajo el nombre
+ * de la izquierda. "JARRA 1900 ML" es el "Growler 1.9lts" (la capacidad igual
+ * la unifica mergeNearSizes).
+ */
+const MODEL_ALIAS: Record<string, string> = { jarra: "Growler" };
+
+/**
+ * Líneas que Odoo carga con el mismo nombre que otras (así las nombra la
+ * descripción del e-commerce):
+ * - Termo Frontier: "V2 PRO series 770 / Litro" y "TERMO 770 ML" / "TERMO 1060
+ *   ML", que si no quedarían mezclados con el Termo 473. El "Litro" del V2 PRO
+ *   es de 1060 ml.
+ * - Termo Sleek Line: "620ml <color>" / "710ml <color>" (sin modelo, si no
+ *   caen en el Hoppie) y "TERMO 710 ML". El Hoppie es el Wide Flow (530 ml, 1 L).
+ */
+const FRONTIER = "Termo Frontier";
+const FRONTIER_SIZES = new Set(["770ml", "1060ml"]);
+const SLEEK = "Termo Sleek Line";
+const SLEEK_SIZES = new Set(["620ml", "710ml"]);
+/** Colores del Sleek Line que no se ofrecen (pedido del dueño, 2026-10-26). */
+const SLEEK_HIDDEN_COLORS = new Set(["lima"]);
+function productLine(model: string, size: string | null): { model: string; size: string | null } {
+  const m = norm(model);
+  if (m === "v2 pro series") return { model: FRONTIER, size: size === "1L" ? "1060ml" : size };
+  if (m === "termo" && size && FRONTIER_SIZES.has(size)) return { model: FRONTIER, size };
+  if (m === "" && size && SLEEK_SIZES.has(size)) return { model: SLEEK, size };
+  if (m === "termo" && size === "710ml") return { model: SLEEK, size };
+  return { model: MODEL_ALIAS[m] ?? model, size };
+}
+
+/**
+ * Perfiles que la landing ya no ofrece (sacados del personalizador a pedido del
+ * dueño, 2026-10-26): esos productos no se mandan. Las reglas de tipo siguen
+ * para que no caigan en otro perfil (ej. un bidón como botella).
+ */
+const DROPPED_TYPES = new Set(["jug", "bowl"]);
 
 const LEATHER = /\bcuero\b|\bforrad[oa]\b/;
 const GLASS = /\bcristal\b|\bvidrio\b/;
@@ -188,6 +227,9 @@ const STRONG_NAME: [RegExp, string][] = [
   // y Agarre". El Sunbeam (alto, con pajita) y el "Vaso Manija" (jarro) son
   // otros productos y siguen como vaso. Antes que la regla de "vaso".
   [/\bagarre\b/, "vaso-manija"],
+  // "350ml Café - Coral": Odoo reparte los colores entre categorías de vasos y
+  // de Hoppie; sin esto el nombre del modelo cambia según cuál gane la votación.
+  [/^\d+ ?ml cafe\b/, "vaso"],
   [/\bvaso\b|\btumbler\b|\bshaker\b|\blowball\b/, "vaso"],
 ];
 /**
@@ -371,7 +413,12 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
     }
     const parsed = parseProductName(t.name);
     const colorName = attrColor ? titleCase(attrColor) : parsed.color;
-    const size = attrSize ? normalizeSize(attrSize) : parsed.size;
+    const named = productLine(parsed.model, attrSize ? normalizeSize(attrSize) : parsed.size);
+    const size = named.size;
+    if (named.model === SLEEK && colorName && SLEEK_HIDDEN_COLORS.has(norm(colorName))) {
+      excluded.add(t.name);
+      continue;
+    }
 
     // Cristal solo por el NOMBRE: Odoo tiene el Whisky Lowball de acero también
     // en una categoría de cristalería.
@@ -381,7 +428,7 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
       : !colorName && /\binox/.test(norm(t.name)) ? "inox" : "acero";
 
     entries.push({
-      t, v, category, type, model: parsed.model, club: parsed.club, material,
+      t, v, category, type, model: named.model, club: parsed.club, material,
       variant: {
         id: v.id, sku: v.default_code || null, colorName, colorHex, size,
         price: v.lst_price, available: v.free_qty ?? v.qty_available ?? 0, inStock: true,
@@ -436,6 +483,11 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
       variants: mergeNearSizes(list.map(e => e.variant)),
     };
   })
+    .filter(p => {
+      if (!DROPPED_TYPES.has(p.productType)) return true;
+      excluded.add(p.name);
+      return false;
+    })
     // Más variantes primero: la línea principal encabeza el selector de modelo.
     .sort((a, b) => b.variants.length - a.variants.length);
 

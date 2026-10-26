@@ -1,7 +1,7 @@
 import type { FaceId } from "./placement";
 import type { KeepOutZone } from "./keep-out";
 
-export type ProductId = "vaso" | "termo" | "hoppie" | "jug" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "bowl" | "ice-bucket" | "vaso-whisky";
+export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -269,9 +269,10 @@ export const PRODUCTS: ProductDef[] = [
   },
   {
     id: "hoppie",
-    name: "Hoppies V2 Pro",
-    singular: "Hoppie V2 Pro",
-    // Hydrate Hoppie V2 Pro Series con tapa de asa (artifacts/3D/Termogv2pro.glb).
+    name: "Termos Frontier",
+    singular: "Termo Frontier",
+    // Hydrate Termo Frontier (en Odoo "V2 PRO series" y "TERMO 770/1060 ML"),
+    // con tapa de asa (artifacts/3D/Termogv2pro.glb).
     // El Hoppie común tiene otra tapa: usa la botella de boca ancha genérica.
     // Perfil = radio del cuerpo medido sobre el .glb (m × 10, centrado en
     // 0,1299 m): cilindro recto que cierra en un hombro corto bajo el aro de
@@ -287,7 +288,7 @@ export const PRODUCTS: ProductDef[] = [
     frontFace: { uHalfWidth: 0.15 },
     model: {
       url: "/models/hoppie-v2-pro.glb?v=1",
-      exactFor: ["Hoppie V2 Pro Series"],
+      exactFor: ["Termo Frontier"],
       unitsPerMeter: 10,
       centerYm: 0.1299,
       heightM: 0.2598,
@@ -299,7 +300,7 @@ export const PRODUCTS: ProductDef[] = [
     logoBack: true,
     sizes: [
       { id: "hoppie-770",  name: "770ml", label: "Clásico", scale: 1.00 },
-      { id: "hoppie-1000", name: "1L",    label: "Grande",  scale: 1.09 },
+      { id: "hoppie-1000", name: "1060ml", label: "Grande", scale: 1.11 },
     ],
   },
   {
@@ -341,6 +342,42 @@ export const PRODUCTS: ProductDef[] = [
     ],
   },
   {
+    id: "termo-sleek",
+    name: "Termos Sleek Line",
+    singular: "Termo Sleek Line",
+    // Hydrate Termo Sleek Line (en Odoo "620ml / 710ml <color>" y "TERMO 710
+    // ML"; artifacts/3D/sleek.glb): cuerpo delgado que entra en el portavasos,
+    // hombro que cierra en un cuello angosto, tapa negra a rosca con correa.
+    // Perfil = radio del cuerpo medido sobre el .glb (m × 10, centrado en
+    // 0,1113 m). Se toma como el de 620 ml; el de 710 se escala. Logo atrás
+    // (yawDeg 180).
+    desc: "Termo de cuerpo delgado con tapa a rosca y asa.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.338, -1.113], [0.359, -1.093], [0.360, -1.083], [0.360, 0.547],
+      [0.354, 0.597], [0.326, 0.647], [0.266, 0.692], [0.232, 0.727],
+      [0.232, 0.827],
+    ],
+    band: [-0.98, 0.52],
+    frontFace: { uHalfWidth: 0.15 },
+    model: {
+      url: "/models/termo-sleek.glb?v=1",
+      exactFor: ["Termo Sleek Line"],
+      unitsPerMeter: 10,
+      centerYm: 0.1113,
+      heightM: 0.2226,
+      reachM: 0.036,
+      yawDeg: 180,
+    },
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
+    sizes: [
+      { id: "termo-sleek-620", name: "620ml", label: "Clásico", scale: 1.00 },
+      { id: "termo-sleek-710", name: "710ml", label: "Grande",  scale: 1.05 },
+    ],
+  },
+  {
     id: "botella-ancha",
     name: "Botellas",
     singular: "Botella",
@@ -374,87 +411,144 @@ export const PRODUCTS: ProductDef[] = [
     ],
   },
   {
-    id: "jug",
-    name: "Jarras",
-    singular: "Jarra",
-    // Stanley IceMonster / Adventure — wide squat water jug, carabiner handle on cap
-    desc: "Bidón térmico ancho de gran capacidad con asa.",
-    cap: "screw",
-    handle: "cap-d",
+    id: "growler",
+    name: "Growlers",
+    singular: "Growler",
+    // Hydrate "Growler 1.9lts" (= "JARRA 1900 ML" en Odoo; artifacts/3D/
+    // growler-hydrate-oliva.glb): cilindro ancho con hombro que cierra en la
+    // boca, tapa con asa del color del cuerpo. Perfil = radio del cuerpo medido
+    // sobre el .glb (m × 8, centrado en 0,14265 m). Logo atrás (yawDeg 180).
+    desc: "Growler térmico de 1,9 L con tapa con asa.",
+    cap: "none",
+    handle: "none",
     profile: [
-      [0.00, -1.50], [0.10, -1.50],
-      [0.54, -1.46], [0.72, -1.34],
-      [0.80, -1.16], [0.82,  0.72],
-      [0.80,  0.94], [0.72,  1.16],
-      [0.58,  1.34], [0.48,  1.46],
-      [0.44,  1.54], [0.42,  1.60],
+      [0.479, -1.141], [0.480, -1.081], [0.480, 0.359], [0.470, 0.419],
+      [0.425, 0.479], [0.326, 0.539], [0.275, 0.599], [0.267, 0.659],
     ],
-    band: [-1.06, 0.68],
+    band: [-1.0, 0.33],
+    model: {
+      url: "/models/growler.glb?v=1",
+      exactFor: ["Growler"],
+      unitsPerMeter: 8,
+      centerYm: 0.14265,
+      heightM: 0.2853,
+      reachM: 0.06,
+      yawDeg: 180,
+      paint: ["lid", "lid_handle"],
+    },
+    // Caras de grabado: las cuatro (el dorso es el lado del logo).
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
     sizes: [
-      { id: "jug-48",  name: "48oz",  label: "Medio",   scale: 0.88 },
-      { id: "jug-64",  name: "64oz",  label: "Grande",  scale: 1.00 },
-      { id: "jug-96",  name: "96oz",  label: "XL",      scale: 1.14 },
+      { id: "growler-1900", name: "1.9L", label: "Único", scale: 1.00 },
     ],
   },
   {
     id: "food-flask",
     name: "Food Flasks",
     singular: "Food Flask",
-    // Termo de comida (Food Flask de Hydrate) — forma genérica: cilindro ancho y
-    // bajo con tapa a rosca casi tan ancha como el cuerpo. Sin .glb todavía.
+    // Hydrate Food Flask (artifacts/3D/flask-830ml.glb, el de 830 ml): cilindro
+    // ancho de base redondeada, aro de acero y tapa a rosca del color del
+    // cuerpo. Perfil = radio del cuerpo medido sobre el .glb (m × 14, centrado
+    // en 0,06645 m). El de 355 y el de 591 ml tienen modelo propio (shape del
+    // tamaño), en la misma escala. Logo atrás (yawDeg 180).
     desc: "Termo de comida: cilindro ancho y bajo con tapa a rosca.",
-    cap: "screw",
-    handle: "none",
-    profile: [
-      [0.00, -0.92], [0.50, -0.92],
-      [0.60, -0.86], [0.62, -0.74],
-      [0.62,  0.60], [0.58,  0.70],
-      [0.54,  0.78],
-    ],
-    band: [-0.66, 0.54],
-    sizes: [
-      { id: "food-flask-355", name: "355ml", label: "Chico",   scale: 0.76 },
-      { id: "food-flask-591", name: "591ml", label: "Mediano", scale: 0.90 },
-      { id: "food-flask-830", name: "830ml", label: "Grande",  scale: 1.00 },
-    ],
-  },
-  {
-    id: "bowl",
-    name: "Bowls",
-    singular: "Bowl",
-    // Bowl de acero (comida o mascotas) — forma genérica: cuenco bajo que se
-    // abre hacia el borde. El perfil cierra arriba con un disco al ras del borde
-    // (el cuerpo del lathe se dibuja de un solo lado: abierto se vería hueco).
-    desc: "Bowl de acero, bajo y ancho; se graba en el lateral.",
     cap: "none",
     handle: "none",
     profile: [
-      [0.00, -0.40], [0.62, -0.40],
-      [0.70, -0.34], [0.80, -0.12],
-      [0.90,  0.16], [0.96,  0.34],
-      [0.90,  0.38], [0.00,  0.38],
+      [0.531, -0.930], [0.605, -0.895], [0.644, -0.853], [0.664, -0.797],
+      [0.665, -0.776], [0.665,  0.442], [0.659,  0.456],
     ],
-    band: [-0.14, 0.26],
-    frontFace: { uHalfWidth: 0.16 },
+    band: [-0.75, 0.41],
+    model: {
+      url: "/models/food-flask-830.glb?v=1",
+      exactFor: ["Food Flask"],
+      unitsPerMeter: 14,
+      centerYm: 0.06645,
+      heightM: 0.1329,
+      reachM: 0.0475,
+      yawDeg: 180,
+      paint: ["lid"],
+    },
+    // Caras de grabado: las cuatro (el dorso es el lado del logo).
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
     sizes: [
-      { id: "bowl-946", name: "946ml", label: "Único", scale: 1.00 },
+      {
+        id: "food-flask-355", name: "355ml", label: "Chico", scale: 1.00,
+        // artifacts/3D/flask-355ml.glb: mismo cuerpo, más bajo. Perfil medido
+        // sobre el .glb (m × 14, centrado en 0,03935 m).
+        shape: {
+          profile: [
+            [0.531, -0.551], [0.605, -0.516], [0.644, -0.474], [0.664, -0.418],
+            [0.665, -0.397], [0.665,  0.041], [0.659,  0.055],
+          ],
+          band: [-0.37, 0.01],
+          model: {
+            url: "/models/food-flask-355.glb?v=1",
+            exactFor: ["Food Flask"],
+            unitsPerMeter: 14,
+            centerYm: 0.03935,
+            heightM: 0.0787,
+            reachM: 0.0475,
+            yawDeg: 180,
+            paint: ["lid"],
+          },
+        },
+      },
+      {
+        id: "food-flask-591", name: "591ml", label: "Mediano", scale: 1.00,
+        // artifacts/3D/flask-591ml.glb: perfil medido sobre el .glb (m × 14,
+        // centrado en 0,0515 m).
+        shape: {
+          profile: [
+            [0.531, -0.721], [0.605, -0.686], [0.644, -0.644], [0.664, -0.588],
+            [0.665, -0.567], [0.665,  0.258], [0.659,  0.272],
+          ],
+          band: [-0.54, 0.23],
+          model: {
+            url: "/models/food-flask-591.glb?v=1",
+            exactFor: ["Food Flask"],
+            unitsPerMeter: 14,
+            centerYm: 0.0515,
+            heightM: 0.103,
+            reachM: 0.0475,
+            yawDeg: 180,
+            paint: ["lid"],
+          },
+        },
+      },
+      { id: "food-flask-830", name: "830ml", label: "Grande", scale: 1.00 },
     ],
   },
   {
     id: "ice-bucket",
-    name: "Hieleras",
-    singular: "Hielera",
-    // Ice Bucket de Hydrate (3,25 L) — forma genérica: balde ancho con tapa.
-    desc: "Hielera de acero: balde ancho con tapa.",
-    cap: "lid",
+    name: "Ice Buckets",
+    singular: "Ice Bucket",
+    // Hydrate "Ice Bucket" 3250 ml (artifacts/3D/hielera-hydrate-coral.glb):
+    // balde que se abre hacia arriba, aro de acero y tapa con perilla del color
+    // del cuerpo. Perfil = radio del cuerpo medido sobre el .glb (m × 12,
+    // centrado en 0,08215 m). Logo atrás (yawDeg 180).
+    desc: "Hielera de acero con tapa.",
+    cap: "none",
     handle: "none",
     profile: [
-      [0.00, -0.95], [0.78, -0.95],
-      [0.86, -0.88], [0.88, -0.76],
-      [0.90,  0.70], [0.86,  0.80],
-      [0.80,  0.84],
+      [0.689, -0.986], [0.692, -0.878], [0.709, -0.771], [0.740, -0.341],
+      [0.773, -0.018], [0.805,  0.304], [0.840,  0.734],
     ],
-    band: [-0.66, 0.62],
+    band: [-0.80, 0.66],
+    model: {
+      url: "/models/ice-bucket.glb?v=1",
+      exactFor: ["Ice Bucket"],
+      unitsPerMeter: 12,
+      centerYm: 0.08215,
+      heightM: 0.1643,
+      reachM: 0.0702,
+      yawDeg: 180,
+      paint: ["lid", "lid_knob"],
+    },
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
     sizes: [
       { id: "ice-bucket-3250", name: "3250ml", label: "Único", scale: 1.00 },
     ],
@@ -883,6 +977,35 @@ export const PRODUCTS: ProductDef[] = [
     logoBack: true,
     sizes: [
       { id: "vaso-taza-unico", name: "Único", label: "Clásico", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-cafe",
+    name: "Vasos Café",
+    singular: "Vaso Café",
+    // Hydrate "350ml Café" (artifacts/3D/vaso-cafe.glb): vaso recto con aro de
+    // acero y tapa con pestaña. Perfil = radio del cuerpo medido sobre el .glb
+    // (m × 14, centrado en 0,08725 m). Logo atrás (yawDeg 180).
+    desc: "Vaso térmico para café de 350 ml con tapa.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.519, -1.222], [0.525, -1.128], [0.525, 0.565], [0.486, 0.659],
+    ],
+    band: [-1.05, 0.50],
+    model: {
+      url: "/models/vaso-cafe.glb?v=1",
+      exactFor: ["Vaso Café"],
+      unitsPerMeter: 14,
+      centerYm: 0.08725,
+      heightM: 0.1745,
+      reachM: 0.0375,
+      yawDeg: 180,
+    },
+    engraveFaces: ["front", "left", "back", "right"],
+    logoBack: true,
+    sizes: [
+      { id: "vaso-cafe-350", name: "350ml", label: "Clásico", scale: 1.00 },
     ],
   },
   {
