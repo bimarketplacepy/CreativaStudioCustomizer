@@ -14,6 +14,7 @@ export * from "./catalogSource";
 export * from "./catalogVariant";
 export * from "./createOrderRequest";
 export * from "./createOrderRequestDesignState";
+export * from "./createOrderRequestProductionVectorsItem";
 export * from "./createOrderResponse";
 export * from "./healthStatus";
 export * from "./order";

@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Download, ImagePlus, Loader2, Maximize2, Trash2, X } from "lucide-react";
 import {
-  artworkDistortion, dpiVerdict, DPI_VERDICT_TEXT, readWrapImage, wrapEffectiveDpi,
-  WRAP_MODES, type WrapDesign, type WrapMode,
+  artworkDistortion, dpiVerdict, DPI_VERDICT_TEXT, MAX_WRAP_LOGOS, readWrapImage, wrapEffectiveDpi,
+  WRAP_LOGO_SPOTS, WRAP_MODES, type WrapDesign, type WrapLogo, type WrapMode,
 } from "@/lib/wrap-design";
 
 /**
@@ -57,6 +57,8 @@ export function WrapDesignPanel({ value, onChange, size, productName, onShowUnwr
         url: img.url, width: img.width, height: img.height,
         mode: looksLikeArtwork ? "artwork" : value?.mode === "artwork" ? "cover" : value?.mode ?? "cover",
         scale: 1, offsetU: 0, offsetV: 0,
+        // Cambiar el fondo no borra los logos de encima.
+        logos: value?.logos ?? [],
       });
     } catch {
       setError("No pudimos abrir la imagen. Probá con otra.");
@@ -162,6 +164,8 @@ export function WrapDesignPanel({ value, onChange, size, productName, onShowUnwr
             </p>
           )}
 
+          <WrapLogosEditor logos={value.logos ?? []} onChange={(logos) => set({ logos })} />
+
           <button
             type="button"
             onClick={onShowUnwrapped}
@@ -179,6 +183,121 @@ export function WrapDesignPanel({ value, onChange, size, productName, onShowUnwr
       >
         <Download className="w-4 h-4" /> Descargar plantilla para tu diseñador
       </button>
+    </div>
+  );
+}
+
+/** El SVG va en vector al archivo de la Dacen; muy pesado, se usa como imagen. */
+const MAX_SVG_CHARS = 400_000;
+const nearSpot = (u: number, target: number) => {
+  const d = Math.abs((((u - target) % 1) + 1.5) % 1 - 0.5);
+  return d < 0.02;
+};
+
+/**
+ * Logos encima del fondo 360° (fase 4): hasta MAX_WRAP_LOGOS, cada uno en una
+ * cara (frente, costados, atrás), con su alto y su tamaño.
+ */
+function WrapLogosEditor({ logos, onChange }: { logos: WrapLogo[]; onChange: (logos: WrapLogo[]) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const add = async (file: File | undefined) => {
+    if (!file) return;
+    setError(null);
+    if (!file.type.startsWith("image/")) { setError("Elegí un logo en SVG, PNG o JPG."); return; }
+    if (file.size > MAX_FILE_BYTES) { setError("El logo pesa más de 25 MB."); return; }
+    setBusy(true);
+    try {
+      const img = await readWrapImage(file);
+      // Cada logo nuevo va a la próxima cara libre (frente, izquierda, atrás…).
+      const spot = WRAP_LOGO_SPOTS.find(sp => !logos.some(l => nearSpot(l.u, sp.u))) ?? WRAP_LOGO_SPOTS[0]!;
+      onChange([...logos, {
+        id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+        url: img.url, width: img.width, height: img.height,
+        svg: img.svg && img.svg.length <= MAX_SVG_CHARS ? img.svg : null,
+        u: spot.u, v: 0.5, widthFrac: 0.18,
+      }]);
+    } catch {
+      setError("No pudimos abrir el logo. Probá con otro archivo.");
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+  const update = (id: string, patch: Partial<WrapLogo>) => onChange(logos.map(l => (l.id === id ? { ...l, ...patch } : l)));
+  const remove = (id: string) => {
+    const gone = logos.find(l => l.id === id);
+    if (gone?.url.startsWith("blob:")) URL.revokeObjectURL(gone.url);
+    onChange(logos.filter(l => l.id !== id));
+  };
+
+  return (
+    <div className="space-y-3 border-t border-border pt-4">
+      <div>
+        <p className="text-sm font-semibold text-foreground">Logos encima del fondo</p>
+        <p className="text-xs text-muted-foreground">Hasta {MAX_WRAP_LOGOS}. En SVG salen en vector, más nítidos; PNG o JPG también sirven.</p>
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/svg+xml,image/png,image/jpeg,image/webp"
+        className="sr-only"
+        aria-label="Subir un logo para encima del fondo"
+        onChange={(e) => add(e.target.files?.[0])}
+      />
+      {logos.map((l, i) => (
+        <div key={l.id} className="rounded-xl border border-border p-3 space-y-3">
+          <div className="flex items-center gap-3">
+            <img src={l.url} alt="" className="w-12 h-12 rounded-lg object-contain border border-border bg-[repeating-conic-gradient(#eee_0_25%,#fff_0_50%)] bg-[length:12px_12px]" />
+            <p className="flex-1 min-w-0 text-sm font-medium text-foreground">
+              Logo {i + 1} <span className="text-xs font-normal text-muted-foreground">· {l.svg ? "vector" : `${l.width} × ${l.height} px`}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => remove(l.id)}
+              aria-label={`Quitar el logo ${i + 1}`}
+              className="w-10 h-10 grid place-items-center rounded-full text-muted-foreground active:bg-secondary"
+            >
+              <Trash2 className="w-4.5 h-4.5" />
+            </button>
+          </div>
+          <div role="radiogroup" aria-label={`Dónde va el logo ${i + 1}`} className="grid grid-cols-4 gap-1.5">
+            {WRAP_LOGO_SPOTS.map(sp => {
+              const on = nearSpot(l.u, sp.u);
+              return (
+                <button
+                  key={sp.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => update(l.id, { u: sp.u })}
+                  className={`min-h-10 rounded-lg border text-xs font-medium transition-all ${on
+                    ? "border-primary bg-[#f5eaec] text-primary"
+                    : "border-border text-foreground"}`}
+                >
+                  {sp.label}
+                </button>
+              );
+            })}
+          </div>
+          <RangeRow id={`logo-size-${l.id}`} label="Tamaño" min={0.05} max={0.4} step={0.01} value={l.widthFrac} onChange={(v) => update(l.id, { widthFrac: v })} />
+          <RangeRow id={`logo-v-${l.id}`} label="Más arriba / abajo" min={0} max={1} step={0.01} value={l.v} onChange={(v) => update(l.id, { v })} />
+        </div>
+      ))}
+      {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+      {logos.length < MAX_WRAP_LOGOS && (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="w-full min-h-11 rounded-full border border-dashed border-primary/50 text-sm font-semibold text-primary flex items-center justify-center gap-2 active:bg-[#f5eaec]"
+        >
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
+          {logos.length ? "Agregar otro logo" : "Agregar un logo"}
+        </button>
+      )}
     </div>
   );
 }
@@ -237,8 +356,9 @@ export function downloadWrapTemplate(size: WrapPrintSize, productName: string) {
   x.fillText("FRENTE", W / 2, px(8));
   x.fillStyle = "#7b726b";
   x.font = `600 ${px(3)}px Inter, system-ui, sans-serif`;
-  x.fillText("IZQUIERDA", W * 0.25, px(8));
-  x.fillText("DERECHA", W * 0.75, px(8));
+  // Mismas caras que el editor (face-area.ts): izquierda en u = 0,75.
+  x.fillText("DERECHA", W * 0.25, px(8));
+  x.fillText("IZQUIERDA", W * 0.75, px(8));
   x.fillText("COSTURA · ATRÁS", px(18), px(8));
   x.fillText("ATRÁS · COSTURA", W - px(18), px(8));
   x.fillStyle = "#1e1a18";
@@ -313,7 +433,7 @@ export function UnwrappedDialog({ open, onClose, render, size }: {
           <span aria-hidden className="absolute inset-y-0 left-1/2 border-l border-dashed border-white/80" />
         </div>
         <div className="flex justify-between text-[11px] font-medium text-muted-foreground">
-          <span>atrás</span><span>izquierda</span><span className="text-primary">frente</span><span>derecha</span><span>atrás</span>
+          <span>atrás</span><span>derecha</span><span className="text-primary">frente</span><span>izquierda</span><span>atrás</span>
         </div>
         <p className="text-xs text-foreground rounded-lg bg-[#f5eaec] px-3 py-2">
           <b className="text-primary">Costura:</b> en los bordes empieza y termina la impresión, atrás del vaso. Evitá poner texto justo ahí.

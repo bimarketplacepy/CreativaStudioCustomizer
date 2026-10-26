@@ -10,6 +10,7 @@
  * vertical (`aspect` de bandMetrics) que se deshace al dibujar, para que la foto
  * conserve sus proporciones reales sobre la pieza.
  */
+import { ctxMatrix, type VectorSink } from "./vector-marks";
 
 /**
  * Cómo llena la vuelta:
@@ -31,6 +32,33 @@ export const WRAP_MODES: { id: WrapMode; label: string; hint: string }[] = [
 /** Copias alrededor de la vuelta en los modos que repiten. */
 export const TILE_REPEATS = 3;
 
+/**
+ * Logo encima del fondo (fase 4): varios, ubicados por cara y alto. No entran
+ * al arrastre del visor: se acomodan desde el panel.
+ */
+export interface WrapLogo {
+  id: string;
+  url: string;
+  width: number;
+  height: number;
+  /** Marcado SVG si el cliente subió un vector (va en curvas al archivo). */
+  svg?: string | null;
+  /** Centro: u de la vuelta (0,5 = frente) y v de la banda (0 = arriba). */
+  u: number;
+  v: number;
+  /** Ancho como fracción de la vuelta completa. */
+  widthFrac: number;
+}
+
+export const MAX_WRAP_LOGOS = 4;
+/** u de cada cara, igual que FACES de face-area.ts (izquierda = +0,25). */
+export const WRAP_LOGO_SPOTS: { id: string; label: string; u: number }[] = [
+  { id: "front", label: "Frente", u: 0.5 },
+  { id: "left", label: "Izquierda", u: 0.75 },
+  { id: "back", label: "Atrás", u: 0 },
+  { id: "right", label: "Derecha", u: 0.25 },
+];
+
 /** Lo que guarda el editor (y viaja en el pedido, sin la imagen). */
 export interface WrapDesign {
   /** blob: o data: URL de la imagen subida. */
@@ -44,15 +72,20 @@ export interface WrapDesign {
   /** Corrimiento del modo "Ajustar", en fracción de la vuelta / de la banda. */
   offsetU: number;
   offsetV: number;
+  /** Logos encima del fondo (fase 4). */
+  logos?: WrapLogo[];
 }
 
-/** Lo que necesita el dibujo: la imagen ya cargada. */
+type Drawable = CanvasImageSource & { width: number; height: number };
+
+/** Lo que necesita el dibujo: las imágenes ya cargadas. */
 export interface WrapLayer {
-  image: CanvasImageSource & { width: number; height: number };
+  image: Drawable;
   mode: WrapMode;
   scale: number;
   offsetU: number;
   offsetV: number;
+  logos?: { image: Drawable; svg?: string | null; u: number; v: number; widthFrac: number }[];
 }
 
 const repeatsFor = (mode: WrapMode) => (mode === "tile" ? TILE_REPEATS : mode === "mirror" ? 2 : 1);
@@ -62,6 +95,55 @@ const repeatsFor = (mode: WrapMode) => (mode === "tile" ? TILE_REPEATS : mode ==
  * El contexto puede venir escalado (archivo de producción en alta resolución).
  */
 export function drawWrapLayer(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  band: { topPx: number; botPx: number; aspect: number },
+  wrap: WrapLayer,
+  sink?: VectorSink,
+) {
+  drawWrapBackground(ctx, W, band, wrap);
+  if (wrap.logos?.length) drawWrapLogos(ctx, W, band, wrap.logos, sink);
+}
+
+/**
+ * Logos sobre el fondo, en proporción real. Se repiten a ±W para que un logo
+ * sobre la costura (atrás) se vea entero. Un logo SVG va al archivo en vector.
+ */
+function drawWrapLogos(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  band: { topPx: number; botPx: number; aspect: number },
+  logos: NonNullable<WrapLayer["logos"]>,
+  sink?: VectorSink,
+) {
+  const bandH = band.botPx - band.topPx;
+  const realH = bandH / band.aspect;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, band.topPx, W, bandH);
+  ctx.clip();
+  ctx.translate(0, band.topPx);
+  ctx.scale(1, band.aspect);
+  for (const l of logos) {
+    const iw = l.image.width || 1, ih = l.image.height || 1;
+    const w = clamp(l.widthFrac, 0.02, 0.6) * W;
+    const h = Math.min(w * ih / iw, realH);
+    const dw = h * iw / ih;
+    const cx = ((l.u % 1) + 1) % 1 * W;
+    const cy = clamp(l.v * realH, h / 2, realH - h / 2);
+    for (const dx of [-W, 0, W]) {
+      if (cx + dx + dw / 2 < 0 || cx + dx - dw / 2 > W) continue;
+      ctx.save();
+      ctx.translate(cx + dx, cy);
+      if (sink && l.svg) sink({ kind: "svg", svg: l.svg, w: dw, h, matrix: ctxMatrix(ctx) });
+      else ctx.drawImage(l.image, -dw / 2, -h / 2, dw, h);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+function drawWrapBackground(
   ctx: CanvasRenderingContext2D,
   W: number,
   band: { topPx: number; botPx: number; aspect: number },
@@ -157,11 +239,14 @@ export function artworkDistortion(wrap: Pick<WrapDesign, "width" | "height">, re
 }
 
 /** Lee una imagen subida: URL propia (blob:) y su tamaño natural. */
-export function readWrapImage(file: File): Promise<{ url: string; width: number; height: number }> {
+export async function readWrapImage(file: File): Promise<{ url: string; width: number; height: number; svg: string | null }> {
+  // SVG: se guarda el marcado (va en vector al archivo de la Dacen). Si no
+  // declara tamaño, el navegador lo toma de su viewBox.
+  const svg = file.type === "image/svg+xml" ? await file.text() : null;
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => resolve({ url, width: img.naturalWidth, height: img.naturalHeight });
+    img.onload = () => resolve({ url, width: img.naturalWidth || 512, height: img.naturalHeight || 512, svg });
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("No pudimos abrir la imagen")); };
     img.src = url;
   });

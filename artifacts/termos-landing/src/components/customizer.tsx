@@ -3322,6 +3322,7 @@ export default function Customizer() {
     else if (customImage) rows.push(["Logo/foto adjunta", "Sí"]);
     if (hasArt && isDrinkware && (FREE_PLACEMENT ? faceAtU(artPlacement.u) : artFace) !== "front") rows.push([selectedIcon ? "Ubicación del ícono" : "Ubicación de la imagen", where(artPlacement, artFace)]);
     if (activeWrap) rows.push(["Diseño", `Todo el vaso (360°) · ${WRAP_MODES.find(m => m.id === activeWrap.mode)?.label ?? activeWrap.mode}`]);
+    if (activeWrap?.logos?.length) rows.push(["Logos sobre el fondo", String(activeWrap.logos.length)]);
     if (extraLidText !== null) rows.push(["Grabado en tapa", extraLidText || "Sí (texto a definir)"]);
     if (extraBaseText !== null) rows.push(["Grabado en base", extraBaseText || "Sí (texto a definir)"]);
     return rows;
@@ -3392,6 +3393,7 @@ export default function Customizer() {
           wrap: {
             mode: activeWrap.mode, scale: activeWrap.scale, offsetU: activeWrap.offsetU, offsetV: activeWrap.offsetV,
             imageWidth: activeWrap.width, imageHeight: activeWrap.height, effectiveDpi: wrapDpi,
+            logos: (activeWrap.logos ?? []).map(l => ({ u: l.u, v: l.v, widthFrac: l.widthFrac, vector: !!l.svg, width: l.width, height: l.height })),
           },
         } : {}),
         // Dacen F5: medidas y dpi del PNG desenrollado (nombre del archivo y
@@ -3408,8 +3410,12 @@ export default function Customizer() {
       // Logo/foto original en la máxima resolución que tiene el cliente: el
       // server lo embebe en el archivo vectorial de producción (uso interno).
       customImage: customImage?.svgDataUrl ?? undefined,
-      // Dacen F5: el diseño desenrollado en PNG, listo para RIPrint.
+      // Dacen F5: el diseño desenrollado en PNG (lo raster) y los textos y
+      // logos en vector, que el server pasa a curvas (DACEN.md §12.10).
       productionImage: dacenFile?.dataUrl,
+      productionVectors: dacenFile?.vectors.length
+        ? dacenFile.vectors.map(v => v.kind === "text" ? { ...v, fontId: FONTS.find(f => f.style.fontFamily === v.family)?.id ?? null } : v)
+        : undefined,
     };
   };
 
@@ -3426,10 +3432,15 @@ export default function Customizer() {
 
   /** Lo que se imprime a color, con las imágenes ya cargadas (archivo y desplegado). */
   const colorLayerInput = async () => {
-    const [artImage, wrapImage] = await Promise.all([
+    const [artImage, wrapImage, ...logoImages] = await Promise.all([
       artUrl && artImageSize !== "none" ? loadImage(artUrl) : null,
       activeWrap ? loadImage(activeWrap.url) : null,
+      ...(activeWrap?.logos ?? []).map(l => loadImage(l.url).catch(() => null)),
     ]);
+    const logos = (activeWrap?.logos ?? []).flatMap((l, i) => {
+      const image = logoImages[i];
+      return image ? [{ image, svg: l.svg ?? null, u: l.u, v: l.v, widthFrac: l.widthFrac }] : [];
+    });
     return {
       text,
       textPlacement,
@@ -3440,8 +3451,9 @@ export default function Customizer() {
       artPlacement,
       singleFace,
       extraTexts: extraTextMarks,
+      artIconId: selectedIcon ? iconId : null,
       wrap: activeWrap && wrapImage ? {
-        image: wrapImage, mode: activeWrap.mode, scale: activeWrap.scale, offsetU: activeWrap.offsetU, offsetV: activeWrap.offsetV,
+        image: wrapImage, mode: activeWrap.mode, scale: activeWrap.scale, offsetU: activeWrap.offsetU, offsetV: activeWrap.offsetV, logos,
       } : null,
     };
   };

@@ -629,11 +629,7 @@ Orden: **fondo 360°** → **logos/imágenes** → **textos**.
   - `drawWrapLayer()`, con los modos Ajustar (zoom y corrimiento), Mosaico (3 copias), Espejo (2) y Arte completo (de borde a borde).
   - `wrapEffectiveDpi()`, `dpiVerdict()` y `artworkDistortion()`.
 - **`drawColorLayer`:** dibuja primero el fondo y encima el logo o ícono y los textos. El 3D (`thermos-3d.tsx`, prop `wrap`), el desplegado y el archivo usan la misma función.
-- **Archivo para la Dacen:** con fondo 360°, `renderDacenPng` sale en **JPEG** (hasta 5,5 MB, empieza en 300 dpi y sobre blanco).
-  - Server: `productionJpeg()` graba los dpi en el JFIF y guarda `CS-xxxx-produccion.jpg`.
-  - Descarga: `CS-xxxx-dacen-360-AxBmm.jpg`.
-  - `/admin` muestra "JPG 360° para RIPrint (Dacen)".
-  - Límite del JSON: 16 MB.
+- **Archivo para la Dacen:** primero salía en JPEG; con las respuestas del taller pasó a PNG + vector (ver 12.10). El server todavía acepta JPEG por si queda algún pedido de esa versión.
 - **Editor:** `src/components/wrap-design-panel.tsx`.
   - Subida de la imagen; una imagen con la proporción de la plantilla entra directo como «Arte completo».
   - Modos, aviso de resolución y aviso de deformación.
@@ -650,6 +646,46 @@ Orden: **fondo 360°** → **logos/imágenes** → **textos**.
 **Pendiente**
 
 - **Fase 0:** medidas de calibre (`print-specs.ts`) y las respuestas del taller (12.8). Los campos `lipZoneMm`, `bleedMm` y `seamOverlapMm` se agregan cuando estén.
-- **Fase 4:** varios logos encima del fondo.
-- **Fase 5:** máscara de blanco y barniz, y curvado en arco para piezas cónicas.
+- ~~Fase 4~~: hecha (12.10).
+- ~~Fase 5~~: no hace falta (12.10).
 - **Link compartido:** no lleva la imagen del fondo; tampoco lleva el logo.
+
+### 12.10 Respuestas del taller y fase 4 (2026-10-26)
+
+**Lo que respondió el taller**
+
+1. **Vasos cónicos:** el archivo rectangular sirve. No se curva en arco.
+2. **Blanco:** el programa de la máquina (el taller lo llama «riin») genera solo la base blanca. No mandamos máscaras.
+3. **Costura:** la superposición varía según el vaso y la ajusta el operario.
+4. **Márgenes:** se manda el original según la medida del vaso. El operario ajusta y configura el resto en la máquina.
+5. **Formato:** la imagen en PNG de alta calidad, y los logos y textos en vector.
+6. **Medidas:** solo necesita el **alto** y el **diámetro de la base** de cada vaso.
+
+**Qué cambió**
+
+- **Fase 5 descartada:** no hay capa de blanco ni barniz, ni curvado en arco.
+- **Medidas:** `dacenPrintSize` usa el Ø de la base (`diameterBottomMm`) y el alto (`printableHeightMm`). Falta cargarlos con calibre en `print-specs.ts`.
+- **Archivo** (`production-dacen.ts`): `renderDacenPng` vuelve a PNG, hasta 11,5 MB y 300 dpi.
+  - El PNG lleva solo lo raster: el fondo 360°, las fotos y los logos PNG/JPG.
+  - Los textos, el ícono de la galería y los logos SVG no se pintan en el PNG. `drawColorLayer` los anota con su transformación exacta (`lib/vector-marks.ts`, `vectorSink`).
+  - Viajan en `productionVectors`, un campo nuevo de `POST /api/orders`.
+- **Server** (`production-dacen-svg.ts`): arma `CS-xxxx-produccion-vector.svg` a tamaño real en mm, con tres capas:
+  - **IMAGEN:** el PNG embebido.
+  - **LOGOS:** íconos y SVG del cliente, sin scripts, eventos ni referencias externas.
+  - **TEXTOS:** convertidos a curvas con la tipografía de producción.
+  - Además guarda el PNG solo en `-produccion.png`.
+  - `/admin` muestra «SVG vectorial 360° (Dacen)» y «PNG imagen (Dacen)».
+  - El SVG se abre en Corel o Illustrator para exportar a lo que pida la máquina.
+- **Límites:** el JSON admite 32 MB y el PNG de la Dacen hasta 12 MB. Si el archivo pasa de 4 MB, el pedido espera hasta 2 minutos.
+- **Fase 4, varios logos sobre el fondo** (`WrapDesign.logos`, hasta 4):
+  - Cada logo se ubica por cara (Frente / Izquierda / Atrás / Derecha), con su alto y su tamaño, desde el panel «Todo el vaso (360°)».
+  - Se dibujan sobre el fondo en el 3D, en el desplegado y en el archivo.
+  - En SVG van en vector; en PNG o JPG, dentro del PNG.
+  - Cambiar el fondo no borra los logos.
+- **Caras en el desplegado y la plantilla:** se corrigieron para coincidir con `face-area.ts` (izquierda en u = 0,75).
+
+**Pendiente**
+
+- **Medidas con calibre:** alto y Ø de la base de cada vaso y talle.
+- **Prueba en la máquina:** imprimir un vaso con un pedido real (PNG + SVG).
+- **Monto del escalón 360°:** `PRICING.dacen.tiers.wrap`.

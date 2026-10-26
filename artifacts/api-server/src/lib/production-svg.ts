@@ -190,7 +190,7 @@ function layoutLines(text: string, layout: string, maxWidth: number, measure: Me
 // glifo a glifo (charToGlyph + kerning manual) es determinista para las 23
 // fuentes del customizer; solo se pierden ligaduras, irrelevantes en grabado.
 
-function runAdvance(lf: LoadedFont, text: string, size: number): number {
+export function runAdvance(lf: LoadedFont, text: string, size: number): number {
   const scale = size / lf.font.unitsPerEm;
   let w = 0;
   let prev: opentype.Glyph | null = null;
@@ -203,7 +203,7 @@ function runAdvance(lf: LoadedFont, text: string, size: number): number {
   return w;
 }
 
-function runPath(lf: LoadedFont, text: string, x: number, y: number, size: number): opentype.Path {
+export function runPath(lf: LoadedFont, text: string, x: number, y: number, size: number): opentype.Path {
   const scale = size / lf.font.unitsPerEm;
   const out = new opentype.Path();
   let cx = x;

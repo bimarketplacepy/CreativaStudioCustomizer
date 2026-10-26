@@ -896,10 +896,33 @@ function ThermosMesh({
     img.src = wrapUrl;
     return () => { cancelled = true; };
   }, [wrapUrl]);
+  // Logos encima del fondo: se cargan una vez por URL.
+  const logoKey = wrapUrl ? (wrap?.logos ?? []).map(l => l.url).join("|") : "";
+  const [logoEls, setLogoEls] = useState<Record<string, HTMLImageElement>>({});
+  useEffect(() => {
+    const urls = logoKey ? logoKey.split("|") : [];
+    if (!urls.length) { setLogoEls({}); return; }
+    let cancelled = false;
+    Promise.all(urls.map(u => new Promise<[string, HTMLImageElement | null]>(res => {
+      const img = new Image();
+      img.onload = () => res([u, img]);
+      img.onerror = () => res([u, null]);
+      img.src = u;
+    }))).then(pairs => {
+      if (cancelled) return;
+      const map: Record<string, HTMLImageElement> = {};
+      for (const [u, img] of pairs) if (img) map[u] = img;
+      setLogoEls(map);
+    });
+    return () => { cancelled = true; };
+  }, [logoKey]);
   const dWrap = useDeferredValue(wrap);
   const wrapLayer = useMemo(
-    () => (wrapEl && dWrap ? { image: wrapEl, mode: dWrap.mode, scale: dWrap.scale, offsetU: dWrap.offsetU, offsetV: dWrap.offsetV } : null),
-    [wrapEl, dWrap],
+    () => (wrapEl && dWrap ? {
+      image: wrapEl, mode: dWrap.mode, scale: dWrap.scale, offsetU: dWrap.offsetU, offsetV: dWrap.offsetV,
+      logos: (dWrap.logos ?? []).filter(l => logoEls[l.url]).map(l => ({ image: logoEls[l.url]!, u: l.u, v: l.v, widthFrac: l.widthFrac })),
+    } : null),
+    [wrapEl, dWrap, logoEls],
   );
 
   // The laser burns tone, not colour: resolve the artwork to a coverage map once.

@@ -9,6 +9,7 @@ import {
 } from "./engraving-text";
 import { FACES, faceConfigFor, nearU, type MarkHalfExtents } from "./face-area";
 import { drawWrapLayer, type WrapLayer } from "./wrap-design";
+import { ctxMatrix, type VectorSink } from "./vector-marks";
 
 /** Text wraps once a row passes this fraction of the wrap-around circumference. */
 const TEXT_WRAP_FRAC = 0.5;
@@ -440,6 +441,13 @@ export interface ColorLayerInput {
   extraTexts?: TextMark[];
   /** Fondo 360° debajo de todo (lib/wrap-design.ts). */
   wrap?: WrapLayer | null;
+  /**
+   * Archivo de la Dacen: textos, el ícono y los logos SVG no se pintan; se
+   * anotan acá para ir en vector (lib/vector-marks.ts).
+   */
+  vectorSink?: VectorSink;
+  /** El ícono de la galería elegido (para mandarlo en vector). */
+  artIconId?: string | null;
 }
 
 /**
@@ -454,7 +462,8 @@ export function drawColorLayer(ctx: CanvasRenderingContext2D, product: ProductDe
   const { artImage, imageSize, artPlacement, text, textPlacement, fontFamily, textColor, singleFace } = o;
   const texts: TextMark[] = [{ text, placement: textPlacement, fontFamily }, ...(o.extraTexts ?? [])];
   // Orden de las capas (DACEN.md §12.4): fondo 360°, logo/ícono, textos.
-  if (o.wrap) drawWrapLayer(ctx, W, m, o.wrap);
+  const sink = o.vectorSink;
+  if (o.wrap) drawWrapLayer(ctx, W, m, o.wrap, sink);
   if (artImage && imageSize !== "none") {
     const naturalW = artImage.naturalWidth || artImage.width || 1;
     const naturalH = artImage.naturalHeight || artImage.height || 1;
@@ -463,7 +472,8 @@ export function drawColorLayer(ctx: CanvasRenderingContext2D, product: ProductDe
     const dw = naturalW * ratio;
     const dh = naturalH * ratio;
     drawPlaced(ctx, m, W, artPlacement, dw / 2, dh / 2, () => {
-      ctx.drawImage(artImage, -dw / 2, -dh / 2, dw, dh);
+      if (sink && o.artIconId) sink({ kind: "icon", iconId: o.artIconId, color: "#000000", w: dw, h: dh, matrix: ctxMatrix(ctx) });
+      else ctx.drawImage(artImage, -dw / 2, -dh / 2, dw, dh);
     }, singleFace);
   }
 
@@ -478,6 +488,13 @@ export function drawColorLayer(ctx: CanvasRenderingContext2D, product: ProductDe
       singleFace,
     );
     drawPlaced(ctx, m, W, p, L.boxW / 2, L.boxH / 2, () => {
+      if (sink) {
+        sink({
+          kind: "text", family: ff, color: textColor, lines: L.lines, fontPx: L.fontPx,
+          lineHeight: L.lineHeight, blockW: L.blockW, align: L.align, matrix: ctxMatrix(ctx),
+        });
+        return;
+      }
       ctx.font = makeTextFont(L.fontPx, ff);
       ctx.textBaseline = "middle";
       ctx.fillStyle = textColor;

@@ -6,6 +6,10 @@ export const ORDER_TIMEOUT_MS = 30_000;
 /** Reintento liviano (sin imágenes): si el primero llegó al server, devuelve
  *  ese mismo pedido; si no, crea uno solo con los datos. */
 const RETRY_TIMEOUT_MS = 10_000;
+/** Con el archivo de la Dacen de un fondo 360° (PNG de ~8–11 MB a 300 dpi) la
+ *  subida tarda más: el primer intento espera hasta 2 minutos. */
+const HEAVY_TIMEOUT_MS = 120_000;
+const HEAVY_BYTES = 4 * 1024 * 1024;
 
 const newRequestId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -44,7 +48,8 @@ export async function submitOrder(payload: CreateOrderRequest): Promise<CreateOr
     designState: { ...payload.designState, requestId: newRequestId() },
   };
   try {
-    return await attempt(withId, ORDER_TIMEOUT_MS);
+    const heavy = (payload.productionImage?.length ?? 0) > HEAVY_BYTES;
+    return await attempt(withId, heavy ? HEAVY_TIMEOUT_MS : ORDER_TIMEOUT_MS);
   } catch (err) {
     if (isClientError(err)) throw err;
     const { previewImage: _p, customImage: _c, productionImage: _pr, ...light } = withId;

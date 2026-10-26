@@ -11,7 +11,8 @@ import {
   loadOrderImage,
 } from "../lib/order-images";
 import { buildProductionSvg } from "../lib/production-svg";
-import { productionJpeg, productionPng, productionPngFileName } from "../lib/production-sticker";
+import { MAX_DACEN_PNG_BYTES, productionJpeg, productionPng, productionPngFileName } from "../lib/production-sticker";
+import { buildDacenSvg, parseVectorMarks } from "../lib/production-dacen-svg";
 import { svgToDxf } from "../lib/production-dxf";
 import { orderMachine } from "../lib/machines";
 import { checkInternalKey, checkOrderImageToken, orderImageToken } from "../lib/internal-key";
@@ -44,6 +45,7 @@ async function generateProductionFile(
   order: Order,
   customImageDataUrl: string | null,
   productionImageDataUrl: string | null,
+  productionVectors: unknown = null,
 ): Promise<string | null> {
   try {
     const ds = (order.designState ?? {}) as Record<string, unknown>;
@@ -64,12 +66,26 @@ async function generateProductionFile(
       return name;
     }
     if (machine === "dacen") {
-      const png = productionPng(productionImageDataUrl, ds.productionDpi);
-      if (png) {
-        const name = `orders/${order.orderNumber}-produccion.png`;
-        await storeOrderFile(name, png, "image/png");
-        return name;
+      // Lo que pidió el taller (DACEN.md §12.10): la imagen en PNG y los
+      // textos y logos en vector. Se guardan los dos: el PNG solo y el SVG por
+      // capas (IMAGEN + LOGOS + TEXTOS), que es el archivo principal.
+      const png = productionPng(productionImageDataUrl, ds.productionDpi, MAX_DACEN_PNG_BYTES);
+      const marks = parseVectorMarks(productionVectors);
+      const pngName = `orders/${order.orderNumber}-produccion.png`;
+      if (png) await storeOrderFile(pngName, png, "image/png");
+      const w = typeof ds.printWidthMm === "number" ? ds.printWidthMm : null;
+      const h = typeof ds.printHeightMm === "number" ? ds.printHeightMm : null;
+      if (marks.length && w && h) {
+        try {
+          const svg = await buildDacenSvg({ orderNumber: order.orderNumber, widthMm: w, heightMm: h, png, marks });
+          const name = `orders/${order.orderNumber}-produccion-vector.svg`;
+          await storeOrderFile(name, Buffer.from(svg, "utf8"), "image/svg+xml");
+          return name;
+        } catch (err) {
+          logger.error({ orderNumber: order.orderNumber, err }, "orders: dacen vector svg failed");
+        }
       }
+      if (png) return pngName;
       // Fondo "Todo el vaso (360°)": la landing lo manda en JPEG a 300 dpi.
       const jpg = productionJpeg(productionImageDataUrl, ds.productionDpi);
       if (jpg) {
@@ -249,7 +265,7 @@ router.post("/orders", rateLimit({ max: 30, windowMs: 60 * 60 * 1000 }), async (
     // Archivo de producción. El vectorial (termos) es de uso interno y nunca
     // viaja al cliente; el PNG del sticker sí: es su propio diseño recortado,
     // y así el taller lo baja del mismo link de WhatsApp en el formato de la E1.
-    const productionPath = await generateProductionFile(order, body.customImage ?? null, body.productionImage ?? null);
+    const productionPath = await generateProductionFile(order, body.customImage ?? null, body.productionImage ?? null, body.productionVectors ?? null);
     if (productionPath) {
       await db
         .update(ordersTable)
@@ -328,6 +344,8 @@ router.get("/orders/:orderNumber/production-file", async (req, res) => {
     }
     let path = order.productionFilePath;
     if (req.query.formato === "svg" && path.endsWith(".dxf")) path = path.replace(/\.dxf$/, ".svg");
+    // Dacen: junto al SVG vectorial queda el PNG de la imagen sola.
+    if (req.query.formato === "png" && path.endsWith("-vector.svg")) path = path.replace(/-vector\.svg$/, ".png");
     const entry = await loadOrderImage(path);
     if (!entry) {
       res.status(404).json({ message: "Archivo de producción no disponible" });
@@ -335,8 +353,9 @@ router.get("/orders/:orderNumber/production-file", async (req, res) => {
     }
     const ds = (order.designState ?? {}) as Record<string, unknown>;
     const ext = path.slice(path.lastIndexOf(".") + 1);
-    const fileName = ext === "png" || ext === "jpg"
-      ? productionPngFileName(orderNumber, orderMachine(ds), ds, ext)
+    const vector = path.endsWith("-vector.svg");
+    const fileName = ext === "png" || ext === "jpg" || vector
+      ? productionPngFileName(orderNumber, orderMachine(ds), ds, ext === "jpg" ? "jpg" : vector ? "svg" : "png")
       : ext === "dxf" ? `${orderNumber}-laser.dxf` : `${orderNumber}-produccion.svg`;
     const type = ext === "png" ? "image/png" : ext === "jpg" ? "image/jpeg" : ext === "dxf" ? "application/dxf" : "image/svg+xml";
     res.setHeader("Content-Type", type);

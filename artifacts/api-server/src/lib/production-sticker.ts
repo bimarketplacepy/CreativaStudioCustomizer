@@ -28,11 +28,11 @@ function chunk(type: string, data: Buffer): Buffer {
  * el data URL no es un PNG válido. `dpi` (si viene) se graba en el archivo
  * para que se importe con su medida real; sin dpi queda como está.
  */
-export function productionPng(dataUrl: string | null | undefined, dpi: unknown): Buffer | null {
+export function productionPng(dataUrl: string | null | undefined, dpi: unknown, maxBytes = MAX_PNG_BYTES): Buffer | null {
   const m = dataUrl?.match(/^data:image\/png;base64,(.+)$/);
   if (!m) return null;
   const png = Buffer.from(m[1]!, "base64");
-  if (png.length > MAX_PNG_BYTES || png.length < 33 || !png.subarray(0, 8).equals(PNG_SIGNATURE)) return null;
+  if (png.length > maxBytes || png.length < 33 || !png.subarray(0, 8).equals(PNG_SIGNATURE)) return null;
   // El primer chunk de un PNG es siempre IHDR (8 + 13 + 4 = 25 bytes).
   if (png.toString("ascii", 12, 16) !== "IHDR") return null;
   if (typeof dpi !== "number" || !Number.isFinite(dpi) || dpi < 50 || dpi > 1200) return png;
@@ -48,7 +48,10 @@ export function productionPng(dataUrl: string | null | undefined, dpi: unknown):
   return Buffer.concat([png.subarray(0, ihdrEnd), chunk("pHYs", phys), png.subarray(ihdrEnd)]);
 }
 
-/** Tope del JPEG del fondo 360° de la Dacen (la landing apunta a ≤ 5,5 MB). */
+/** PNG de la Dacen: con fondo 360° fotográfico a 300 dpi pesa ~8–11 MB. */
+export const MAX_DACEN_PNG_BYTES = 12 * 1024 * 1024;
+
+/** Tope del JPEG del fondo 360° (pedidos anteriores al PNG + vector). */
 const MAX_JPEG_BYTES = 6 * 1024 * 1024;
 
 /**
@@ -78,7 +81,7 @@ export function productionJpeg(dataUrl: string | null | undefined, dpi: unknown)
  * en la app. Sticker: `CS-0012-sticker-50x50mm-x10.png`; Dacen:
  * `CS-0012-dacen-360-220x180mm.png` (ancho = la vuelta completa).
  */
-export function productionPngFileName(orderNumber: string, machine: string, design: Record<string, unknown>, ext: "png" | "jpg" = "png"): string {
+export function productionPngFileName(orderNumber: string, machine: string, design: Record<string, unknown>, ext: "png" | "jpg" | "svg" = "png"): string {
   const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : null);
   if (machine === "dacen") {
     const w = n(design.printWidthMm);

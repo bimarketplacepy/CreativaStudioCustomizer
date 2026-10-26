@@ -69,7 +69,8 @@ router.get("/api/admin/orders", async (req, res) => {
           imageToken: r.previewImagePath ? orderImageToken(r.orderNumber) : null,
           hasPreview: !!r.previewImagePath,
           hasProduction: !!r.productionFilePath,
-          productionKind: r.productionFilePath?.endsWith(".png") ? "png"
+          productionKind: r.productionFilePath?.endsWith("-vector.svg") ? "vector"
+            : r.productionFilePath?.endsWith(".png") ? "png"
             : r.productionFilePath?.endsWith(".jpg") ? "jpg"
             : r.productionFilePath?.endsWith(".dxf") ? "dxf" : "svg",
           previewImagePath: undefined,
@@ -342,6 +343,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
 
   function fileLabel(o) {
     if (o.productionKind === "png") return o.machine === "dacen" ? "PNG 360° para RIPrint (Dacen)" : "PNG para eufyMake";
+    if (o.productionKind === "vector") return "SVG vectorial 360° (Dacen)";
     if (o.productionKind === "jpg") return "JPG 360° para RIPrint (Dacen)";
     if (o.productionKind === "dxf") return "DXF láser";
     return o.machine === "dacen" ? "SVG referencia (Dacen)" : "SVG láser";
@@ -388,6 +390,11 @@ const ADMIN_HTML = `<!DOCTYPE html>
       if (o.hasProduction && o.productionKind === "dxf") {
         svgBtn += '<a class="btn" href="/api/orders/' + esc(o.orderNumber) + '/production-file?formato=svg&key=' +
           encodeURIComponent(key()) + '" download>SVG referencia</a>';
+      }
+      // Dacen: el SVG trae la imagen + textos y logos en curvas; el PNG va aparte.
+      if (o.hasProduction && o.productionKind === "vector") {
+        svgBtn += '<a class="btn" href="/api/orders/' + esc(o.orderNumber) + '/production-file?formato=png&key=' +
+          encodeURIComponent(key()) + '" download>PNG imagen (Dacen)</a>';
       }
       var imgBtn = o.hasPreview
         ? '<a class="btn" href="' + imgUrl + '" download="' +

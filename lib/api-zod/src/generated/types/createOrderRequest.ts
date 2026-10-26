@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CreateOrderRequestDesignState } from "./createOrderRequestDesignState";
+import type { CreateOrderRequestProductionVectorsItem } from "./createOrderRequestProductionVectorsItem";
 
 export interface CreateOrderRequest {
   /**
@@ -48,6 +49,8 @@ export interface CreateOrderRequest {
   previewImage?: string;
   /** Original uploaded logo/photo as a data URL, at the highest resolution the client has. Used only to embed the artwork in the internal production file; never echoed back to the client. */
   customImage?: string;
-  /** Production artwork as a PNG data URL, already at real size (e.g. the unwrapped 360° print for the Dacen F5 UV cylinder printer, opened in RIPrint). Internal use only; never echoed back to the client. */
+  /** Production artwork as a PNG data URL, already at real size (e.g. the unwrapped 360° print for the Dacen F5 UV cylinder printer). For the Dacen it carries only the raster layers; texts and logos travel in productionVectors. Internal use only; never echoed back to the client. */
   productionImage?: string;
+  /** Vector marks of the Dacen F5 file (texts, gallery icon, SVG logos), with their transform in mm of the unwrapped print. The server turns them into outlines in a layered SVG on top of productionImage. Internal use only; never echoed back to the client. */
+  productionVectors?: CreateOrderRequestProductionVectorsItem[];
 }
