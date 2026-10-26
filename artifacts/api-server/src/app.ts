@@ -33,8 +33,9 @@ app.use(
 app.use(cors((req, cb) => cb(null, { origin: isSameOrigin(req as express.Request) })));
 // El preview del pedido viaja como data URL base64 (~3MB de imagen ≈ ~4.1MB
 // de JSON), así que el límite por defecto de 100kb no alcanza.
-// 12 MB: vista previa + logo original + PNG de producción (Dacen, hasta 4,5 MB).
-app.use(express.json({ limit: "12mb" }));
+// 16 MB: vista previa + logo original + archivo de la Dacen (PNG hasta 4,5 MB
+// o JPEG del fondo "Todo el vaso (360°)" hasta 6 MB).
+app.use(express.json({ limit: "16mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // Panel interno del taller: /admin y /api/admin (página) + /api/admin/orders

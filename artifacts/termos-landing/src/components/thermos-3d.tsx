@@ -7,6 +7,7 @@ import { getProduct, getSize, productForSize, resampledProfile, type ProductDef 
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, bandRange, vForY, type FaceId, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
 import { makeBodyMaps, makeGlassEngraving, type EngraveStyle, type TextMark } from "@/lib/engraving-maps";
+import type { WrapDesign } from "@/lib/wrap-design";
 import { FRONT_FACE, frontAreaBounds, nearU } from "@/lib/face-area";
 import { trackPinch, type PinchPhase } from "@/lib/pinch";
 import { keepOutKindOf, zoneFromVertices, type KeepOutZone } from "@/lib/keep-out";
@@ -41,6 +42,8 @@ interface Thermos3DProps {
   colorPrint?: boolean;
   /** Ink colour for printed text (UV DTF only). */
   textColor?: string;
+  /** Fondo "Todo el vaso (360°)" (Dacen F5): solo con colorPrint. */
+  wrap?: WrapDesign | null;
   /** How the laser reads: steel reveal (default), leather char or wood char. */
   engraveStyle?: EngraveStyle;
   /** "Edición en una cara": confine the design to the front-face rectangle. */
@@ -675,11 +678,13 @@ function ThermosMesh({
   designActive, onDesignMove, onDesignPinch, onPinchSelect, onDesignDragStart, onDesignDragEnd, onTap, isOverDesign, snapToURef, renderNowRef, onReady,
   autoSpin = false, rotationLocked = false, onMotionChange, arModelRef,
   freePlacement = false, keepOutZones, keepOutHit, onModelKeepOut, followU = null, anchor = null, anchorElRef,
+  wrap = null,
 }: {
   colorHex: string; finish: string; text: string;
   product: ProductDef; sil: Silhouette; fontFamily?: string;
   customImageUrl: string | null; imageSize: "none" | "small" | "large";
   textPlacement: Placement; artPlacement: Placement; extraTexts?: TextMark[]; colorPrint: boolean; textColor?: string;
+  wrap?: WrapDesign | null;
   engraveStyle: EngraveStyle;
   singleFace: boolean; editSingleFace: boolean; showGuides: boolean; frontFaceU: number; guideFace: FaceId; hideLogo?: boolean; glass: boolean;
   designActive: boolean;
@@ -878,6 +883,25 @@ function ThermosMesh({
     return () => { cancelled = true; };
   }, [customImageUrl]);
 
+  // Fondo 360°: la imagen se carga una vez; modo, zoom y corrimiento solo
+  // rearman la textura.
+  const wrapUrl = colorPrint ? wrap?.url ?? null : null;
+  const [wrapEl, setWrapEl] = useState<HTMLImageElement | null>(null);
+  useEffect(() => {
+    if (!wrapUrl) { setWrapEl(null); return; }
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => { if (!cancelled) setWrapEl(img); };
+    img.onerror = () => { if (!cancelled) setWrapEl(null); };
+    img.src = wrapUrl;
+    return () => { cancelled = true; };
+  }, [wrapUrl]);
+  const dWrap = useDeferredValue(wrap);
+  const wrapLayer = useMemo(
+    () => (wrapEl && dWrap ? { image: wrapEl, mode: dWrap.mode, scale: dWrap.scale, offsetU: dWrap.offsetU, offsetV: dWrap.offsetV } : null),
+    [wrapEl, dWrap],
+  );
+
   // The laser burns tone, not colour: resolve the artwork to a coverage map once.
   const artMask = useMemo(() => (customImageEl ? buildEngraveMask(customImageEl) : null), [customImageEl]);
 
@@ -920,7 +944,7 @@ function ThermosMesh({
   // en un efecto: cada tecla armaba primero la versión completa, con los
   // desenfoques, y después el borrador — el doble de trabajo, y el caro.)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const editKey = useMemo(() => ({}), [dText, dTextPlacement, dArtPlacement, dExtraTexts, artMask, imageSize, colorHex]);
+  const editKey = useMemo(() => ({}), [dText, dTextPlacement, dArtPlacement, dExtraTexts, artMask, imageSize, colorHex, wrapLayer]);
   const [settledKey, setSettledKey] = useState(editKey);
   useEffect(() => {
     if (settledKey === editKey) return;
@@ -936,11 +960,11 @@ function ThermosMesh({
       product, colorHex, finish: matProps, isGradientFinish: finish === "gradient",
       text: dText, textPlacement: dTextPlacement, fontFamily, extraTexts: dExtraTexts, artMask, imageSize, artPlacement: dArtPlacement,
       anisotropy: maxAnisotropy, colorPrint, textColor, artImage: customImageEl, engraveStyle, singleFace,
-      quality: settled ? "full" : "draft",
+      quality: settled ? "full" : "draft", wrap: colorPrint ? wrapLayer : null,
     }),
     // fontReady triggers re-creation once the font is actually loaded
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [glass, product, colorHex, matProps, finish, dText, dTextPlacement, dExtraTexts, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, textColor, customImageEl, engraveStyle, singleFace, settled]
+    [glass, product, colorHex, matProps, finish, dText, dTextPlacement, dExtraTexts, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, textColor, customImageEl, engraveStyle, singleFace, settled, wrapLayer]
   );
 
   // Four textures per rebuild, now coalesced to the settled input via useDeferredValue.
@@ -1329,7 +1353,7 @@ function ThermosMesh({
     // freeze once the customer is placing text/icon/image so they can position
     // it calmly (still draggable). Single-face mode also freezes, keeping the
     // front face pointed at the camera.
-    const hasContent = editSingleFace || !!text || (!!customImageUrl && imageSize !== "none");
+    const hasContent = editSingleFace || !!text || (!!customImageUrl && imageSize !== "none") || !!wrapUrl;
     const hasYawInertia   = Math.abs(velYaw.current) > 0.001;
     const hasPitchInertia = Math.abs(velPitch.current) > 0.001;
 
@@ -1895,6 +1919,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
           artPlacement={props.artPlacement ?? DEFAULT_ART_PLACEMENT}
           colorPrint={props.colorPrint ?? false}
           textColor={props.textColor}
+          wrap={props.wrap ?? null}
           engraveStyle={props.engraveStyle ?? "steel"}
           singleFace={props.singleFace ?? false}
           editSingleFace={props.editSingleFace ?? props.singleFace ?? false}

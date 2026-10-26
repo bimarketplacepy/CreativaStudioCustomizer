@@ -619,3 +619,37 @@ Orden: **fondo 360°** → **logos/imágenes** → **textos**.
 4. **Márgenes:** ¿cuántos mm de labios arriba y de margen abajo?
 5. **Archivo:** ¿qué dpi, qué formato (PNG o TIFF) y qué perfil de color?
 6. **Primeros vasos:** ¿con cuáles arrancamos? Propuesta: `vaso` y `vaso-hydrate`.
+
+### 12.9 Estado de la implementación (2026-10-26)
+
+**Hecho ✅ (fases 1, 2 y 3; las medidas siguen siendo las del modelo 3D)**
+
+- **Dibujo del fondo:** `src/lib/wrap-design.ts`.
+  - `WrapDesign` / `WrapLayer`.
+  - `drawWrapLayer()`, con los modos Ajustar (zoom y corrimiento), Mosaico (3 copias), Espejo (2) y Arte completo (de borde a borde).
+  - `wrapEffectiveDpi()`, `dpiVerdict()` y `artworkDistortion()`.
+- **`drawColorLayer`:** dibuja primero el fondo y encima el logo o ícono y los textos. El 3D (`thermos-3d.tsx`, prop `wrap`), el desplegado y el archivo usan la misma función.
+- **Archivo para la Dacen:** con fondo 360°, `renderDacenPng` sale en **JPEG** (hasta 5,5 MB, empieza en 300 dpi y sobre blanco).
+  - Server: `productionJpeg()` graba los dpi en el JFIF y guarda `CS-xxxx-produccion.jpg`.
+  - Descarga: `CS-xxxx-dacen-360-AxBmm.jpg`.
+  - `/admin` muestra "JPG 360° para RIPrint (Dacen)".
+  - Límite del JSON: 16 MB.
+- **Editor:** `src/components/wrap-design-panel.tsx`.
+  - Subida de la imagen; una imagen con la proporción de la plantilla entra directo como «Arte completo».
+  - Modos, aviso de resolución y aviso de deformación.
+  - «Ver desplegado» (`UnwrappedDialog`) y «Descargar plantilla» (PNG a 300 dpi con frente, costura y zona segura).
+  - Aparece en la hoja «Agregar» del celular («Todo el vaso (360°)») y en la pestaña Imagen de escritorio, solo con impresión a color en piezas que pasan `fitsDacen()`.
+- **Pedido:**
+  - `designState.coverage = "wrap"`;
+  - `designState.wrap` con modo, zoom, corrimiento, tamaño de la imagen y dpi efectivos;
+  - `productionFormat`;
+  - renglón «Diseño: Todo el vaso (360°)»;
+  - `quote()` con `coverage: "wrap"`.
+- **3D:** con fondo 360° se oculta el logo del modelo, porque el fondo lo tapa.
+
+**Pendiente**
+
+- **Fase 0:** medidas de calibre (`print-specs.ts`) y las respuestas del taller (12.8). Los campos `lipZoneMm`, `bleedMm` y `seamOverlapMm` se agregan cuando estén.
+- **Fase 4:** varios logos encima del fondo.
+- **Fase 5:** máscara de blanco y barniz, y curvado en arco para piezas cónicas.
+- **Link compartido:** no lleva la imagen del fondo; tampoco lleva el logo.

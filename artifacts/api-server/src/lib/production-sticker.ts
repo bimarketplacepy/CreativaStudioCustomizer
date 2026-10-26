@@ -48,17 +48,42 @@ export function productionPng(dataUrl: string | null | undefined, dpi: unknown):
   return Buffer.concat([png.subarray(0, ihdrEnd), chunk("pHYs", phys), png.subarray(ihdrEnd)]);
 }
 
+/** Tope del JPEG del fondo 360° de la Dacen (la landing apunta a ≤ 5,5 MB). */
+const MAX_JPEG_BYTES = 6 * 1024 * 1024;
+
+/**
+ * JPEG de la Dacen con fondo "Todo el vaso (360°)" (DACEN.md §12.6): la banda
+ * va llena, así que no hay transparencia que perder y una foto entra a 300 dpi.
+ * Se valida y se graban los dpi en el encabezado JFIF (el canvas del navegador
+ * escribe densidad 1:1 sin unidad), para que RIPrint lo abra a tamaño real.
+ */
+export function productionJpeg(dataUrl: string | null | undefined, dpi: unknown): Buffer | null {
+  const m = dataUrl?.match(/^data:image\/jpeg;base64,(.+)$/);
+  if (!m) return null;
+  const jpg = Buffer.from(m[1]!, "base64");
+  if (jpg.length > MAX_JPEG_BYTES || jpg.length < 20 || jpg[0] !== 0xff || jpg[1] !== 0xd8) return null;
+  if (typeof dpi !== "number" || !Number.isFinite(dpi) || dpi < 50 || dpi > 1200) return jpg;
+  // SOI + APP0 "JFIF\0": unidad en el byte 13 (1 = dpi), densidades X/Y en 14 y 16.
+  const out = Buffer.from(jpg);
+  if (out[2] === 0xff && out[3] === 0xe0 && out.toString("ascii", 6, 11) === "JFIF\0") {
+    out.writeUInt8(1, 13);
+    out.writeUInt16BE(Math.round(dpi), 14);
+    out.writeUInt16BE(Math.round(dpi), 16);
+  }
+  return out;
+}
+
 /**
  * Nombre de descarga: pedido, máquina, medida y cantidad, para ubicarlo rápido
  * en la app. Sticker: `CS-0012-sticker-50x50mm-x10.png`; Dacen:
  * `CS-0012-dacen-360-220x180mm.png` (ancho = la vuelta completa).
  */
-export function productionPngFileName(orderNumber: string, machine: string, design: Record<string, unknown>): string {
+export function productionPngFileName(orderNumber: string, machine: string, design: Record<string, unknown>, ext: "png" | "jpg" = "png"): string {
   const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : null);
   if (machine === "dacen") {
     const w = n(design.printWidthMm);
     const h = n(design.printHeightMm);
-    return [orderNumber, "dacen-360", w && h ? `${w}x${h}mm` : null].filter(Boolean).join("-") + ".png";
+    return [orderNumber, "dacen-360", w && h ? `${w}x${h}mm` : null].filter(Boolean).join("-") + "." + ext;
   }
   const w = n(design.widthMm);
   const h = n(design.heightMm);

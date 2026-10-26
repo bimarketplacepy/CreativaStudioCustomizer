@@ -8,6 +8,7 @@ import {
   layoutText, fillLinesAligned, measureLinesWidth, measureLinesBox, fitText,
 } from "./engraving-text";
 import { FACES, faceConfigFor, nearU, type MarkHalfExtents } from "./face-area";
+import { drawWrapLayer, type WrapLayer } from "./wrap-design";
 
 /** Text wraps once a row passes this fraction of the wrap-around circumference. */
 const TEXT_WRAP_FRAC = 0.5;
@@ -271,6 +272,8 @@ export interface EngravingInput {
    * keystroke stays cheap. "full" (default) once the input settles.
    */
   quality?: "draft" | "full";
+  /** Fondo "Todo el vaso (360°)": solo impresión a color (lib/wrap-design.ts). */
+  wrap?: WrapLayer | null;
 }
 
 /** Printed text/brand ink when the piece is colour-printed rather than engraved. */
@@ -435,6 +438,8 @@ export interface ColorLayerInput {
   singleFace: boolean;
   /** Textos adicionales (Texto 2), en el mismo color que el principal. */
   extraTexts?: TextMark[];
+  /** Fondo 360° debajo de todo (lib/wrap-design.ts). */
+  wrap?: WrapLayer | null;
 }
 
 /**
@@ -448,6 +453,8 @@ export function drawColorLayer(ctx: CanvasRenderingContext2D, product: ProductDe
   const m = bandMetrics(product, W, TEXTURE_H);
   const { artImage, imageSize, artPlacement, text, textPlacement, fontFamily, textColor, singleFace } = o;
   const texts: TextMark[] = [{ text, placement: textPlacement, fontFamily }, ...(o.extraTexts ?? [])];
+  // Orden de las capas (DACEN.md §12.4): fondo 360°, logo/ícono, textos.
+  if (o.wrap) drawWrapLayer(ctx, W, m, o.wrap);
   if (artImage && imageSize !== "none") {
     const naturalW = artImage.naturalWidth || artImage.width || 1;
     const naturalH = artImage.naturalHeight || artImage.height || 1;
@@ -505,6 +512,7 @@ export function makeBodyMaps({
   engraveStyle = "steel",
   singleFace = false,
   quality = "full",
+  wrap = null,
 }: EngravingInput): BodyMaps {
   const W = TEXTURE_W, H = TEXTURE_H;
   const m = bandMetrics(product, W, H);
@@ -569,7 +577,7 @@ export function makeBodyMaps({
 
   // ── Impresión UV a color (Dacen F5): the artwork is PRINTED, not engraved ──
   if (colorPrint) {
-    drawColorLayer(ctx, product, { text, textPlacement, fontFamily, textColor, artImage, imageSize, artPlacement, singleFace, extraTexts });
+    drawColorLayer(ctx, product, { text, textPlacement, fontFamily, textColor, artImage, imageSize, artPlacement, singleFace, extraTexts, wrap });
 
     // Print sits flush on the coating: keep the base finish, no groove.
     // Flat data maps: a 1×1-texel look is identical, so keep them tiny.

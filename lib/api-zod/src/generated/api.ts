@@ -156,7 +156,7 @@ export const CreateOrderBody = zod.object({
     .string()
     .optional()
     .describe(
-      "Production artwork as a PNG data URL, already at real size (e.g. the unwrapped 360° print for the Dacen F5 UV cylinder printer, opened in RIPrint). Internal use only; never echoed back to the client.",
+      "Production artwork as a PNG data URL (JPEG for a full-wrap 360° background), already at real size (e.g. the unwrapped 360° print for the Dacen F5 UV cylinder printer, opened in RIPrint). Internal use only; never echoed back to the client.",
     ),
 });
 

@@ -19,7 +19,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
   WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
   ChevronUp, ChevronsLeftRight, Crosshair, CirclePlay, Orbit, Link2, MessageCircle, MapPin, HandCoins,
-  Undo2, Trash2, Search, ScanEye, Maximize2, Paintbrush, X, Heart,
+  Undo2, Trash2, Search, ScanEye, Maximize2, Paintbrush, X, Heart, Repeat,
 } from "lucide-react";
 import Thermos3D from "./thermos-3d";
 import type { PinchPhase } from "@/lib/pinch";
@@ -53,8 +53,10 @@ import { clearSharedDesign, designLink, readSharedDesign, type SharedDesign } fr
 import { onDesignPreset } from "@/lib/design-preset";
 import { CUSTOMIZER_MODE_EVENT, takeCustomizerMode } from "@/lib/section-reveal";
 import { machineFor, normalizeTechnique } from "@/lib/machines";
-import { printSpecFor } from "@/lib/print-specs";
-import { loadImage, renderDacenPng, type DacenPrintFile } from "@/lib/production-dacen";
+import { fitsDacen, printSpecFor } from "@/lib/print-specs";
+import { dacenPrintSize, loadImage, renderDacenPng, renderUnwrappedPreview, type DacenPrintFile } from "@/lib/production-dacen";
+import { wrapEffectiveDpi, WRAP_MODES, type WrapDesign } from "@/lib/wrap-design";
+import { UnwrappedDialog, WrapDesignPanel } from "@/components/wrap-design-panel";
 import { PRICING, quote } from "@/lib/pricing";
 import {
   colorOptions, defaultVariant, engravingPrice, findVariant, formatGs, GENERIC_BRAND,
@@ -2174,6 +2176,30 @@ export default function Customizer() {
   // texture all agree on how big the text/art is in placement space.
   const textFontFamily = activeFont.style.fontFamily as string | undefined;
   const isColorPrint = effectiveTechnique === "color";
+
+  // ── Todo el vaso (360°): fondo de la vuelta completa (Dacen F5, DACEN.md §12)
+  // Solo impresión a color en piezas cilíndricas que entran en la Dacen. Si el
+  // cliente cambia a láser o a una pieza que no entra, el fondo queda guardado
+  // pero no se muestra ni viaja en el pedido.
+  const [wrapDesign, setWrapDesignRaw] = useState<WrapDesign | null>(null);
+  const wrapUrlRef = useRef<string | null>(null);
+  const setWrapDesign = React.useCallback((next: WrapDesign | null) => {
+    const old = wrapUrlRef.current;
+    if (old && old !== next?.url && old.startsWith("blob:")) URL.revokeObjectURL(old);
+    wrapUrlRef.current = next?.url ?? null;
+    setWrapDesignRaw(next);
+  }, []);
+  const wrapSpec = isDrinkware ? printSpecFor(productId, viewSize) : null;
+  const canWrap = isDrinkware && !isGlass && isColorPrint && !!wrapSpec && fitsDacen(wrapSpec);
+  const activeWrap = canWrap ? wrapDesign : null;
+  const wrapPrintSize = React.useMemo(
+    () => (isDrinkware ? dacenPrintSize(productId, viewSize) : null),
+    [isDrinkware, productId, viewSize],
+  );
+  const wrapDpi = activeWrap && wrapPrintSize
+    ? wrapEffectiveDpi(activeWrap, wrapPrintSize.circumferenceMm, wrapPrintSize.heightMm / wrapPrintSize.circumferenceMm)
+    : null;
+  const [unwrappedOpen, setUnwrappedOpen] = useState(false);
   const artNaturalW = selectedIcon ? 256 : customImage?.width ?? 0;
   const artNaturalH = selectedIcon ? 256 : customImage?.height ?? 0;
 
@@ -2920,7 +2946,7 @@ export default function Customizer() {
   // que se cierra sola al colocar el elemento. Tocar un elemento muestra sus
   // acciones en una pastilla pegada a él; tocarlo otra vez abre la hoja para
   // editarlo (texto, letra y más opciones). No hay pestañas ni panel aparte.
-  type SheetMode = "text" | "icon" | "image" | "template";
+  type SheetMode = "text" | "icon" | "image" | "template" | "wrap";
   const [sheet, setSheet] = useState<null | { mode: SheetMode; edit: DesignKind | null }>(null);
   const [draft, setDraft] = useState("");
   const [sheetMore, setSheetMore] = useState(false);
@@ -2987,7 +3013,7 @@ export default function Customizer() {
     const ext = activeDesignKind === "text" ? textExtents : activeDesignKind === "text2" ? text2Extents : artExtents;
     return { u: p.u, v: p.v + ext.halfV };
   }, [activeDesignKind, designDragging, sheet, textPlacement, text2Placement, artPlacement, textExtents, text2Extents, artExtents]);
-  const designElementCount = [hasText, hasText2, hasArt].filter(Boolean).length;
+  const designElementCount = [hasText, hasText2, hasArt, !!activeWrap].filter(Boolean).length;
 
   // Tour: al montar la pantalla de Diseño, una vez que el visor tiene la pieza
   // (los targets ya tienen medidas). Solo la primera visita.
@@ -3260,7 +3286,7 @@ export default function Customizer() {
     if (isDrinkware) {
       const q = effectiveTechnique === "laser"
         ? quote({ technique: "laser", plan: activePlan.id, catalog, piecePrice: piece, pieceLabel: orderProductLabel, ownProduct: isOwnProduct, extraTexts: extraTextCount })
-        : quote({ technique: "color", machine: productionMachine, piecePrice: piece, pieceLabel: orderProductLabel });
+        : quote({ technique: "color", machine: productionMachine, piecePrice: piece, pieceLabel: orderProductLabel, coverage: activeWrap ? "wrap" : undefined });
       if (q.total !== null) {
         return { price: formatGs(q.total), note: q.note, total: q.breakdown.length > 1 };
       }
@@ -3295,6 +3321,7 @@ export default function Customizer() {
     if (selectedIcon) rows.push(["Ícono", selectedIcon.name]);
     else if (customImage) rows.push(["Logo/foto adjunta", "Sí"]);
     if (hasArt && isDrinkware && (FREE_PLACEMENT ? faceAtU(artPlacement.u) : artFace) !== "front") rows.push([selectedIcon ? "Ubicación del ícono" : "Ubicación de la imagen", where(artPlacement, artFace)]);
+    if (activeWrap) rows.push(["Diseño", `Todo el vaso (360°) · ${WRAP_MODES.find(m => m.id === activeWrap.mode)?.label ?? activeWrap.mode}`]);
     if (extraLidText !== null) rows.push(["Grabado en tapa", extraLidText || "Sí (texto a definir)"]);
     if (extraBaseText !== null) rows.push(["Grabado en base", extraBaseText || "Sí (texto a definir)"]);
     return rows;
@@ -3318,7 +3345,7 @@ export default function Customizer() {
       // El color de texto solo aplica en impresión UV (láser es monocromático).
       textColor: (trimmedText || trimmedText2) && effectiveTechnique === "color" ? textColor : undefined,
       iconName: selectedIcon?.name,
-      hasUploadedImage: !!customImage,
+      hasUploadedImage: !!customImage || !!activeWrap,
       designState: {
         materialId,
         materialProductId,
@@ -3358,10 +3385,20 @@ export default function Customizer() {
         odooVariantId: isOwnProduct ? null : odooVariant?.id ?? null,
         sku: isOwnProduct ? null : odooVariant?.sku ?? null,
         piecePrice: isOwnProduct ? null : odooVariant?.price ?? null,
+        // Todo el vaso (360°): el fondo ya va dibujado en el archivo de la Dacen;
+        // acá quedan el modo y la resolución para el panel (sin la imagen).
+        ...(activeWrap ? {
+          coverage: "wrap",
+          wrap: {
+            mode: activeWrap.mode, scale: activeWrap.scale, offsetU: activeWrap.offsetU, offsetV: activeWrap.offsetV,
+            imageWidth: activeWrap.width, imageHeight: activeWrap.height, effectiveDpi: wrapDpi,
+          },
+        } : {}),
         // Dacen F5: medidas y dpi del PNG desenrollado (nombre del archivo y
         // dpi grabados por el server). printSizeApprox: medidas del modelo 3D.
         ...(dacenFile ? {
           productionDpi: dacenFile.dpi,
+          productionFormat: dacenFile.format,
           printWidthMm: dacenFile.widthMm,
           printHeightMm: dacenFile.heightMm,
           printSizeApprox: dacenFile.approxSize,
@@ -3381,22 +3418,61 @@ export default function Customizer() {
   const buildDacenFile = async (): Promise<DacenPrintFile | null> => {
     if (productionMachine !== "dacen" || effectiveTechnique !== "color") return null;
     try {
-      const artImage = artUrl && artImageSize !== "none" ? await loadImage(artUrl) : null;
-      return await renderDacenPng(productId, viewSize, {
-        text,
-        textPlacement,
-        fontFamily: (activeFont.style?.fontFamily as string | undefined) ?? "Inter, system-ui, sans-serif",
-        textColor,
-        artImage,
-        imageSize: artImageSize,
-        artPlacement,
-        singleFace,
-        extraTexts: extraTextMarks,
-      });
+      return await renderDacenPng(productId, viewSize, await colorLayerInput());
     } catch {
       return null;
     }
   };
+
+  /** Lo que se imprime a color, con las imágenes ya cargadas (archivo y desplegado). */
+  const colorLayerInput = async () => {
+    const [artImage, wrapImage] = await Promise.all([
+      artUrl && artImageSize !== "none" ? loadImage(artUrl) : null,
+      activeWrap ? loadImage(activeWrap.url) : null,
+    ]);
+    return {
+      text,
+      textPlacement,
+      fontFamily: (activeFont.style?.fontFamily as string | undefined) ?? "Inter, system-ui, sans-serif",
+      textColor,
+      artImage,
+      imageSize: artImageSize,
+      artPlacement,
+      singleFace,
+      extraTexts: extraTextMarks,
+      wrap: activeWrap && wrapImage ? {
+        image: wrapImage, mode: activeWrap.mode, scale: activeWrap.scale, offsetU: activeWrap.offsetU, offsetV: activeWrap.offsetV,
+      } : null,
+    };
+  };
+
+  /** "Ver desplegado": la vuelta plana, el mismo dibujo que el archivo. */
+  const renderUnwrapped = async (): Promise<string | null> => {
+    const r = renderUnwrappedPreview(productId, viewSize, await colorLayerInput(), 1600);
+    if (!r) return null;
+    const url = r.canvas.toDataURL("image/jpeg", 0.88);
+    r.canvas.width = r.canvas.height = 0;
+    return url;
+  };
+  const closeUnwrapped = React.useCallback(() => setUnwrappedOpen(false), []);
+
+  /** Panel "Todo el vaso (360°)" + su vista desplegada (hoja del celular y escritorio). */
+  const renderWrapPanel = () => wrapPrintSize && (
+    <>
+      <WrapDesignPanel
+        value={wrapDesign}
+        onChange={(next) => {
+          if (next && !wrapDesign) track("wrap_add", { product: productId, mode: next.mode });
+          if (!next && wrapDesign) track("wrap_remove", { product: productId });
+          setWrapDesign(next);
+        }}
+        size={wrapPrintSize}
+        productName={`${product.singular} ${orderSizeName ?? ""}`.trim()}
+        onShowUnwrapped={() => { setUnwrappedOpen(true); track("wrap_unwrapped_open", { product: productId }); }}
+      />
+      <UnwrappedDialog open={unwrappedOpen} onClose={closeUnwrapped} render={renderUnwrapped} size={wrapPrintSize} />
+    </>
+  );
 
   /** Mensaje de WhatsApp — sale de orderFields(), la misma fuente que el
    *  resumen visual. Con pedido creado suma el número y la URL del diseño. */
@@ -3414,7 +3490,7 @@ export default function Customizer() {
    *  imagen) y abre WhatsApp con el número de pedido y la URL permanente del
    *  preview. Si el POST falla o tarda de más, fallback: mensaje solo con las
    *  especificaciones, más un aviso sutil y el botón "Descargar imagen". */
-  const isEmptyDesign = !text.trim() && !hasText2 && !selectedIcon && !customImage && !extraLidText && !extraBaseText;
+  const isEmptyDesign = !text.trim() && !hasText2 && !selectedIcon && !customImage && !extraLidText && !extraBaseText && !activeWrap;
   // Lo que mira a cámara en la foto del resumen: el área personalizada, o sin
   // diseño el frente de la marca (u = 0, el logo del modelo) y no el dorso.
   const captureFaceU = isEmptyDesign ? 0 : designFaceU;
@@ -4040,11 +4116,12 @@ export default function Customizer() {
               artPlacement={artPlacement}
               colorPrint={effectiveTechnique === "color"}
               textColor={textColor}
+              wrap={activeWrap}
               engraveStyle={drinkwareEngraveStyle}
               singleFace={singleFace}
               showGuides={false}
               frontFaceU={designFaceU}
-              hideLogo={designOnLogoSide}
+              hideLogo={designOnLogoSide || !!activeWrap}
               glass={isGlass}
               onModelKeepOut={onModelKeepOut}
             />
@@ -4110,13 +4187,14 @@ export default function Customizer() {
       artPlacement={artPlacement}
       colorPrint={effectiveTechnique === "color"}
       textColor={textColor}
+      wrap={activeWrap}
       engraveStyle={drinkwareEngraveStyle}
       singleFace={singleFace}
       editSingleFace={editSingleFace}
       showGuides={guidesActive}
       frontFaceU={designFaceU}
       guideFace={activeDesignKind === "art" ? artFace : activeDesignKind === "text2" ? text2Face : textFace}
-      hideLogo={designOnLogoSide}
+      hideLogo={designOnLogoSide || !!activeWrap}
       glass={isGlass}
       designActive={designActive}
       onDesignMove={onDesignMoveUV}
@@ -4269,6 +4347,7 @@ export default function Customizer() {
       { id: "icon", label: "Ícono", Icon: Heart },
       ...(canUploadImage ? [{ id: "image" as const, label: "Logo o foto", Icon: ImageIcon }] : []),
       { id: "template", label: "Plantilla", Icon: Sparkles },
+      ...(canWrap ? [{ id: "wrap" as const, label: "Todo el vaso (360°)", Icon: Repeat }] : []),
     ];
     const title = edit === "text" || edit === "text2" ? (hasText2 ? (t2 ? "Editar texto 2" : "Editar texto 1") : "Editar texto")
       : edit === "art" ? (iconId ? "Cambiar ícono" : "Logo o foto")
@@ -4314,7 +4393,7 @@ export default function Customizer() {
                       aria-pressed={on}
                       disabled={off}
                       onClick={() => setSheet({ mode: id, edit: null })}
-                      className={`min-h-12 px-3 py-2.5 border rounded-xl flex items-center gap-2.5 text-sm font-medium transition-all disabled:opacity-40 ${on ? activeCard : idleCard}`}
+                      className={`min-h-12 px-3 py-2.5 border rounded-xl flex items-center gap-2.5 text-sm font-medium transition-all disabled:opacity-40 ${id === "wrap" ? "col-span-2" : ""} ${on ? activeCard : idleCard}`}
                     >
                       <Icon className="w-5 h-5 text-primary shrink-0" />
                       <span className={on ? "" : "text-foreground"}>{label}</span>
@@ -4419,6 +4498,13 @@ export default function Customizer() {
                   aiStyle={effectiveTechnique === "color" ? "color" : "laser"}
                 />
                 {primary(edit ? "Listo" : "Ponerlo en el termo", () => { if (!edit) track("design_add", { kind: "image" }); setSheet(null); }, !customImage)}
+              </div>
+            )}
+
+            {edit === null && mode === "wrap" && canWrap && (
+              <div className="space-y-4">
+                {renderWrapPanel()}
+                {primary(wrapDesign ? "Listo" : "Ponerlo en el vaso", () => setSheet(null), !wrapDesign)}
               </div>
             )}
 
@@ -5282,6 +5368,12 @@ export default function Customizer() {
                         </div>
                       )}
                     </div>
+                    {canWrap && (
+                      <div className="pt-4 border-t border-border">
+                        <Label className="text-sm font-medium text-foreground mb-1 block">Todo el vaso (360°)</Label>
+                        {renderWrapPanel()}
+                      </div>
+                    )}
                   </TabsContent>
                   )}
                 </div>

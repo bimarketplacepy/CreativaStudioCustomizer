@@ -11,7 +11,7 @@ import {
   loadOrderImage,
 } from "../lib/order-images";
 import { buildProductionSvg } from "../lib/production-svg";
-import { productionPng, productionPngFileName } from "../lib/production-sticker";
+import { productionJpeg, productionPng, productionPngFileName } from "../lib/production-sticker";
 import { svgToDxf } from "../lib/production-dxf";
 import { orderMachine } from "../lib/machines";
 import { checkInternalKey, checkOrderImageToken, orderImageToken } from "../lib/internal-key";
@@ -68,6 +68,13 @@ async function generateProductionFile(
       if (png) {
         const name = `orders/${order.orderNumber}-produccion.png`;
         await storeOrderFile(name, png, "image/png");
+        return name;
+      }
+      // Fondo "Todo el vaso (360°)": la landing lo manda en JPEG a 300 dpi.
+      const jpg = productionJpeg(productionImageDataUrl, ds.productionDpi);
+      if (jpg) {
+        const name = `orders/${order.orderNumber}-produccion.jpg`;
+        await storeOrderFile(name, jpg, "image/jpeg");
         return name;
       }
     }
@@ -328,10 +335,10 @@ router.get("/orders/:orderNumber/production-file", async (req, res) => {
     }
     const ds = (order.designState ?? {}) as Record<string, unknown>;
     const ext = path.slice(path.lastIndexOf(".") + 1);
-    const fileName = ext === "png"
-      ? productionPngFileName(orderNumber, orderMachine(ds), ds)
+    const fileName = ext === "png" || ext === "jpg"
+      ? productionPngFileName(orderNumber, orderMachine(ds), ds, ext)
       : ext === "dxf" ? `${orderNumber}-laser.dxf` : `${orderNumber}-produccion.svg`;
-    const type = ext === "png" ? "image/png" : ext === "dxf" ? "application/dxf" : "image/svg+xml";
+    const type = ext === "png" ? "image/png" : ext === "jpg" ? "image/jpeg" : ext === "dxf" ? "application/dxf" : "image/svg+xml";
     res.setHeader("Content-Type", type);
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
     res.setHeader("Cache-Control", "private, no-store");

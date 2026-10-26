@@ -70,6 +70,7 @@ router.get("/api/admin/orders", async (req, res) => {
           hasPreview: !!r.previewImagePath,
           hasProduction: !!r.productionFilePath,
           productionKind: r.productionFilePath?.endsWith(".png") ? "png"
+            : r.productionFilePath?.endsWith(".jpg") ? "jpg"
             : r.productionFilePath?.endsWith(".dxf") ? "dxf" : "svg",
           previewImagePath: undefined,
           productionFilePath: undefined,
@@ -341,6 +342,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
 
   function fileLabel(o) {
     if (o.productionKind === "png") return o.machine === "dacen" ? "PNG 360° para RIPrint (Dacen)" : "PNG para eufyMake";
+    if (o.productionKind === "jpg") return "JPG 360° para RIPrint (Dacen)";
     if (o.productionKind === "dxf") return "DXF láser";
     return o.machine === "dacen" ? "SVG referencia (Dacen)" : "SVG láser";
   }
