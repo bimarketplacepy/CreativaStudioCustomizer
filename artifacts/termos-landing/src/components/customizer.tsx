@@ -2335,8 +2335,15 @@ export default function Customizer() {
     setModelZones(prev => (prev.id === id && JSON.stringify(prev.zones) === JSON.stringify(zones) ? prev : { id, zones }));
   }, []);
   const keepOutZones = React.useMemo<KeepOutZone[]>(
-    () => (!isDrinkware || !FREE_PLACEMENT ? [] : [...staticZones(product), ...(modelZones.id === product.id ? modelZones.zones : [])]),
-    [isDrinkware, product, modelZones],
+    () => {
+      if (!isDrinkware || !FREE_PLACEMENT) return [];
+      const zones = [...staticZones(product), ...(modelZones.id === product.id ? modelZones.zones : [])];
+      // Con el fondo "Todo el vaso (360°)" la impresión tapa el logo de la marca
+      // y los relieves (el 3D oculta el logo): se escribe en cualquier lado.
+      // Solo una manija seguiría frenando (las piezas de la Dacen no tienen).
+      return activeWrap ? zones.filter(z => z.kind === "handle") : zones;
+    },
+    [isDrinkware, product, modelZones, activeWrap],
   );
   // El Envolvente 360° da la vuelta entera: no se lo frena con zonas.
   const zonesFor = React.useCallback(
