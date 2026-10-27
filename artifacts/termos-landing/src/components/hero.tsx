@@ -15,9 +15,9 @@ const NAV_ITEMS = [
 /** Fotos reales del taller. La primera es la imagen LCP en escritorio: su
  *  srcset/sizes tienen que coincidir con el preload de index.html. */
 const COLLAGE = [
-  { src: "/galeria/vaso-360", alt: "Vaso impreso a todo color en toda la vuelta con la Dacen F5", caption: "Impresión 360° a todo color" },
   { src: "/galeria/tablamadera", alt: "Tabla de madera con un nombre grabado a láser", caption: "Grabado láser en madera" },
   { src: "/galeria/vasorosa", alt: "Vaso rosa grabado con «Gracias por ser mi mamá»", caption: "Regalo con nombre" },
+  { src: "/galeria/billeteras", alt: "Dos billeteras de cuero con apellidos grabados a láser", caption: "Billeteras personalizadas" },
 ];
 export const HERO_IMAGE_SIZES = "(min-width: 1024px) 400px, 150px";
 
