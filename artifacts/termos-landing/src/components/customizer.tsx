@@ -51,7 +51,7 @@ import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
 import { ADDRESS, whatsappUrl } from "@/lib/contact";
 import { clearSharedDesign, designLink, readSharedDesign, type SharedDesign } from "@/lib/design-link";
 import { onDesignPreset } from "@/lib/design-preset";
-import { CUSTOMIZER_MODE_EVENT, takeCustomizerMode } from "@/lib/section-reveal";
+import { CUSTOMIZER_MODE_EVENT, CUSTOMIZER_START_EVENT, takeCustomizerMode, takeStartIntent, type StartIntent } from "@/lib/section-reveal";
 import { machineFor, normalizeTechnique } from "@/lib/machines";
 import { fitsDacen, printSpecFor } from "@/lib/print-specs";
 import { dacenPrintSize, loadImage, renderDacenPng, renderUnwrappedPreview, type DacenPrintFile } from "@/lib/production-dacen";
@@ -220,7 +220,7 @@ const TECHNIQUES = [
   { id: "laser", name: "Grabado láser", desc: "Monocromático, permanente sobre el acero.", color: false },
   // id "color" (antes eufy): impresión directa sobre la pieza, en la Dacen F5
   // (ver DACEN.md). Los links compartidos viejos se normalizan al leerlos.
-  { id: "color", name: "Impresión UV", desc: "Impresión a todo color sobre el producto.", color: true },
+  { id: "color", name: "Impresión a color", desc: "A todo color, en el frente o en toda la vuelta (360°).", color: true },
 ] as const;
 type TechniqueId = (typeof TECHNIQUES)[number]["id"];
 /** Elemento del diseño que se edita sobre el visor: texto, "Texto 2" o arte. */
@@ -2030,6 +2030,17 @@ export default function Customizer() {
     return () => window.removeEventListener(CUSTOMIZER_MODE_EVENT, apply);
   }, []);
 
+  // Portada / sección 360° / precios: arrancar con texto, "Traigo el mío" o
+  // impresión a color (ver startCustomizer en section-reveal.ts). El handler
+  // vive en un ref para usar siempre el estado actual del personalizador.
+  const startIntentRef = useRef<(i: StartIntent) => void>(() => {});
+  React.useEffect(() => {
+    const apply = () => { const i = takeStartIntent(); if (i) startIntentRef.current(i); };
+    apply();
+    window.addEventListener(CUSTOMIZER_START_EVENT, apply);
+    return () => window.removeEventListener(CUSTOMIZER_START_EVENT, apply);
+  }, []);
+
   // ── "Diseñar uno igual" desde la galería ───────────────────────────────────
   // Arranca con el producto de la foto (material + producto + talla por
   // defecto); en celular salta al paso de Diseño, como un link compartido.
@@ -3025,13 +3036,15 @@ export default function Customizer() {
   const designElementCount = [hasText, hasText2, hasArt, !!activeWrap].filter(Boolean).length;
 
   // Tour: al montar la pantalla de Diseño, una vez que el visor tiene la pieza
-  // (los targets ya tienen medidas). Solo la primera visita.
+  // (los targets ya tienen medidas). Solo la primera visita. Si se llegó con
+  // una hoja abierta (p. ej. «Diseñar mi vaso 360°»), espera a que se cierre.
   const onDesignScreen = isMobile && isDrinkware && mobileStep === designStepIndex;
+  const sheetOpen = !!sheet;
   React.useEffect(() => {
-    if (!onDesignScreen || viewerReady === 0 || seen(TOUR_KEY)) return;
+    if (!onDesignScreen || viewerReady === 0 || sheetOpen || seen(TOUR_KEY)) return;
     markSeen(TOUR_KEY);
     setTourOpen(true);
-  }, [onDesignScreen, viewerReady]);
+  }, [onDesignScreen, viewerReady, sheetOpen]);
   // Aviso de Listo: con el PRIMER elemento de diseño, una vez por dispositivo.
   const hadDesign = useRef(designElementCount > 0);
   React.useEffect(() => {
@@ -3091,51 +3104,13 @@ export default function Customizer() {
     downloadDataUrl(img, "mi-diseno.png");
   };
 
-  // Miniatura del resumen en escritorio (en móvil el resumen es otro paso y se
-  // captura al entrar). Barata a propósito: copia a resolución nativa y PNG
-  // codificado con toBlob, que el navegador hace fuera del hilo principal.
-  const [liveThumb, setLiveThumb] = useState<string | null>(null);
-  React.useEffect(() => {
-    if (isMobile) return;
-    let cancelled = false;
-    let idle: number | null = null;
-    const t = setTimeout(() => {
-      const run = () => {
-        const canvas = previewPanelRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
-        if (!canvas || !canvas.width || !canvas.height) return;
-        try {
-          thermosRenderRef.current?.();
-          const off = document.createElement("canvas");
-          off.width = canvas.width; off.height = canvas.height;
-          off.getContext("2d")?.drawImage(canvas, 0, 0);
-          off.toBlob(blob => {
-            if (cancelled || !blob) return;
-            const url = URL.createObjectURL(blob);
-            setLiveThumb(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
-          }, "image/png");
-        } catch { /* sin miniatura; el resumen se arma igual */ }
-      };
-      if (typeof window.requestIdleCallback === "function") idle = window.requestIdleCallback(run, { timeout: 2000 });
-      else run();
-    }, 1200);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-      if (idle !== null && typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(idle);
-    };
-  }, [
-    isDrinkware, is3DObject, productId, viewSize, activeColorHex,
-    finish, text, font, iconId, artUrl, textColor, effectiveTechnique, isGlass,
-    singleFace, textPlacement, artPlacement, isMobile, viewerReady,
-  ]);
-  React.useEffect(() => () => { setLiveThumb(prev => { if (prev) URL.revokeObjectURL(prev); return null; }); }, []);
-  // En escritorio la miniatura en vivo sigue al diseño; la captura puntual
-  // (descarga, pedido) puede haber quedado vieja si se siguió editando.
-  const summaryThumb = isMobile ? previewImg : liveThumb ?? previewImg;
+  // Imagen del diseño en el resumen: solo en celular, donde el resumen es otro
+  // paso y no hay visor (se captura al entrar). En escritorio el visor sticky
+  // acompaña al resumen, así que repetir la pieza en miniatura sobraba.
+  const summaryThumb = isMobile ? previewImg : null;
   const clearPreviews = () => {
     setPreviewImg(null);
     previewImgRef.current = null;
-    setLiveThumb(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
   };
 
   const handleSelectColor = (id: string) => {
@@ -3228,6 +3203,46 @@ export default function Customizer() {
       // volver a láser a mano si lo prefiere.
       if (canColor) setTechnique("color");
     }
+  };
+
+  startIntentRef.current = (i: StartIntent) => {
+    setMode("products");
+    // La impresión a color (Dacen F5, 360°) es solo para drinkware de acero
+    // que entra en la máquina. Si la pieza actual no entra (manija, cónica,
+    // otro material), se pasa a una que sí: el vaso Hydrate, el de la foto.
+    if (i.technique === "color") {
+      if (!canColor || materialId !== DEFAULT_MATERIAL_ID) {
+        const steel = getMaterial(DEFAULT_MATERIAL_ID);
+        const mp = steel.products.find(p => p.drinkwareProductId === "vaso-hydrate" && allowsColorPrint(steel.id, p))
+          ?? steel.products.find(p => allowsColorPrint(steel.id, p));
+        if (materialId !== DEFAULT_MATERIAL_ID) handleSelectMaterial(DEFAULT_MATERIAL_ID);
+        if (mp) {
+          const item = shopItems.find(it => it.type === mp.drinkwareProductId && it.odooId !== null)
+            ?? shopItems.find(it => it.type === mp.drinkwareProductId);
+          setMaterialProductId(mp.id);
+          if (mp.drinkwareProductId) {
+            const dp = getProduct(mp.drinkwareProductId);
+            setSize(dp.sizes[1]?.id ?? dp.sizes[0].id);
+          }
+          setGenericPick(item ? item.odooId === null : false);
+          setOdooTemplateId(item?.odooId ?? null);
+        }
+      }
+      setTechnique("color");
+      // El panel «Todo el vaso (360°)» vive en la pestaña Texto (escritorio)
+      // y en la hoja de Diseño (celular).
+      setDrinkTab("text");
+      // window.innerWidth y no isMobile: al montar, useIsMobile todavía da false.
+      if (window.innerWidth < 768) setSheet({ mode: "wrap", edit: null });
+    }
+    if (typeof i.ownProduct === "boolean") setOwnProduct(i.ownProduct);
+    const t = capEngravingText((i.text ?? "").trim());
+    if (t) {
+      setText(t);
+      setDrinkTab("text");
+    }
+    if (t || i.technique === "color") setMobileStep(2); // Diseño
+    track("customizer_start", { text: !!t, own: i.ownProduct === true, technique: i.technique ?? "laser" });
   };
 
   // Solo el TIPO de producto (Termo, Chopera, Copa…), sin tamaño ni material.
@@ -4280,7 +4295,7 @@ export default function Customizer() {
     );
   };
 
-  // Paso 4 — Resumen: imagen del diseño + detalle legible + envío por WhatsApp.
+  // Paso 4 — Resumen: imagen del diseño (solo celular) + detalle legible + envío por WhatsApp.
   // (Sin planes ni precios: eso vive en la sección "Tarifas".) Los campos salen
   // de orderFields(), la misma fuente que arma el mensaje de WhatsApp.
   const renderDrinkSummary = () => (
@@ -4935,12 +4950,16 @@ export default function Customizer() {
           {/* En celular el visor NO es sticky: scrollea con la página (pegado
               arriba seguía al scroll y tapaba el editor). Sticky solo en desktop. */}
           {/* Desktop con catálogo de la tienda: barra lateral a la izquierda del 3D. */}
+          {/* Las columnas laterales se estiran a todo el alto de la fila
+              (lg:self-stretch) y lo sticky va adentro: así el producto y la
+              lista acompañan hasta el resumen y «Continuar por WhatsApp», en
+              vez de terminarse a mitad de camino y dejar un hueco en blanco. */}
           {shopMode && !isMobile && (
-            <div className="w-full min-w-0 lg:col-span-3 lg:self-start">
+            <div className="w-full min-w-0 lg:col-span-3 lg:self-stretch">
               <ShopRail items={shopItems} value={shopKey} initialBrand={shopItem?.brand ?? shopBrands(shopItems)[0]} onPick={pickShopItem} />
             </div>
           )}
-          <div className={isMobile ? "w-full shrink-0 relative" : "w-full min-w-0 lg:col-span-4 relative max-lg:bg-white max-lg:pt-1 lg:self-start"}>
+          <div className={isMobile ? "w-full shrink-0 relative" : "w-full min-w-0 lg:col-span-4 relative max-lg:bg-white max-lg:pt-1 lg:self-stretch"}>
             <div ref={previewPanelRef} className={isMobile
               ? "relative z-20 isolate [transform:translateZ(0)] bg-secondary/30 border-b border-border flex flex-col items-center overflow-hidden"
               : "lg:sticky lg:top-24 z-20 isolate [transform:translateZ(0)] bg-secondary/30 rounded-2xl border border-border flex flex-col items-center gap-4 overflow-hidden min-h-[280px] md:min-h-[520px] max-lg:shadow-lg max-lg:shadow-black/5"}>
@@ -4962,7 +4981,7 @@ export default function Customizer() {
               {isDrinkware ? (
                 <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
                   {/* 3D Canvas — taller for bigger sizes; compact on phones */}
-                  <div className="relative w-full" style={{ height: isMobile ? mobileViewerH : 480 + Math.round((activeSize.scale - 0.84) * 200) }}>
+                  <div className="relative w-full" style={{ height: isMobile ? mobileViewerH : `min(${480 + Math.round((activeSize.scale - 0.84) * 200)}px, calc(100vh - 15rem))` }}>
                     {renderThermosViewer()}
                     {pinchHint && renderPinchHint()}
                   </div>
@@ -5032,7 +5051,7 @@ export default function Customizer() {
                 </div>
               ) : is3DObject && activeObject ? (
                 <div className="relative z-10 flex flex-col items-center gap-2 w-full h-full">
-                  <div className="relative w-full" style={{ height: isMobile ? mobileViewerH : 460 }}>
+                  <div className="relative w-full" style={{ height: isMobile ? mobileViewerH : "min(460px, calc(100vh - 15rem))" }}>
                     <Object3D
                       objectId={activeObject.id}
                       colorHex={activeObject.colorable ? activeColorHex : undefined}

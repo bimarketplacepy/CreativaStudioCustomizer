@@ -406,7 +406,7 @@ export default function CustomizerTutorial() {
             <div className="tuto-lbl" style={{ marginTop: 10 }}>Técnica</div>
             <div className="tuto-fila">
               <span className="tuto-pill tuto-sel">⚡ Grabado láser</span>
-              <span className="tuto-pill">Impresión UV</span>
+              <span className="tuto-pill">Impresión a color</span>
             </div>
           </div>
 

@@ -32,10 +32,10 @@
     </script>
     <!-- End Google Tag Manager -->
 
-    <title>Creativa Studio — Personalización de productos</title>
+    <title>Creativa Studio — Termos y vasos grabados e impresos en 360°</title>
     <meta
       name="description"
-      content="Grabamos tu termo a medida: nombres, logos e íconos con grabado láser e impresión UV. Termos, vasos, guampas y más. Diseñalo online y retiralo en nuestro local de Avda. España."
+      content="Grabado láser e impresión a todo color en 360° sobre termos y vasos, con nuestra impresora cilíndrica Dacen F5. También cuero, madera y cristal. Diseñalo online en 3D y retiralo en nuestro local de Avda. España."
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2" />
     <!-- Canonical: the SPA fallback answers 200 on ANY path, so without this
@@ -45,10 +45,10 @@
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="es_PY" />
     <meta property="og:site_name" content="Creativa Studio" />
-    <meta property="og:title" content="Creativa Studio — Personalización de productos" />
+    <meta property="og:title" content="Creativa Studio — Termos y vasos grabados e impresos en 360°" />
     <meta
       property="og:description"
-      content="Termos, vasos y piezas grabadas a medida. Diseñalo online."
+      content="Tu diseño en toda la vuelta del vaso, a todo color, o grabado láser a medida. Diseñalo online en 3D."
     />
     <meta property="og:url" content="https://creativastudio.marketplace.com.py/" />
     <!-- Absolute URL: WhatsApp and several scrapers ignore relative og:image.
@@ -63,10 +63,10 @@
       content="Termo de acero con grabado láser personalizado — Creativa Studio"
     />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Creativa Studio — Personalización de productos" />
+    <meta name="twitter:title" content="Creativa Studio — Termos y vasos grabados e impresos en 360°" />
     <meta
       name="twitter:description"
-      content="Termos, vasos y piezas grabadas a medida. Diseñalo online."
+      content="Tu diseño en toda la vuelta del vaso, a todo color, o grabado láser a medida. Diseñalo online en 3D."
     />
     <meta name="twitter:image" content="https://creativastudio.marketplace.com.py/og-cover-v5.jpg" />
 
@@ -76,7 +76,7 @@
       "@context": "https://schema.org",
       "@type": "LocalBusiness",
       "name": "Creativa Studio",
-      "description": "Taller de personalización premium: termos, vasos, guampas, tablas, cajas, billeteras y más, grabados a medida con láser o impresión a color.",
+      "description": "Taller de personalización: termos, vasos, guampas, tablas, cajas, billeteras y más, con grabado láser a medida e impresión a todo color en 360° sobre piezas cilíndricas (impresora UV Dacen F5).",
       "url": "https://creativastudio.marketplace.com.py/",
       "image": "https://creativastudio.marketplace.com.py/og-cover-v5.jpg",
       "logo": "https://creativastudio.marketplace.com.py/la-creativa-logo-new.webp",
@@ -106,17 +106,17 @@
     <link rel="preload" as="font" type="font/woff2" href="/fonts/Cronos-Pro-Light-latin.woff2" crossorigin>
     <link rel="preload" as="font" type="font/woff2" href="/fonts/Cronos-Pro-Display-Italic-latin.woff2" crossorigin>
 
-    <!-- Preload the hero carousel's first frame — the LCP element.
-         imagesrcset/imagesizes must stay identical to the <img> in
-         hero-carousel.tsx (CAROUSEL_SIZES) so the preloaded variant is the one
-         actually rendered — otherwise the preload is wasted. On mobile this
-         fetches the lighter 700px file; retina/desktop gets the 900px. -->
+    <!-- Preload the hero collage's main photo (vaso impreso en 360°) — the
+         LCP image on desktop. imagesrcset/imagesizes must stay identical to the
+         first <img> of COLLAGE in hero.tsx (HERO_IMAGE_SIZES), or the preload is
+         wasted. On phones the <h1> is the LCP and the photo strip uses -700. -->
     <link
       rel="preload"
       as="image"
-      href="/galeria/termomate.webp"
-      imagesrcset="/galeria/termomate-700.webp 700w, /galeria/termomate.webp 900w"
-      imagesizes="(min-width: 1024px) 512px, calc(100vw - 3rem)"
+      href="/galeria/vaso-360.webp"
+      imagesrcset="/galeria/vaso-360-700.webp 700w, /galeria/vaso-360.webp 900w"
+      imagesizes="(min-width: 1024px) 400px, 150px"
+      media="(min-width: 1024px)"
       fetchpriority="high"
     >
   </head>

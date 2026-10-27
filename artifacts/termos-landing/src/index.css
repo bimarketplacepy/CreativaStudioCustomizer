@@ -491,50 +491,6 @@ body.wa-fab-hidden .wa-fab {
   pointer-events: none;
 }
 
-/* ---------------------------------------------------------------------------
-   Hero animations (CSS-only)
-
-   These replace what framer-motion used to do in hero.tsx / hero-carousel.tsx.
-   Moving them to CSS removed framer-motion (~55 KB gzip) from the always-loaded
-   entry chunk, so the LCP hero paints without waiting on that JS.
-
-   Deliberately, NONE of these animate the LCP element on first paint:
-   - The hero copy + <h1> render statically (no entrance animation) so the
-     largest text paints the instant React commits.
-   - The first carousel frame (index 0) renders static too; only subsequent
-     frames cross-fade. Animating opacity 0->1 on the LCP element is exactly
-     what delayed LCP before.
-   Everything here is opacity/transform only, so CLS stays 0.
---------------------------------------------------------------------------- */
-@keyframes heroImgFade {
-  from { opacity: 0; transform: scale(1.04); }
-  to   { opacity: 1; transform: scale(1); }
-}
-@keyframes heroCaptionRise {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes heroBgFade {
-  from { opacity: 0; }
-  to   { opacity: 0.55; }
-}
-
-/* Cross-fade for carousel frames after the first (keyed remount retriggers it). */
-.hero-img-fade { animation: heroImgFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) both; }
-/* Caption swap. */
-.hero-caption-rise { animation: heroCaptionRise 0.4s ease-out both; }
-/* Blurred backdrop echo — settles at 0.55 opacity, matching the old motion value. */
-.hero-bg-fade { animation: heroBgFade 1.2s ease-in-out both; }
-
-@media (prefers-reduced-motion: reduce) {
-  .hero-img-fade,
-  .hero-caption-rise,
-  .hero-bg-fade {
-    animation-duration: 0.01ms;
-    animation-iteration-count: 1;
-  }
-}
-
 /* Shimmer sutil del placeholder del customizer mientras baja su chunk lazy.
    Mismo minHeight que el fallback vacío anterior: CLS intacto. */
 .section-shimmer {
@@ -569,4 +525,64 @@ body.wa-fab-hidden .wa-fab {
   0% { box-shadow: 0 0 0 0 rgba(158, 27, 62, 0.45); }
   70% { box-shadow: 0 0 0 12px rgba(158, 27, 62, 0); }
   100% { box-shadow: 0 0 0 0 rgba(158, 27, 62, 0); }
+}
+
+/* ---------------------------------------------------------------------------
+   Sistema visual "El taller a la vista" (propuesta de rediseño, 2026-10-27).
+   Pintura negra de fondo, texto como grabado claro, bordó solo para acciones
+   y la línea del láser como única firma animada.
+--------------------------------------------------------------------------- */
+:root {
+  --cs-ink: #16120F;        /* pintura negra: portada, 360°, precios, pie */
+  --cs-ink-2: #221C18;
+  --cs-mark: #EFE6DA;       /* texto sobre negro (15:1) */
+  --cs-mark-dim: #B8AEA3;   /* secundario sobre negro (8,5:1) */
+  --cs-bordo: #8B1A2F;      /* acciones y selección */
+  --cs-bordo-h: #721527;
+  --cs-laser: #E24A5F;      /* solo la línea del láser y el foco sobre negro */
+  --cs-acero: #ECEDEC;      /* fondo de secciones de producto */
+  --cs-grafito: #4A4441;    /* secundario sobre claro (9,6:1) */
+  --cs-line: #DCDAD7;
+}
+
+/* Un único lenguaje de botón: radio 10px, alto 48px, minúscula. En la capa
+   components para que las utilidades de Tailwind (hidden, w-full…) le ganen. */
+@layer components {
+.cs-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .625rem;
+  min-height: 3rem; padding: 0 1.375rem; border-radius: .625rem;
+  font: 600 .9375rem/1.1 var(--app-font-sans, Inter, sans-serif);
+  border: 1px solid transparent; text-align: center; white-space: nowrap;
+  transition: background-color .2s, border-color .2s, color .2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.cs-btn svg { width: 1.125rem; height: 1.125rem; flex: none; }
+.cs-btn:focus-visible { outline: 2px solid var(--cs-laser); outline-offset: 2px; }
+.cs-btn-primary { background: var(--cs-bordo); color: #fff; }
+.cs-btn-primary:hover, .cs-btn-primary:active { background: var(--cs-bordo-h); }
+.cs-btn-ghost-dark { border-color: rgb(239 230 218 / .28); color: var(--cs-mark); }
+.cs-btn-ghost-dark:hover { border-color: rgb(239 230 218 / .6); color: #fff; }
+.cs-btn-ghost { border-color: var(--cs-line); background: #fff; color: var(--cs-ink); }
+.cs-btn-ghost:hover { border-color: var(--cs-ink); }
+.cs-btn-sm { min-height: 2.5rem; padding: 0 1rem; font-size: .875rem; }
+}
+
+/* La línea del láser: se dibuja una vez bajo una palabra, con la punta
+   encendida que se apaga al terminar. */
+.cs-laser { position: relative; display: inline-block; }
+.cs-laser::before {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -0.08em; height: 2px;
+  background: var(--cs-laser); transform-origin: 0 50%;
+  animation: csBurn 1.6s cubic-bezier(.16, 1, .3, 1) .3s both;
+}
+.cs-laser::after {
+  content: ""; position: absolute; right: -3px; bottom: calc(-0.08em - 3px); width: 8px; height: 8px;
+  border-radius: 50%; background: #fff; box-shadow: 0 0 12px 4px var(--cs-laser);
+  animation: csHead 1.6s cubic-bezier(.16, 1, .3, 1) .3s both;
+}
+@keyframes csBurn { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes csHead { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .cs-laser::before { animation: none; }
+  .cs-laser::after { animation: none; opacity: 0; }
 }

@@ -79,6 +79,9 @@ function proxyToApi(req, res) {
     },
   );
   upstream.on("error", () => {
+    // Si el api-server se cortó a mitad de la respuesta ya no se puede mandar
+    // un 502 (writeHead tiraría ERR_HTTP_HEADERS_SENT): cortar la conexión.
+    if (res.headersSent) return res.destroy();
     res.writeHead(502, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ message: "API no disponible" }));
   });
@@ -202,11 +205,12 @@ function dynamicDoc(pathname, req) {
       type: "text/plain; charset=utf-8",
       body:
         `# Creativa Studio\n\n` +
-        `> Taller de personalización premium dentro de MarketPlace (Avda. España, Paraguay). ` +
-        `Termos, vasos, guampas, tablas, cajas, billeteras y más, grabados a medida con láser o impresión a color.\n\n` +
+        `> Taller de personalización dentro de Marketplace (Avda. España, Paraguay). ` +
+        `Termos, vasos, guampas, tablas, cajas, billeteras y más, con grabado láser a medida e impresión a todo color en 360° sobre vasos y termos cilíndricos (impresora UV Dacen F5).\n\n` +
         `## Secciones\n` +
-        `- [Personalizador 3D](${origin}/#customizer): elegí formato, color y grabado y previsualizá la pieza en 3D.\n` +
-        `- [Precios y grabado](${origin}/#precios): planes de grabado láser e impresión a color.\n` +
+        `- [Personalizador 3D](${origin}/#customizer): elegí formato, color y grabado o un diseño 360° a todo color, y previsualizá la pieza en 3D.\n` +
+        `- [Impresión 360°](${origin}/#impresion-360): impresión UV a todo color en toda la vuelta del vaso.\n` +
+        `- [Precios y grabado](${origin}/#precios): planes de grabado láser; impresión a color y 360° a cotizar.\n` +
         `- [Trabajos realizados](${origin}/#galeria): galería de piezas ya personalizadas.\n` +
         `- [Stickers](${origin}/#stickers): stickers personalizados con tu diseño.\n` +
         `- [Contacto](${origin}/#contacto): WhatsApp, Instagram y ubicación del taller.\n\n` +
@@ -221,7 +225,15 @@ function dynamicDoc(pathname, req) {
 
 async function resolveFile(pathname) {
   // Block path traversal, then map the URL onto the build directory.
-  const clean = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, "");
+  // Una URL mal codificada (/%E0%A4%A) hace tirar URIError a decodeURIComponent:
+  // se trata como archivo inexistente en vez de dejar que tumbe el proceso.
+  let decoded;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+  const clean = normalize(decoded).replace(/^(\.\.[/\\])+/, "");
   let filePath = join(ROOT, clean);
   if (!filePath.startsWith(ROOT)) return null;
 
@@ -364,7 +376,16 @@ async function serve(req, res) {
   }
 }
 
-createServer(serve).listen(PORT, "0.0.0.0", () => {
+// Red de seguridad: un error inesperado en una request responde 500 y se
+// loguea, pero nunca termina el proceso (un rechazo sin manejar lo mataba).
+createServer((req, res) => {
+  serve(req, res).catch((err) => {
+    console.error("[termos-landing] error sirviendo", req.method, req.url, err);
+    if (res.headersSent) return res.destroy();
+    res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Error interno");
+  });
+}).listen(PORT, "0.0.0.0", () => {
   // eslint-disable-next-line no-console
   console.log(`[termos-landing] production server listening on :${PORT} (serving ${ROOT})`);
 });

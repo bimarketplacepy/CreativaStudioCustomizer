@@ -100,3 +100,29 @@ export function scrollToSection(id: string): void {
   };
   requestAnimationFrame(retry);
 }
+
+/**
+ * Arranque del personalizador desde fuera (portada, sección 360°, precios):
+ * texto a grabar, "Traigo el mío" o impresión a color. Mismo patrón que el
+ * modo: queda pendiente si el personalizador todavía no montó, y si ya está
+ * montado lo toma al instante por el evento.
+ */
+export interface StartIntent {
+  text?: string;
+  ownProduct?: boolean;
+  technique?: "color";
+}
+export const CUSTOMIZER_START_EVENT = "cs:customizer-start";
+let pendingStart: StartIntent | null = null;
+
+export function takeStartIntent(): StartIntent | null {
+  const s = pendingStart;
+  pendingStart = null;
+  return s;
+}
+
+export function startCustomizer(intent: StartIntent): void {
+  pendingStart = intent;
+  window.dispatchEvent(new Event(CUSTOMIZER_START_EVENT));
+  scrollToSection("customizer");
+}

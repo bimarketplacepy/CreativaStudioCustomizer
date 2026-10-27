@@ -8,9 +8,10 @@ import { scrollToSection } from "@/lib/section-reveal";
 // its own root by main.tsx (it is NOT rendered here). The rest is split into
 // separate chunks: the ones further down (LazySection) and the heavy Three.js
 // customizer load only when the visitor scrolls near them.
-const PersonalizationInfo = lazy(() => import("@/components/personalization-info"));
+const HowItWorks = lazy(() => import("@/components/how-it-works"));
+const Print360 = lazy(() => import("@/components/print-360"));
 const Customizer = lazy(() => import("@/components/customizer"));
-const CustomRequests = lazy(() => import("@/components/custom-requests"));
+const ForWhom = lazy(() => import("@/components/for-whom"));
 const PricingEngraving = lazy(() => import("@/components/pricing-engraving"));
 const Gallery = lazy(() => import("@/components/gallery"));
 const Footer = lazy(() => import("@/components/footer"));
@@ -68,16 +69,19 @@ export default function Home() {
     // Sin wrapper propio: el contenedor flex de página vive en index.html
     // (envuelve #hero-root y #root, ambos display:contents).
     <>
+      <LazySection minH="60vh">
+        <HowItWorks />
+      </LazySection>
+      <LazySection minH="90vh">
+        <Print360 />
+      </LazySection>
       <DeferUntilVisible id="customizer" minHeight="90vh">
         <Suspense fallback={<SectionFallback minH="90vh" label="Cargando personalizador…" />}>
           <Customizer />
         </Suspense>
       </DeferUntilVisible>
-      <LazySection minH="40vh">
-        <PersonalizationInfo />
-      </LazySection>
-      <LazySection minH="40vh">
-        <CustomRequests />
+      <LazySection minH="70vh">
+        <ForWhom />
       </LazySection>
       <LazySection minH="60vh">
         <PricingEngraving />

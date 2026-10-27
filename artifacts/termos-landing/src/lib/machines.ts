@@ -2,8 +2,10 @@
  * Registro de máquinas y reparto automático (DACEN.md §4.1).
  *
  * El cliente elige una TÉCNICA ("Grabado láser" / "Impresión a color"); esto
- * decide la MÁQUINA. El nombre de la máquina nunca se muestra en la landing:
- * viaja en el pedido (`designState.machine`) y aparece en el panel /admin.
+ * decide la MÁQUINA. En el personalizador el nombre de la máquina no se
+ * muestra: viaja en el pedido (`designState.machine`) y aparece en el panel
+ * /admin. La sección «Impresión 360°» (print-360.tsx) sí nombra la Dacen F5 a
+ * propósito, como diferencial del taller (pedido del dueño, 2026-10-27).
  */
 import { fitsDacen, type PrintSpec } from "./print-specs";
 

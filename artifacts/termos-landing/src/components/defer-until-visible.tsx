@@ -19,11 +19,30 @@ import { isRevealed, onReveal } from "@/lib/section-reveal";
  * scroll gesture without firing on first paint. Desktop keeps the generous
  * margin: bandwidth is plentiful and the fold is taller.
  */
+function isPhone(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+}
+
 function defaultRootMargin(): string {
-  if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
-    return "200px";
-  }
-  return "600px";
+  return isPhone() ? "200px" : "600px";
+}
+
+/**
+ * En celular, además, nada se carga antes del primer scroll. El margen solo no
+ * alcanzaba: con un hero alto (~950px en 412×823) el personalizador quedaba a
+ * 1013px, 10px adentro de la línea de 823+200px, y el chunk de Three.js + el
+ * .glb bajaban igual al abrir la página. Un scroll (del usuario, de un CTA o
+ * de un deep link) arma la observación; la página abierta en el tope, no.
+ */
+function useScrolled(enabled: boolean): boolean {
+  const [scrolled, setScrolled] = useState(() => !enabled || typeof window === "undefined" || window.scrollY > 0);
+  useEffect(() => {
+    if (scrolled) return;
+    const on = () => setScrolled(true);
+    window.addEventListener("scroll", on, { passive: true, once: true });
+    return () => window.removeEventListener("scroll", on);
+  }, [scrolled]);
+  return scrolled;
 }
 
 export default function DeferUntilVisible({
@@ -46,6 +65,7 @@ export default function DeferUntilVisible({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [show, setShow] = useState(() => revealable && isRevealed());
+  const armed = useScrolled(isPhone());
 
   useEffect(() => {
     if (!revealable || show) return;
@@ -53,7 +73,7 @@ export default function DeferUntilVisible({
   }, [revealable, show]);
 
   useEffect(() => {
-    if (show) return;
+    if (show || !armed) return;
     const el = ref.current;
     if (!el) return;
 
@@ -74,7 +94,7 @@ export default function DeferUntilVisible({
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [show, rootMargin]);
+  }, [show, rootMargin, armed]);
 
   // The wrapper reserves the section's height so nothing jumps (CLS stays 0).
   // scroll-mt-20: el header sticky (64px) no tapa el inicio al navegar al anchor.

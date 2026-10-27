@@ -30,6 +30,10 @@ export default function ImageUpload({ imageSize, value, onChange, aiStyle = "las
   const [urlInput, setUrlInput] = useState("");
   // Recorte con IA en curso (descarga del modelo la primera vez, después el cálculo).
   const [aiProgress, setAiProgress] = useState<RemovalProgress | null>(null);
+  // La imagen actual, para que un recorte con IA que termina tarde (20-60 s)
+  // no reviva una imagen que el cliente ya quitó o reemplazó mientras tanto.
+  const valueRef = useRef(value);
+  valueRef.current = value;
 
   const previewBoxClass = imageSize === "large" ? "w-32 h-32" : "w-20 h-20";
 
@@ -106,8 +110,10 @@ export default function ImageUpload({ imageSize, value, onChange, aiStyle = "las
     try {
       const { removeBackgroundAI } = await import("@/lib/background-removal");
       const cut = await removeBackgroundAI(current.source, withBackground, { onProgress: setAiProgress });
+      if (valueRef.current?.source !== current.source) return;
       onChange(cut);
     } catch {
+      if (valueRef.current?.source !== current.source) return;
       setError("No pudimos quitar el fondo de esta imagen. Probá de nuevo o subí otra foto.");
     } finally {
       setAiProgress(null);
