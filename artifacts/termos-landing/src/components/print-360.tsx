@@ -1,5 +1,4 @@
 import React, { useEffect, useRef } from "react";
-import Vaso360 from "./vaso-360";
 import { whatsappUrl } from "@/lib/contact";
 import { startCustomizer } from "@/lib/section-reveal";
 import { track } from "@/lib/analytics";
@@ -8,14 +7,13 @@ import { LOW_END } from "@/lib/device-tier";
 
 /**
  * Impresión 360° a todo color con la Dacen F5 (DACEN.md §10–12). En vez de
- * contar la vuelta, la muestra: un vaso que se gira (CSS 3D, sin three.js) y,
- * debajo, el diseño entero desenrollado como el archivo que recibe la máquina,
- * con un recuadro que marca la parte visible.
+ * contar la vuelta, la muestra con el video real del taller: la máquina
+ * imprimiendo un vaso mientras gira. (El vaso girable en CSS 3D que estaba
+ * antes quedó guardado en vaso-360.tsx, con instrucciones para volver a usarlo.)
  *
  * Todo lo que se afirma sale de la ficha de la máquina y de lo que el taller
  * confirmó: imprime girando la pieza, CMYK + base blanca automática, piezas
- * cilíndricas dentro de MACHINES.dacen.limits. El diseño del vaso es de
- * ejemplo (dibujado en canvas) y lo dice. El monto se cotiza
+ * cilíndricas dentro de MACHINES.dacen.limits. El monto se cotiza
  * (PRICING.enabled.dacen = false).
  */
 const LIMITS = MACHINES.dacen.limits!;
@@ -80,8 +78,8 @@ function DacenVideo() {
   };
 
   return (
-    <figure className="m-0 grid gap-3 lg:max-xl:flex lg:max-xl:items-center lg:max-xl:gap-5">
-      <div className="relative w-full max-w-[420px] mx-auto lg:max-xl:w-40 lg:max-xl:mx-0 xl:max-w-none aspect-[4/5] rounded-[16px] overflow-hidden bg-black shrink-0">
+    <figure className="m-0 grid gap-3 w-full max-w-[460px] mx-auto">
+      <div className="relative w-full aspect-[4/5] rounded-[20px] overflow-hidden bg-black shadow-[0_30px_60px_-24px_rgba(0,0,0,0.75)]">
         <video
           ref={ref}
           muted
@@ -114,7 +112,7 @@ function DacenVideo() {
             : <svg aria-hidden className="w-6 h-6 translate-x-0.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>}
         </button>
       </div>
-      <figcaption className="text-sm leading-snug text-[var(--cs-mark-dim)] max-w-[420px] mx-auto lg:mx-0">
+      <figcaption className="text-sm leading-snug text-[var(--cs-mark-dim)]">
         <b className="block text-[var(--cs-mark)] font-semibold">Así imprime nuestra Dacen F5</b>
         Video real del taller: el vaso gira mientras la tinta UV se cura con la luz violeta.
       </figcaption>
@@ -129,12 +127,11 @@ export default function Print360() {
   };
   return (
     <section id="impresion-360" aria-labelledby="p360-title" className="scroll-mt-16 bg-[var(--cs-ink)] text-[var(--cs-mark)] border-t border-white/[0.06]">
-      {/* Un solo vaso y un solo video en el DOM. Celular: título → video → vaso
-          → datos. 1024–1279: vaso a la izquierda; texto, datos y video (chico,
-          al costado de su texto) a la derecha. ≥1280: el video en una tercera
-          columna, al lado de los datos. */}
-      <div className="max-w-7xl mx-auto px-5 sm:px-6 py-14 md:py-24 grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_200px] lg:grid-rows-[auto_auto_auto] gap-x-16 xl:gap-x-10 gap-y-7 lg:gap-y-0">
-        <div className="min-w-0 lg:col-start-2 xl:col-[2/4] lg:row-start-1 lg:self-end">
+      {/* El video real de la Dacen F5 ocupa el lugar que tenía el vaso girable
+          (guardado en vaso-360.tsx). Celular: título → video → datos.
+          Escritorio: el video a la izquierda, el texto y los datos a la derecha. */}
+      <div className="max-w-7xl mx-auto px-5 sm:px-6 py-14 md:py-24 grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-[auto_auto] gap-x-16 gap-y-7 lg:gap-y-0">
+        <div className="min-w-0 lg:col-start-2 lg:row-start-1 lg:self-end">
           <h2 id="p360-title" className="font-serif font-light text-white text-[clamp(2.5rem,6vw,4rem)] leading-[1]">
             Todo el vaso,<br /><em className="italic">a todo color.</em>
           </h2>
@@ -144,12 +141,8 @@ export default function Print360() {
           </p>
         </div>
 
-        <div className="min-w-0 lg:col-start-2 lg:row-start-3 lg:mt-8 xl:col-start-3 xl:row-start-2 xl:mt-8 xl:self-start">
+        <div className="min-w-0 lg:col-start-1 lg:row-start-1 lg:row-span-2 lg:self-center">
           <DacenVideo />
-        </div>
-
-        <div className="min-w-0 lg:col-start-1 lg:row-start-1 lg:row-span-3 xl:row-span-2 lg:self-center xl:mr-6">
-          <Vaso360 />
         </div>
 
         <div className="min-w-0 lg:col-start-2 lg:row-start-2 lg:self-start">

@@ -8,8 +8,8 @@ import { LOW_END } from "@/lib/device-tier";
  * desenrollado (como el archivo que recibe la Dacen F5) con un recuadro que
  * marca la parte visible.
  *
- * GUARDADO, SIN USAR (27/10/2026): la sección muestra ahora el video real del
- * taller en su lugar. Para volver a mostrarlo, en print-360.tsx:
+ * Desde el 27/10/2026 la sección muestra el video real del taller en su lugar
+ * y este componente queda guardado. Para volver a mostrarlo, en print-360.tsx:
  *   import Vaso360 from "./vaso-360";
  * y poner <Vaso360 /> donde está <DacenVideo /> (o revertir el commit
  * «Sección 360°: el video reemplaza al vaso girable»). La etiqueta git
