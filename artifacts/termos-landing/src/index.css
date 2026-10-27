@@ -634,3 +634,17 @@ body.wa-fab-hidden .wa-fab {
 .stk-ruler::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1.5px solid #16120F; }
 .stk-ruler span { position: relative; background: #F8F7F5; padding: 0 6px; font: 600 12px/1 var(--app-font-sans, Inter, sans-serif); color: #16120F; }
 @media (prefers-reduced-motion: reduce) { .stk-item, .stk-item::after { transition: none; } }
+
+/* Animaciones del personalizador (antes con framer-motion, ~120 KB menos). */
+@keyframes csStepIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+@keyframes csFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes csPop { 0% { opacity: 0; transform: scale(.6); } 70% { opacity: 1; transform: scale(1.06); } 100% { transform: scale(1); } }
+@keyframes csRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.cs-step-in { animation: csStepIn .25s ease-out both; }
+.cs-fade-in { animation: csFade .4s ease-out both; }
+.cs-pop { animation: csPop .5s cubic-bezier(.34, 1.56, .64, 1) .1s both; }
+.cs-rise { animation: csRise .5s ease-out .25s both; }
+.cs-fade-in-late { animation: csFade .5s ease-out .4s both; }
+@media (prefers-reduced-motion: reduce) {
+  .cs-step-in, .cs-fade-in, .cs-pop, .cs-rise, .cs-fade-in-late { animation: none; }
+}

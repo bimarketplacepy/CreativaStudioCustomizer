@@ -3,7 +3,6 @@ import { createPortal, flushSync } from "react-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileDesignScreen, useVisualViewport } from "@/components/mobile-screen";
 import { EditorTour, Hint, HINT_AR_KEY, HINT_DONE_KEY, TOUR_KEY, markSeen, seen, type TourStep } from "@/components/editor-tour";
-import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -24,8 +23,35 @@ import Thermos3D, { type ScreenRect } from "./thermos-3d";
 import type { PinchPhase } from "@/lib/pinch";
 // El creador de stickers baja recién al elegir el modo "Stickers".
 const StickerCreator = React.lazy(() => import("./stickers"));
-import Object3D from "./object-3d";
-import ImageUpload from "./image-upload";
+
+// ── Partes que no hacen falta al entrar al Diseño, en bloques aparte ─────────
+// El visor de piezas planas (madera, cuero, bolígrafos), la subida de logo o
+// foto y el panel «Todo el vaso (360°)» bajan recién cuando se usan: el bloque
+// inicial del personalizador queda más chico y se interpreta más rápido en
+// celulares de gama baja. Mismo nombre y mismas props que los originales.
+const Object3DLazy = React.lazy(() => import("./object-3d"));
+const ImageUploadLazy = React.lazy(() => import("./image-upload"));
+const WrapDesignPanelLazy = React.lazy(() => import("@/components/wrap-design-panel").then(m => ({ default: m.WrapDesignPanel })));
+const UnwrappedDialogLazy = React.lazy(() => import("@/components/wrap-design-panel").then(m => ({ default: m.UnwrappedDialog })));
+const PanelLoading = () => <div aria-hidden className="h-28 rounded-xl border border-dashed border-border bg-secondary/30 animate-pulse" />;
+function Object3D(props: React.ComponentProps<typeof Object3DLazy>) {
+  return (
+    <React.Suspense fallback={<div className="w-full h-full grid place-items-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>}>
+      <Object3DLazy {...props} />
+    </React.Suspense>
+  );
+}
+function ImageUpload(props: React.ComponentProps<typeof ImageUploadLazy>) {
+  return <React.Suspense fallback={<PanelLoading />}><ImageUploadLazy {...props} /></React.Suspense>;
+}
+function WrapDesignPanel(props: React.ComponentProps<typeof WrapDesignPanelLazy>) {
+  return <React.Suspense fallback={<PanelLoading />}><WrapDesignPanelLazy {...props} /></React.Suspense>;
+}
+function UnwrappedDialog(props: React.ComponentProps<typeof UnwrappedDialogLazy>) {
+  // Cerrado no se dibuja nada: no hace falta bajar el bloque todavía.
+  if (!props.open) return null;
+  return <React.Suspense fallback={null}><UnwrappedDialogLazy {...props} /></React.Suspense>;
+}
 import { ENGRAVING_PLANS, type EngravingPlanId } from "@/lib/engraving-plans";
 import type { ProcessedImage } from "@/lib/image-processing";
 import { DEFAULT_PRODUCT_ID, getProduct, getSize, productForSize, type ProductDef } from "@/lib/products";
@@ -55,7 +81,6 @@ import { machineFor, normalizeTechnique } from "@/lib/machines";
 import { fitsDacen, printSpecFor } from "@/lib/print-specs";
 import { dacenPrintSize, loadImage, renderDacenPng, renderUnwrappedPreview, type DacenPrintFile } from "@/lib/production-dacen";
 import { wrapEffectiveDpi, WRAP_MODES, type WrapDesign } from "@/lib/wrap-design";
-import { UnwrappedDialog, WrapDesignPanel } from "@/components/wrap-design-panel";
 import { PRICING, quote } from "@/lib/pricing";
 import {
   colorOptions, defaultVariant, engravingPrice, findVariant, formatGs, GENERIC_BRAND,
@@ -4822,7 +4847,6 @@ export default function Customizer() {
   return (
     // reducedMotion="user": con prefers-reduced-motion los pasos del asistente
     // aparecen sin deslizar (igual que Galería y Tarifas).
-    <MotionConfig reducedMotion="user">
     <section ref={sectionRef} className="py-12 md:py-16 px-4 sm:px-6 bg-white border-b border-border">
       <div className="max-w-7xl mx-auto">
         {/* Header — compact on mobile (the long copy is desktop-only). */}
@@ -4970,7 +4994,7 @@ export default function Customizer() {
             en una sola pantalla (el color va en Diseño), con la pieza chica fija arriba para
             ver cada cambio en el momento (antes eran dos pasos). */}
         {isMobile && mobileStep === 1 && (
-          <motion.div key="wiz-1" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="pb-28">
+          <div key="wiz-1" className="cs-step-in pb-28">
             {renderMiniPreview(true)}
             <div className="space-y-7 pt-4">
               <MaterialChips materials={MATERIALS} value={materialId} onChange={handleSelectMaterial} />
@@ -5004,7 +5028,7 @@ export default function Customizer() {
                 </>
               ) : renderOwnProduct()}
             </div>
-          </motion.div>
+          </div>
         )}
 
         {/* Design step — 3D preview + editor. Step 3 on drinkware, Step 2 otherwise. */}
@@ -5197,42 +5221,19 @@ export default function Customizer() {
                 </div>
               )}
 
-              <AnimatePresence>
-                {isOrdered && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.4 }}
-                    className="absolute inset-0 bg-[#1A1614]/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-8 text-center rounded-2xl"
-                  >
-                    <motion.div
-                      initial={{ scale: 0.6, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ type: "spring", stiffness: 260, damping: 18, delay: 0.1 }}
-                      className="w-16 h-16 rounded-full bg-[#8B1A2F] text-white flex items-center justify-center mb-6 ring-1 ring-white/20"
-                    >
-                      <Check className="w-8 h-8" strokeWidth={1.75} />
-                    </motion.div>
-                    <motion.h3
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.25, duration: 0.5 }}
-                      className="font-serif font-light text-2xl md:text-3xl text-white mb-2"
-                    >
-                      Tu pieza está lista.
-                    </motion.h3>
-                    <motion.p
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.4, duration: 0.5 }}
-                      className="text-sm text-white/60 font-light max-w-xs leading-relaxed"
-                    >
-                      Te abrimos WhatsApp para continuar con tu pedido. Enviá el mensaje y coordinamos los detalles.
-                    </motion.p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {isOrdered && (
+                <div className="cs-fade-in absolute inset-0 bg-[#1A1614]/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-8 text-center rounded-2xl">
+                  <div className="cs-pop w-16 h-16 rounded-full bg-[#8B1A2F] text-white flex items-center justify-center mb-6 ring-1 ring-white/20">
+                    <Check className="w-8 h-8" strokeWidth={1.75} />
+                  </div>
+                  <h3 className="cs-rise font-serif font-light text-2xl md:text-3xl text-white mb-2">
+                    Tu pieza está lista.
+                  </h3>
+                  <p className="cs-fade-in-late text-sm text-white/60 font-light max-w-xs leading-relaxed">
+                    Te abrimos WhatsApp para continuar con tu pedido. Enviá el mensaje y coordinamos los detalles.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -5794,12 +5795,12 @@ export default function Customizer() {
 
         {/* Mobile Step 4 — Resumen (drinkware only): inferred plan + price + WhatsApp. */}
         {isMobile && isDrinkware && mobileStep === 3 && (
-          <motion.div key="wiz-4" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="space-y-4 pb-28">
+          <div key="wiz-4" className="cs-step-in space-y-4 pb-28">
             <p className="text-sm text-muted-foreground">
               Revisá tu diseño y envialo por WhatsApp. Coordinamos los detalles al instante.
             </p>
             {renderDrinkSummary()}
-          </motion.div>
+          </div>
         )}
 
         {/* Solo con el personalizador en pantalla: si no, la barra fija quedaba
@@ -5811,6 +5812,5 @@ export default function Customizer() {
         )}
       </div>
     </section>
-    </MotionConfig>
   );
 }

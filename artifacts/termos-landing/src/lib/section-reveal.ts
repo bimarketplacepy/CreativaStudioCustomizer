@@ -1,7 +1,7 @@
 /**
  * Las secciones bajo el fold se montan recién cuando se acercan al viewport
  * (DeferUntilVisible con `revealable`). Eso deja fuera de la carga inicial su
- * JS (framer-motion, Radix Slider, el fetch del catálogo) y su render.
+ * JS (Radix Slider, el fetch del catálogo) y su render.
  *
  * El costo: sus ids (#stickers, #precios, #contacto…) no existen hasta que se
  * montan. scrollToSection() resuelve la navegación interna: monta todas las

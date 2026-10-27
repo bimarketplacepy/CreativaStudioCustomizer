@@ -109,6 +109,8 @@ const MIME = {
   ".woff2": "font/woff2",
   ".ttf": "font/ttf",
   ".glb": "model/gltf-binary",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
   ".wasm": "application/wasm",
   ".otf": "font/otf",
 };
@@ -163,6 +165,8 @@ function cacheControlFor(pathname) {
     pathname.startsWith("/assets/") ||
     pathname.startsWith("/fonts/") ||
     pathname.startsWith("/galeria/") ||
+    // Videos: como la galería, se versionan cambiando el nombre del archivo.
+    pathname.startsWith("/video/") ||
     // Modelo del recortador de fondos (44 MB): se versiona por nombre de archivo.
     pathname.startsWith("/ai/") ||
     /\.[0-9a-f]{8,}\.[a-z0-9]+$/i.test(pathname)
@@ -371,9 +375,35 @@ async function serve(req, res) {
       return;
     }
 
-    // Uncompressed (images, fonts): stream straight from disk.
+    // Uncompressed (images, fonts, video): stream straight from disk.
     const info = await stat(filePath);
-    res.writeHead(status, { ...baseHeaders, "Content-Length": info.size });
+    // Pedidos por partes (Range): Safari en iPhone no reproduce un video si el
+    // servidor no los atiende, y los demás navegadores los usan para adelantar.
+    const range = status === 200 ? /^bytes=(\d*)-(\d*)$/.exec(req.headers["range"] || "") : null;
+    if (range && (range[1] || range[2])) {
+      let start = range[1] ? Number(range[1]) : info.size - Number(range[2]);
+      let end = range[1] && range[2] ? Number(range[2]) : info.size - 1;
+      start = Math.max(0, start);
+      end = Math.min(end, info.size - 1);
+      if (start > end || start >= info.size) {
+        res.writeHead(416, { "Content-Range": `bytes */${info.size}` });
+        res.end();
+        return;
+      }
+      res.writeHead(206, {
+        ...baseHeaders,
+        "Accept-Ranges": "bytes",
+        "Content-Range": `bytes ${start}-${end}/${info.size}`,
+        "Content-Length": end - start + 1,
+      });
+      if (method === "HEAD") {
+        res.end();
+        return;
+      }
+      createReadStream(filePath, { start, end }).pipe(res);
+      return;
+    }
+    res.writeHead(status, { ...baseHeaders, "Accept-Ranges": "bytes", "Content-Length": info.size });
     if (method === "HEAD") {
       res.end();
       return;
