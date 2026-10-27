@@ -670,7 +670,8 @@ export default function Object3D(props: Object3DProps) {
   const fallback = <ObjectFallback obj={obj} text={props.text} />;
   if (!webgl) return fallback;
   return (
-    <WebGLErrorBoundary fallback={fallback}>
+    // key por pieza: si una falló, cambiar de pieza vuelve a intentar con el 3D.
+    <WebGLErrorBoundary key={props.objectId} fallback={fallback}>
       <div className="relative w-full h-full">
         <ThreeCanvas
           {...props}

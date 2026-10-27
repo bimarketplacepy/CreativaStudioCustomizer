@@ -13,14 +13,35 @@ import { trackPinch, type PinchPhase } from "@/lib/pinch";
 import { keepOutKindOf, zoneFromVertices, type KeepOutZone } from "@/lib/keep-out";
 import { layoutText, fillLinesAligned, measureLinesWidth, LINE_HEIGHT } from "@/lib/engraving-text";
 
+/**
+ * Si falla el 3D (por ejemplo, se cortó la red al bajar el .glb) muestra la
+ * vista 2D con un botón «Reintentar». Se monta con `key` por modelo, así que
+ * cambiar de producto también vuelve a intentar con el 3D.
+ */
 class WebGLErrorBoundary extends Component<
-  { fallback: ReactNode; children: ReactNode },
+  { fallback: ReactNode; children: ReactNode; onRetry?: () => void },
   { failed: boolean }
 > {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
+  retry = () => {
+    this.props.onRetry?.();
+    this.setState({ failed: false });
+  };
   render() {
-    return this.state.failed ? this.props.fallback : this.props.children;
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="relative w-full h-full">
+        {this.props.fallback}
+        <button
+          type="button"
+          onClick={this.retry}
+          className="absolute left-1/2 bottom-3 -translate-x-1/2 z-10 inline-flex items-center gap-2 min-h-10 px-4 rounded-[10px] bg-white/95 border border-border text-sm font-semibold text-foreground shadow-sm"
+        >
+          No se pudo cargar el 3D · Reintentar
+        </button>
+      </div>
+    );
   }
 }
 
@@ -2068,7 +2089,13 @@ export default function Thermos3D(props: Thermos3DProps) {
   if (!webgl) return fallback;
 
   return (
-    <WebGLErrorBoundary fallback={fallback}>
+    <WebGLErrorBoundary
+      key={product.model?.url ?? props.productId}
+      fallback={fallback}
+      // drei guarda la promesa rechazada del .glb en su caché: sin limpiarla,
+      // el reintento falla al instante sin volver a pedir el archivo.
+      onRetry={() => { if (product.model?.url) useGLTF.clear(product.model.url); }}
+    >
       <div className="relative w-full h-full">
         <ThreeCanvas
           {...props}

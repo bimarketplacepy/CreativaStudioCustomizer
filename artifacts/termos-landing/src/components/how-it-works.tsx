@@ -42,7 +42,7 @@ export default function HowItWorks() {
               </div>
             }
           >
-            Termos, vasos, cuero, madera o cristal de la tienda. Si ya tenés tu termo, pagás solo el grabado.
+            Termos, vasos, cuero, madera o cristal de la tienda, o stickers con tu diseño. Si ya tenés tu termo, pagás solo el grabado.
           </Step>
           <Step
             n={2}

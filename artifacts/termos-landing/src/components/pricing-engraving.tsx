@@ -57,7 +57,7 @@ export default function PricingEngraving() {
             )}
             {!PRICING.enabled.stickers && (
               <div className={ROW}>
-                <p className={LABEL}>Stickers</p>
+                <p className={LABEL}>Stickers con tu diseño, desde 1 unidad</p>
                 <span className={QUOTED}>A cotizar</span>
               </div>
             )}

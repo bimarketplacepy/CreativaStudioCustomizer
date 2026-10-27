@@ -1,5 +1,6 @@
 import { ADDRESS } from "./contact";
 import { MACHINES } from "./machines";
+import { STICKER_MAX_CM, STICKER_MAX_QTY, STICKER_MIN_CM } from "./sticker-pricing";
 
 /**
  * Preguntas frecuentes: única fuente de la sección (faq.tsx) y del JSON-LD
@@ -28,6 +29,10 @@ export const FAQ: { q: string; a: string }[] = [
   {
     q: "¿Qué piezas se pueden imprimir en 360°?",
     a: `Vasos, termos y botellas cilíndricas de acero pintado, de ${cm(LIMITS.minDiameterMm)} a ${cm(LIMITS.maxDiameterMm)} cm de diámetro y hasta ${cm(LIMITS.maxLengthMm)} cm de alto. Las piezas con manija o muy cónicas las vemos por WhatsApp.`,
+  },
+  {
+    q: "¿Hacen stickers? ¿Desde cuántos?",
+    a: `Sí, desde 1 hasta ${STICKER_MAX_QTY.toLocaleString("es-PY")} unidades, de ${STICKER_MIN_CM} a ${STICKER_MAX_CM} cm por el lado más largo, con corte en silueta o rectángulo y acabado brillante o con relieve 3D. Los armás en «Stickers con tu diseño» y te pasamos el precio por WhatsApp.`,
   },
   {
     q: "¿Puedo mandar el diseño de mi diseñador?",

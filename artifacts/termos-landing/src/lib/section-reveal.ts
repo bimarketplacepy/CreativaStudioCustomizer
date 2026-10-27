@@ -52,10 +52,11 @@ function scrollAndSettle(target: HTMLElement): void {
 }
 
 /**
- * Los stickers viven dentro del personalizador (modo "Stickers"): ir a
- * #stickers es ir a #customizer en ese modo, e ir a #customizer vuelve al modo
- * de productos. El pedido queda guardado por si el personalizador todavía no
- * montó (es diferido); al montar lo toma con takeCustomizerMode().
+ * La herramienta de stickers vive dentro del personalizador (modo "Stickers").
+ * #stickers es la sección que la presenta (stickers-promo.tsx); openStickerTool()
+ * abre la herramienta, e ir a #customizer vuelve al modo de productos. El modo
+ * queda guardado por si el personalizador todavía no montó (es diferido); al
+ * montar lo toma con takeCustomizerMode().
  */
 export type CustomizerMode = "products" | "stickers";
 export const CUSTOMIZER_MODE_EVENT = "cs:customizer-mode";
@@ -67,13 +68,24 @@ export function takeCustomizerMode(): CustomizerMode | null {
   return m;
 }
 
+function requestMode(mode: CustomizerMode): void {
+  pendingMode = mode;
+  window.dispatchEvent(new Event(CUSTOMIZER_MODE_EVENT));
+}
+
+/** Abre la herramienta de stickers (el personalizador en modo "Stickers"). */
+export function openStickerTool(): void {
+  requestMode("stickers");
+  scrollToId("customizer");
+}
+
 /** Scroll suave a un id de sección, montándola antes si estaba diferida. */
 export function scrollToSection(id: string): void {
-  if (id === "stickers" || id === "customizer") {
-    pendingMode = id === "stickers" ? "stickers" : "products";
-    window.dispatchEvent(new Event(CUSTOMIZER_MODE_EVENT));
-    id = "customizer";
-  }
+  if (id === "customizer") requestMode("products");
+  scrollToId(id);
+}
+
+function scrollToId(id: string): void {
   const el = document.getElementById(id);
   if (el) {
     scrollAndSettle(el);

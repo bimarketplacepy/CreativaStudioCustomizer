@@ -13,7 +13,7 @@ const SUPPORT_LINKS = [
 ];
 
 /** Navegación interna: todas por scrollToSection (monta lo diferido, y
- *  #customizer / #stickers eligen el modo del personalizador). */
+ *  #customizer vuelve al modo de productos del personalizador). */
 const EXPLORE = [
   { label: "Personalizador", id: "customizer" },
   { label: "Impresión 360°", id: "impresion-360" },

@@ -2032,7 +2032,7 @@ export default function Customizer() {
     setMobileStep(s => Math.min(s, wizardLabels.length));
   }, [wizardLabels.length]);
 
-  // Menú / footer / #stickers: abrir en el modo pedido (ver section-reveal.ts).
+  // Menú, footer o «Crear mis stickers»: abrir en el modo pedido (ver section-reveal.ts).
   React.useEffect(() => {
     const apply = () => { const m = takeCustomizerMode(); if (m) setMode(m); };
     apply();
@@ -2243,9 +2243,14 @@ export default function Customizer() {
     return () => { alive = false; };
   }, [textFontFamily]);
 
+  // Lo que se dibuja (3D y PNG de la Dacen) con la transformación de la
+  // tipografía: «Versalita» va en MAYÚSCULAS, como la muestra del selector y
+  // como el DXF que arma el servidor (production-fonts.ts, `uppercase`). El
+  // texto guardado y el del mensaje quedan como los escribió el cliente.
+  const renderText = activeFont.style.textTransform === "uppercase" ? text.toLocaleUpperCase("es") : text;
   const textSpec = React.useMemo<MarkSpec>(
-    () => ({ kind: "text", text, fontFamily: textFontFamily, colorPrint: isColorPrint }),
-    [text, textFontFamily, isColorPrint],
+    () => ({ kind: "text", text: renderText, fontFamily: textFontFamily, colorPrint: isColorPrint }),
+    [renderText, textFontFamily, isColorPrint],
   );
   const artSpec = React.useMemo<MarkSpec>(
     () => ({ kind: "art", imageSize: artImageSize, artW: artNaturalW, artH: artNaturalH }),
@@ -2272,9 +2277,10 @@ export default function Customizer() {
     document.fonts.load(`900 32px "${fam}"`).then(() => { if (alive) setFontTick(t => t + 1); }).catch(() => {});
     return () => { alive = false; };
   }, [text2FontFamily]);
+  const renderText2 = activeFont2.style.textTransform === "uppercase" ? text2.toLocaleUpperCase("es") : text2;
   const text2Spec = React.useMemo<MarkSpec>(
-    () => ({ kind: "text", text: text2, fontFamily: text2FontFamily, colorPrint: isColorPrint }),
-    [text2, text2FontFamily, isColorPrint],
+    () => ({ kind: "text", text: renderText2, fontFamily: text2FontFamily, colorPrint: isColorPrint }),
+    [renderText2, text2FontFamily, isColorPrint],
   );
   const text2Extents = React.useMemo<MarkHalfExtents>(
     () => markHalfExtents(product, text2Spec, text2Placement, singleFace),
@@ -2283,8 +2289,8 @@ export default function Customizer() {
   );
   /** Lo que recibe el 3D (y el PNG de la Dacen) además del texto principal. */
   const extraTextMarks = React.useMemo<TextMark[]>(
-    () => (text2.trim() ? [{ text: text2, placement: text2Placement, fontFamily: text2FontFamily }] : []),
-    [text2, text2Placement, text2FontFamily],
+    () => (text2.trim() ? [{ text: renderText2, placement: text2Placement, fontFamily: text2FontFamily }] : []),
+    [renderText2, text2, text2Placement, text2FontFamily],
   );
 
   // Full text layout (wrap + auto-shrink) so the UI can flag when the size was
@@ -3489,7 +3495,7 @@ export default function Customizer() {
       return image ? [{ image, svg: l.svg ?? null, u: l.u, v: l.v, widthFrac: l.widthFrac }] : [];
     });
     return {
-      text,
+      text: renderText,
       textPlacement,
       fontFamily: (activeFont.style?.fontFamily as string | undefined) ?? "Inter, system-ui, sans-serif",
       textColor,
@@ -4193,7 +4199,7 @@ export default function Customizer() {
             <Thermos3D
               colorHex={activeColorHex}
               finish={finish}
-              text={text}
+              text={renderText}
               fontClass=""
               fontStyle={activeFont.style}
               productId={productId}
@@ -4218,7 +4224,7 @@ export default function Customizer() {
             <Object3D
               objectId={activeObject.id}
               colorHex={activeObject.colorable ? activeColorHex : undefined}
-              text={text}
+              text={renderText}
               fontStyle={activeFont.style}
               customImageUrl={artUrl}
               imageSize={artImageSize}
@@ -4264,7 +4270,7 @@ export default function Customizer() {
     <Thermos3D
       colorHex={activeColorHex}
       finish={finish}
-      text={text}
+      text={renderText}
       fontClass=""
       fontStyle={activeFont.style}
       productId={productId}
@@ -5117,7 +5123,7 @@ export default function Customizer() {
                     <Object3D
                       objectId={activeObject.id}
                       colorHex={activeObject.colorable ? activeColorHex : undefined}
-                      text={text}
+                      text={renderText}
                       fontStyle={activeFont.style}
                       customImageUrl={artUrl}
                       imageSize={artImageSize}

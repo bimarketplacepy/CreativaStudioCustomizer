@@ -91,8 +91,10 @@ export interface WrapLayer {
 const repeatsFor = (mode: WrapMode) => (mode === "tile" ? TILE_REPEATS : mode === "mirror" ? 2 : 1);
 
 /**
- * Dibuja el fondo en la banda [topPx, botPx] de una textura de ancho W.
- * El contexto puede venir escalado (archivo de producción en alta resolución).
+ * Dibuja el fondo en la banda [topPx, botPx] de una textura de ancho W, y los
+ * logos dentro de `logoBand` (la zona segura, la misma de los textos). Sin
+ * `logoBand`, los logos usan la banda del fondo. El contexto puede venir
+ * escalado (archivo de producción en alta resolución).
  */
 export function drawWrapLayer(
   ctx: CanvasRenderingContext2D,
@@ -100,9 +102,10 @@ export function drawWrapLayer(
   band: { topPx: number; botPx: number; aspect: number },
   wrap: WrapLayer,
   sink?: VectorSink,
+  logoBand: { topPx: number; botPx: number; aspect: number } = band,
 ) {
   drawWrapBackground(ctx, W, band, wrap);
-  if (wrap.logos?.length) drawWrapLogos(ctx, W, band, wrap.logos, sink);
+  if (wrap.logos?.length) drawWrapLogos(ctx, W, logoBand, wrap.logos, sink);
 }
 
 /**

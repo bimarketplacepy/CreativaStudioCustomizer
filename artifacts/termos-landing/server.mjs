@@ -212,7 +212,7 @@ function dynamicDoc(pathname, req) {
         `- [Impresión 360°](${origin}/#impresion-360): impresión UV a todo color en toda la vuelta del vaso.\n` +
         `- [Precios y grabado](${origin}/#precios): planes de grabado láser; impresión a color y 360° a cotizar.\n` +
         `- [Trabajos realizados](${origin}/#galeria): galería de piezas ya personalizadas.\n` +
-        `- [Stickers](${origin}/#stickers): stickers personalizados con tu diseño.\n` +
+        `- [Stickers](${origin}/#stickers): stickers con tu diseño, desde 1 unidad, de 3 a 28 cm, brillantes o con relieve 3D.\n` +
         `- [Contacto](${origin}/#contacto): WhatsApp, Instagram y ubicación del taller.\n\n` +
         `## Contacto\n` +
         `- WhatsApp: +595 981 124607\n` +
@@ -222,6 +222,10 @@ function dynamicDoc(pathname, req) {
   }
   return null;
 }
+
+/** Rutas que existen en la app (wouter, src/App.tsx). Sumar acá cada ruta
+ *  nueva (p. ej. /personalizar), o el servidor la va a responder con 404. */
+const SPA_ROUTES = new Set(["/"]);
 
 async function resolveFile(pathname) {
   // Block path traversal, then map the URL onto the build directory.
@@ -282,7 +286,7 @@ async function serve(req, res) {
   }
 
   if (method !== "GET" && method !== "HEAD") {
-    res.writeHead(405, { Allow: "GET, HEAD, POST" });
+    res.writeHead(405, { Allow: "GET, HEAD" });
     res.end("Method Not Allowed");
     return;
   }
@@ -311,8 +315,13 @@ async function serve(req, res) {
   let filePath = await resolveFile(pathname);
 
   // SPA fallback: a route with no file extension falls back to index.html so
-  // client-side routing (wouter) works on deep links.
+  // client-side routing (wouter) works on deep links. Las rutas que no existen
+  // en la app (SPA_ROUTES) reciben el mismo HTML con estado 404: la app
+  // muestra «Esta página no existe» y los buscadores no la indexan como copia
+  // de la portada (antes respondía 200, un «soft 404»).
+  let status = 200;
   if (!filePath && !extname(pathname)) {
+    if (!SPA_ROUTES.has(pathname.replace(/\/+$/, "") || "/")) status = 404;
     pathname = "/index.html";
     filePath = join(ROOT, "index.html");
   }
@@ -353,7 +362,7 @@ async function serve(req, res) {
         payload = compress(await readFile(filePath), encoding);
         compressedCache.set(key, payload);
       }
-      res.writeHead(200, {
+      res.writeHead(status, {
         ...baseHeaders,
         "Content-Encoding": encoding,
         "Content-Length": payload.length,
@@ -364,7 +373,7 @@ async function serve(req, res) {
 
     // Uncompressed (images, fonts): stream straight from disk.
     const info = await stat(filePath);
-    res.writeHead(200, { ...baseHeaders, "Content-Length": info.size });
+    res.writeHead(status, { ...baseHeaders, "Content-Length": info.size });
     if (method === "HEAD") {
       res.end();
       return;

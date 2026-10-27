@@ -481,8 +481,10 @@ export function drawColorLayer(ctx: CanvasRenderingContext2D, product: ProductDe
   // Orden de las capas (DACEN.md §12.4): fondo 360°, logo/ícono, textos.
   const sink = o.vectorSink;
   // El fondo cubre el cuerpo pintado entero (no solo la banda): sin franjas
-  // del color de la pieza arriba ni abajo, en cualquier modelo y tamaño.
-  if (o.wrap) drawWrapLayer(ctx, W, bodyMetrics(product, W, TEXTURE_H), o.wrap, sink);
+  // del color de la pieza arriba ni abajo, en cualquier modelo y tamaño. Los
+  // logos, en cambio, quedan en la banda segura (como los textos): con el alto
+  // en 0 o en 1 no tocan la tapa ni la base.
+  if (o.wrap) drawWrapLayer(ctx, W, bodyMetrics(product, W, TEXTURE_H), o.wrap, sink, m);
   if (artImage && imageSize !== "none") {
     const naturalW = artImage.naturalWidth || artImage.width || 1;
     const naturalH = artImage.naturalHeight || artImage.height || 1;

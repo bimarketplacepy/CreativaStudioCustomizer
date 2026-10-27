@@ -73,6 +73,10 @@ export default function Hero() {
     track("cta_click", { location: "hero_360" });
     scrollToSection("impresion-360");
   };
+  const goStickers = () => {
+    track("cta_click", { location: "hero_stickers" });
+    scrollToSection("stickers");
+  };
 
   return (
     <>
@@ -207,15 +211,26 @@ export default function Hero() {
               <li className="flex items-center gap-2"><Check /> Pagás cuando lo confirmás</li>
             </ul>
 
+            <div className="mt-6 grid gap-2.5 justify-items-start">
             <button
               type="button"
               onClick={go360}
-              className="group mt-6 inline-flex items-center gap-3 rounded-full border border-[var(--cs-laser)]/50 bg-[var(--cs-laser)]/10 pl-1.5 pr-4 py-1.5 text-left text-sm text-[var(--cs-mark)] hover:bg-[var(--cs-laser)]/20 transition-colors"
+              className="group inline-flex items-center gap-3 rounded-full border border-[var(--cs-laser)]/50 bg-[var(--cs-laser)]/10 pl-1.5 pr-4 py-1.5 text-left text-sm text-[var(--cs-mark)] hover:bg-[var(--cs-laser)]/20 transition-colors"
             >
               <span className="rounded-full bg-[var(--cs-bordo)] text-white text-xs font-bold px-2.5 py-1">360°</span>
               <span>Tu diseño en toda la vuelta del vaso, a todo color</span>
               <span className="w-4 h-4 transition-transform group-hover:translate-x-0.5"><Arrow /></span>
             </button>
+            <button
+              type="button"
+              onClick={goStickers}
+              className="group inline-flex items-center gap-3 rounded-full border border-white/25 bg-white/[0.05] pl-1.5 pr-4 py-1.5 text-left text-sm text-[var(--cs-mark)] hover:bg-white/10 transition-colors"
+            >
+              <span className="rounded-full bg-[var(--cs-mark)] text-[var(--cs-ink)] text-xs font-bold px-2.5 py-1">Stickers</span>
+              <span>Con tu diseño, desde 1 unidad</span>
+              <span className="w-4 h-4 transition-transform group-hover:translate-x-0.5"><Arrow /></span>
+            </button>
+            </div>
           </div>
 
           {/* Fotos reales: collage en escritorio, tira deslizable en celular. */}

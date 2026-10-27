@@ -52,7 +52,7 @@ export default function ForWhom() {
             <span className={SHADE} />
             <span className="relative p-5 md:p-6 grid gap-1.5">
               <span className="font-serif font-light text-[28px] md:text-[32px]">Empresas y eventos</span>
-              <span className="text-[15px] text-[#E8DFD6]">Tu logo en cantidad, grabado o impreso en 360°, con descuento por volumen.</span>
+              <span className="text-[15px] text-[#E8DFD6]">Tu logo en cantidad: grabado, impreso en 360° o en stickers para tu packaging y eventos, con descuento por volumen.</span>
               <span className="mt-1 inline-flex items-center gap-2 text-[15px] font-semibold">Pedir presupuesto <Arrow /></span>
             </span>
           </a>
