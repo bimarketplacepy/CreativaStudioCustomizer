@@ -340,6 +340,10 @@ const ADMIN_HTML = `<!DOCTYPE html>
   // abierta la cola de una máquina y recargarla.
   var machine = new URLSearchParams(location.search).get("machine") || "";
   if (!MACHINE_NAMES[machine]) machine = "";
+  // Link del mensaje de WhatsApp (/admin?pedido=CS-0016): abre el panel
+  // filtrado en ese pedido, con su archivo de producción (DXF, PNG, SVG).
+  var pedido = (new URLSearchParams(location.search).get("pedido") || "").toUpperCase();
+  if (!/^CS-[0-9]{1,8}$/.test(pedido)) pedido = "";
 
   function fileLabel(o) {
     if (o.productionKind === "png") return o.machine === "dacen" ? "PNG 360° para RIPrint (Dacen)" : "PNG para eufyMake";
@@ -456,6 +460,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
       orders = data;
       login.style.display = "none";
       panel.style.display = "block";
+      if (pedido) { document.getElementById("search").value = pedido; pedido = ""; }
       if (view === "orders") render(document.getElementById("search").value);
     });
   }

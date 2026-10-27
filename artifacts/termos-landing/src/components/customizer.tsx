@@ -3533,16 +3533,45 @@ export default function Customizer() {
     </>
   );
 
-  /** Mensaje de WhatsApp — sale de orderFields(), la misma fuente que el
-   *  resumen visual. Con pedido creado suma el número y la URL del diseño. */
+  /** Mensaje de WhatsApp: corto, una línea por idea (pieza, diseño, total,
+   *  links). Sale de orderFields(), la misma fuente que la orden de trabajo;
+   *  el detalle completo (material, hex, ubicación de cada elemento) queda en
+   *  el pedido y en /admin. Con pedido creado suma el número, la imagen y el
+   *  link del taller al panel, donde se baja el archivo de producción (DXF
+   *  para la láser, PNG/SVG para la Dacen). Ese link pide la clave interna:
+   *  el cliente lo ve pero no lo puede abrir. */
   const buildOrderMessage = (orderNumber: string | null, imageUrl: string | null): string => {
-    const parts = ["¡Hola! Acabo de armar mi pedido personalizado y quiero coordinarlo con ustedes."];
-    if (orderNumber) parts.push(`Pedido: ${orderNumber}`);
-    parts.push(...orderFields().map(([k, v]) => `${k}: ${v}`));
-    parts.push(`Precio estimado: ${estimateText}`);
-    if (imageUrl) parts.push(`Así quedó mi diseño:\n${imageUrl}`);
-    // Renglón en blanco entre datos para que WhatsApp lo muestre ordenado.
-    return parts.join("\n\n");
+    const f = Object.fromEntries(orderFields()) as Record<string, string | undefined>;
+    const noHex = (v?: string) => v?.replace(/\s*\(#[0-9a-f]{6}\)$/i, "");
+    const lower = (v?: string) => (v ? v.charAt(0).toLowerCase() + v.slice(1) : v);
+
+    // Pieza: producto · tamaño · color, y el código o "la llevo yo".
+    const piece = [f["Producto"], f["Tamaño"], noHex(f["Color"])].filter(Boolean).join(" · ")
+      + (f["Origen"] ? " (la llevo yo)" : f["Código"] ? ` (cód. ${f["Código"]})` : "");
+
+    // Diseño: cada elemento una vez, con su tipografía; la cara solo si no es el frente.
+    const t1 = text.trim();
+    const t2 = text2.trim();
+    const parts: string[] = [];
+    if (t1) parts.push(`«${t1}» (${activeFont.name})`);
+    if (t2) parts.push(`«${t2}» (${activeFont2.name})`);
+    if (selectedIcon) parts.push(`ícono ${lower(selectedIcon.name)}`);
+    else if (customImage) parts.push("mi logo/foto");
+    if (activeWrap) parts.push(`fondo 360°${activeWrap.logos?.length ? ` con ${activeWrap.logos.length} logo${activeWrap.logos.length > 1 ? "s" : ""}` : ""}`);
+    if (extraLidText !== null) parts.push(`tapa: ${extraLidText ? `«${extraLidText}»` : "a definir"}`);
+    if (extraBaseText !== null) parts.push(`base: ${extraBaseText ? `«${extraBaseText}»` : "a definir"}`);
+    const where = f["Ubicación del texto"] && f["Ubicación del texto"] !== "Frente" ? `, ${lower(f["Ubicación del texto"])}` : "";
+    const design = `${f["Técnica"]}: ${parts.length ? parts.join(" + ") : "a definir por WhatsApp"}${where}`;
+
+    const lines = [
+      orderNumber ? `¡Hola! Quiero hacer el pedido *${orderNumber}*:` : "¡Hola! Quiero hacer este pedido:",
+      piece,
+      design,
+      estimate.price ? `Total estimado: ${estimate.price}` : estimate.note,
+    ];
+    if (imageUrl) lines.push(`Diseño: ${imageUrl}`);
+    if (orderNumber) lines.push(`Taller: ${window.location.origin}/admin?pedido=${orderNumber}`);
+    return lines.join("\n");
   };
 
   /** Captura el diseño de frente, crea el pedido (POST /api/orders con specs +
