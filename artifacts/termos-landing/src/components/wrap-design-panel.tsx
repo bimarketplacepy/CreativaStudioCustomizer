@@ -4,6 +4,8 @@ import {
   artworkDistortion, dpiVerdict, DPI_VERDICT_TEXT, MAX_WRAP_LOGOS, readWrapImage, wrapEffectiveDpi,
   WRAP_LOGO_SPOTS, WRAP_MODES, type WrapDesign, type WrapLogo, type WrapMode,
 } from "@/lib/wrap-design";
+import { prepareLogo } from "@/lib/logo-cutout";
+import { track } from "@/lib/analytics";
 
 /**
  * "Todo el vaso (360°)" (DACEN.md §12): fondo que llena la vuelta completa,
@@ -201,35 +203,57 @@ const nearSpot = (u: number, target: number) => {
 function WrapLogosEditor({ logos, onChange }: { logos: WrapLogo[]; onChange: (logos: WrapLogo[]) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<null | "open" | "ai">(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // Si el cliente cierra el panel mientras la IA recorta, el resultado no se agrega.
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
 
   const add = async (file: File | undefined) => {
     if (!file) return;
     setError(null);
+    setNotice(null);
     if (!file.type.startsWith("image/")) { setError("Elegí un logo en SVG, PNG o JPG."); return; }
     if (file.size > MAX_FILE_BYTES) { setError("El logo pesa más de 25 MB."); return; }
-    setBusy(true);
+    setBusy("open");
     try {
-      const img = await readWrapImage(file);
       // Cada logo nuevo va a la próxima cara libre (frente, izquierda, atrás…).
       const spot = WRAP_LOGO_SPOTS.find(sp => !logos.some(l => nearSpot(l.u, sp.u))) ?? WRAP_LOGO_SPOTS[0]!;
+      const base = { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, u: spot.u, v: 0.5, widthFrac: 0.18 };
+      if (file.type === "image/svg+xml") {
+        // Un SVG ya es un recorte y va en vector al archivo: no se toca.
+        const img = await readWrapImage(file);
+        onChange([...logos, { ...base, url: img.url, width: img.width, height: img.height, svg: img.svg && img.svg.length <= MAX_SVG_CHARS ? img.svg : null }]);
+        return;
+      }
+      // PNG/JPG: sin fondo si se puede (ver lib/logo-cutout.ts); con IA solo
+      // cuando el fondo no es liso, y avisando que tarda unos segundos.
+      const prepared = await prepareLogo(file, () => setBusy("ai"));
+      if (!alive.current) return;
       onChange([...logos, {
-        id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-        url: img.url, width: img.width, height: img.height,
-        svg: img.svg && img.svg.length <= MAX_SVG_CHARS ? img.svg : null,
-        u: spot.u, v: 0.5, widthFrac: 0.18,
+        ...base,
+        url: prepared.image.url, width: prepared.image.width, height: prepared.image.height, svg: null,
+        alt: prepared.original, cut: prepared.kind === "flat" || prepared.kind === "ai" ? prepared.kind : null,
       }]);
+      track("wrap_logo_add", { cut: prepared.kind });
+      if (prepared.aiError) setNotice("No pudimos quitarle el fondo con IA: quedó como lo subiste. Si tenés el logo en PNG sin fondo o en SVG, queda mejor.");
     } catch {
       setError("No pudimos abrir el logo. Probá con otro archivo.");
     } finally {
-      setBusy(false);
+      if (alive.current) setBusy(null);
       if (inputRef.current) inputRef.current.value = "";
     }
   };
+  /** Cambia entre la versión sin fondo y la original (con fondo). */
+  const swap = (id: string) => onChange(logos.map(l => (l.id === id && l.alt
+    ? { ...l, url: l.alt.url, width: l.alt.width, height: l.alt.height, alt: { url: l.url, width: l.width, height: l.height }, withBg: !l.withBg }
+    : l)));
   const update = (id: string, patch: Partial<WrapLogo>) => onChange(logos.map(l => (l.id === id ? { ...l, ...patch } : l)));
   const remove = (id: string) => {
     const gone = logos.find(l => l.id === id);
     if (gone?.url.startsWith("blob:")) URL.revokeObjectURL(gone.url);
+    if (gone?.alt?.url.startsWith("blob:")) URL.revokeObjectURL(gone.alt.url);
     onChange(logos.filter(l => l.id !== id));
   };
 
@@ -237,7 +261,7 @@ function WrapLogosEditor({ logos, onChange }: { logos: WrapLogo[]; onChange: (lo
     <div className="space-y-3 border-t border-border pt-4">
       <div>
         <p className="text-sm font-semibold text-foreground">Logos encima del fondo</p>
-        <p className="text-xs text-muted-foreground">Hasta {MAX_WRAP_LOGOS}. En SVG salen en vector, más nítidos; PNG o JPG también sirven.</p>
+        <p className="text-xs text-muted-foreground">Hasta {MAX_WRAP_LOGOS}. Les quitamos el fondo solos. En SVG salen en vector, más nítidos; PNG o JPG también sirven.</p>
       </div>
       <input
         ref={inputRef}
@@ -263,6 +287,29 @@ function WrapLogosEditor({ logos, onChange }: { logos: WrapLogo[]; onChange: (lo
               <Trash2 className="w-4.5 h-4.5" />
             </button>
           </div>
+          {l.cut && l.alt && (
+            <div role="group" aria-label={`Fondo del logo ${i + 1}`} className="grid grid-cols-2 gap-1.5">
+              {[
+                { withBg: false, label: l.cut === "ai" ? "Sin fondo (IA)" : "Sin fondo" },
+                { withBg: true, label: "Con fondo" },
+              ].map(opt => {
+                const on = !!l.withBg === opt.withBg;
+                return (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => { if (!on) swap(l.id); }}
+                    className={`min-h-10 rounded-lg border text-xs font-medium transition-all ${on
+                      ? "border-primary bg-[#f5eaec] text-primary"
+                      : "border-border text-foreground"}`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div role="radiogroup" aria-label={`Dónde va el logo ${i + 1}`} className="grid grid-cols-4 gap-1.5">
             {WRAP_LOGO_SPOTS.map(sp => {
               const on = nearSpot(l.u, sp.u);
@@ -287,11 +334,17 @@ function WrapLogosEditor({ logos, onChange }: { logos: WrapLogo[]; onChange: (lo
         </div>
       ))}
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+      {notice && <p role="status" className="text-xs text-[#8A560A]">{notice}</p>}
+      {busy === "ai" && (
+        <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" /> Quitando el fondo con IA… tarda unos segundos.
+        </p>
+      )}
       {logos.length < MAX_WRAP_LOGOS && (
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          disabled={busy}
+          disabled={!!busy}
           className="w-full min-h-11 rounded-full border border-dashed border-primary/50 text-sm font-semibold text-primary flex items-center justify-center gap-2 active:bg-[#f5eaec]"
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}

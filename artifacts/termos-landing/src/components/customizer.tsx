@@ -3282,9 +3282,9 @@ export default function Customizer() {
         }
       }
       setTechnique("color");
-      // El panel «Todo el vaso (360°)» vive en la pestaña Texto (escritorio)
+      // El panel «Todo el vaso (360°)» vive en la pestaña Imagen (escritorio)
       // y en la hoja de Diseño (celular).
-      setDrinkTab("text");
+      setDrinkTab("media");
       // window.innerWidth y no isMobile: al montar, useIsMobile todavía da false.
       if (window.innerWidth < 768) setSheet({ mode: "wrap", edit: null });
     }

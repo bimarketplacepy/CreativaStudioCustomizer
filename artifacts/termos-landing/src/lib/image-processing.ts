@@ -301,6 +301,38 @@ export function canvasToSvgDataUrl(canvas: HTMLCanvasElement): string {
  * `maxDim` caps the longest side: the engraving preview needs little, while a
  * printed sticker needs enough pixels for its real size (see stickers.tsx).
  */
+/**
+ * Recorte de un lienzo ya dibujado, para los logos del fondo 360°:
+ *  - "own": la imagen ya traía transparencia (se recortan solo los márgenes);
+ *  - "flat": tenía un fondo liso de borde a borde y se borró;
+ *  - null: no hay un fondo liso demostrable (ej. una foto): no se toca.
+ * `minAgreement` baja la exigencia cuando se sabe que el fondo es liso (la
+ * imagen que vuelve de la IA sobre un color de recorte).
+ */
+export function cutCanvasBackground(
+  source: HTMLCanvasElement,
+  opts: { minAgreement?: number } = {},
+): { canvas: HTMLCanvasElement; kind: "own" | "flat" } | null {
+  const { width, height } = source;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+  ctx.drawImage(source, 0, 0);
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  if (hasOwnTransparency(data)) return { canvas: crop(canvas, contentBounds(data, width, height)), kind: "own" };
+  const bg = sampleBorder(data, width, height);
+  if (!bg || bg.agreement < (opts.minAgreement ?? MIN_BORDER_AGREEMENT)) return null;
+  const removed = eraseFlatBackground(data, width, height, bg);
+  if (removed < MIN_REMOVED_FRACTION || removed > MAX_REMOVED_FRACTION) return null;
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] > 0 && data[i] < 12) data[i] = 0;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return { canvas: crop(canvas, contentBounds(data, width, height)), kind: "flat" };
+}
+
 export async function fileToProcessedSvg(file: Blob, maxDim = MAX_DIM): Promise<ProcessedImage> {
   const img = await loadImage(file);
   const canvas = drawScaled(img, img.naturalWidth, img.naturalHeight, maxDim);

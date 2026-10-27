@@ -2,8 +2,8 @@ import { Router, type IRouter, type Response } from "express";
 import { rateLimit, sameOriginOnly } from "../middlewares/rate-limit";
 import { logger } from "../lib/logger";
 import {
-  GeminiError, generateDesignImage, geminiKey, imagesAvailable, markImagesAvailable, markImagesFailure, markImagesUnavailable,
-  suggestPhrases, type ImageStyle,
+  CUTOUT_ASPECTS, CUTOUT_KEYS, GeminiError, cutoutImage, generateDesignImage, geminiKey, imagesAvailable, markImagesAvailable,
+  markImagesFailure, markImagesUnavailable, suggestPhrases, type CutoutAspect, type CutoutKey, type ImageStyle,
 } from "../lib/gemini";
 
 /**
@@ -12,6 +12,8 @@ import {
  *  - POST /api/ai/phrases → ideas de texto para grabar.
  *  - POST /api/ai/image   → crear una imagen desde una descripción, o pasar una
  *    foto a dibujo. Va al diseñador como cualquier imagen subida.
+ *  - POST /api/ai/cutout  → quitarle el fondo a un logo o foto del fondo 360°:
+ *    vuelve sobre un color liso que la landing recorta.
  *
  * Límites por IP y un tope diario de imágenes, para que la cuenta de Google no
  * se dispare si alguien abusa.
@@ -127,6 +129,38 @@ router.post("/ai/image", rateLimit({ max: 8, windowMs: 60 * 60 * 1000 }), async 
       if (/limit: 0|free_tier/i.test(err.message)) markImagesUnavailable();
     } else if (!(err instanceof GeminiError && err.kind === "blocked")) markImagesFailure();
     fail(res, err, "imagen");
+  }
+});
+
+/** Igual que /ai/image: cuenta en el mismo tope diario de imágenes. */
+router.post("/ai/cutout", rateLimit({ max: 20, windowMs: 60 * 60 * 1000 }), async (req, res) => {
+  const m = typeof req.body?.photo === "string"
+    ? /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(req.body.photo)
+    : null;
+  if (!m || (m[2].length * 3) / 4 > MAX_PHOTO_BYTES) {
+    res.status(400).json({ message: "La imagen no es válida o es muy pesada." });
+    return;
+  }
+  const key: CutoutKey = Object.hasOwn(CUTOUT_KEYS, req.body?.key) ? req.body.key : "verde";
+  const aspect: CutoutAspect = (CUTOUT_ASPECTS as readonly string[]).includes(req.body?.aspect) ? req.body.aspect : "1:1";
+  if (!imagesAvailable()) {
+    res.status(503).json({ message: "La IA está ocupada en este momento. Probá de nuevo en unos minutos." });
+    return;
+  }
+  if (!images.take()) {
+    res.status(503).json({ message: "Llegamos al máximo de imágenes con IA por hoy. Probá mañana." });
+    return;
+  }
+  try {
+    const img = await cutoutImage({ photo: { mimeType: m[1], data: m[2] }, key, aspect });
+    markImagesAvailable();
+    res.json({ image: `data:${img.mimeType};base64,${img.data}` });
+  } catch (err) {
+    images.release();
+    if (err instanceof GeminiError && err.kind === "quota") {
+      if (/limit: 0|free_tier/i.test(err.message)) markImagesUnavailable();
+    } else if (!(err instanceof GeminiError && err.kind === "blocked")) markImagesFailure();
+    fail(res, err, "recorte");
   }
 });
 

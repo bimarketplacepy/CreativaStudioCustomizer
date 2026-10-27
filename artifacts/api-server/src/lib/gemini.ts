@@ -205,6 +205,49 @@ export async function generateDesignImage(opts: {
   });
 }
 
+// ── Quitar el fondo (logos del fondo 360°) ──────────────────────────────────
+
+/** Colores de fondo para recortar después: la landing elige el que no aparece en el logo. */
+export const CUTOUT_KEYS = { verde: "#00FF00", magenta: "#FF00FF", azul: "#0000FF" } as const;
+export type CutoutKey = keyof typeof CUTOUT_KEYS;
+/** Proporciones que acepta el modelo de imágenes (se manda la más cercana a la del logo). */
+export const CUTOUT_ASPECTS = ["1:1", "4:5", "5:4", "3:4", "4:3", "2:3", "3:2", "9:16", "16:9"] as const;
+export type CutoutAspect = (typeof CUTOUT_ASPECTS)[number];
+
+/**
+ * Devuelve el mismo logo o foto sobre un fondo liso del color `key`, para que
+ * la landing lo recorte (Gemini no entrega transparencia real). El pedido es
+ * no redibujar: mismos colores, textos y forma.
+ */
+export async function cutoutImage(opts: {
+  photo: { mimeType: string; data: string };
+  key: CutoutKey;
+  aspect: CutoutAspect;
+}): Promise<{ mimeType: string; data: string }> {
+  const hex = CUTOUT_KEYS[opts.key];
+  const instructions = [
+    "Quitá el fondo de esta imagen.",
+    "Devolvé EXACTAMENTE el mismo sujeto principal (logo, ilustración, persona, mascota u objeto): sin redibujarlo, " +
+      "sin cambiar colores, textos, letras, forma, proporciones ni detalles, sin recortarlo y sin moverlo.",
+    `Reemplazá todo el fondo por un color liso y uniforme ${hex} (${opts.key}), de borde a borde, también en los huecos ` +
+      "interiores (por ejemplo dentro de letras).",
+    "Sin sombras, sin reflejos, sin degradados, sin marco, sin bordes y sin agregar nada.",
+  ].join("\n");
+  const body = {
+    contents: [{ role: "user", parts: [{ text: instructions }, { inlineData: opts.photo }] }],
+    generationConfig: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: opts.aspect } },
+  };
+  return withFallback(IMAGE_MODELS, async model => {
+    const { parts: out, finishReason } = await callModel(model, body, 60_000);
+    const img = out.find(p => p.inlineData?.data)?.inlineData;
+    if (!img) {
+      if (finishReason && /SAFETY|PROHIBITED|BLOCK|IMAGE_OTHER/i.test(finishReason)) throw new GeminiError(finishReason, "blocked");
+      throw new GeminiError(`sin imagen (${finishReason ?? "?"})`, "bad_response");
+    }
+    return { mimeType: img.mimeType, data: img.data };
+  });
+}
+
 // ── Disponibilidad de imágenes ──────────────────────────────────────────────
 // La capa gratuita de Gemini no genera imágenes. En vez de mostrarle al
 // cliente un botón que falla, el servidor recuerda cómo salieron los pedidos

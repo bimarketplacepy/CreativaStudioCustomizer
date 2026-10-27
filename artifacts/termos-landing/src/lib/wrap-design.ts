@@ -48,6 +48,12 @@ export interface WrapLogo {
   v: number;
   /** Ancho como fracción de la vuelta completa. */
   widthFrac: number;
+  /** La otra versión (con fondo ↔ sin fondo), para poder cambiar entre ellas. */
+  alt?: { url: string; width: number; height: number } | null;
+  /** Cómo se le quitó el fondo: fondo liso en el navegador, o con IA (Gemini). */
+  cut?: "flat" | "ai" | null;
+  /** true: se está mostrando la original con fondo (y `alt` es la recortada). */
+  withBg?: boolean;
 }
 
 export const MAX_WRAP_LOGOS = 4;
