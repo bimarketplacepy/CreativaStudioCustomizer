@@ -62,6 +62,15 @@ export default function Hero() {
   // "Traé de tu casa o comprá acá" + lo que quiere grabar: arranca el
   // personalizador con eso cargado (startCustomizer en section-reveal.ts).
   const [own, setOwn] = useState(false);
+  // Apenas el cliente toca la elección o el campo, el personalizador (3D)
+  // empieza a bajar en segundo plano: mientras escribe el nombre ya está
+  // llegando, en vez de esperar al botón (en 4G lenta son varios segundos).
+  const warmed = React.useRef(false);
+  const warm = () => {
+    if (warmed.current) return;
+    warmed.current = true;
+    import("@/components/customizer").catch(() => { warmed.current = false; });
+  };
   const [text, setText] = useState("");
   const trimmed = text.trim();
   const start = (e?: React.FormEvent) => {
@@ -159,7 +168,7 @@ export default function Hero() {
               en 360° alrededor del vaso. Lo diseñás acá, lo ves en 3D y lo confirmás por WhatsApp.
             </p>
 
-            <form onSubmit={start} className="mt-7 md:mt-9 grid gap-2.5 max-w-[34rem]">
+            <form onSubmit={start} onFocusCapture={warm} onPointerDownCapture={warm} className="mt-7 md:mt-9 grid gap-2.5 max-w-[34rem]">
               <p id="fork-label" className="text-sm font-semibold text-[var(--cs-mark)]">Traé de tu casa o comprá acá</p>
               <div role="group" aria-labelledby="fork-label" className="grid grid-cols-2 gap-2.5">
                 {[

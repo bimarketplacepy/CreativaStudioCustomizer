@@ -12,6 +12,7 @@ import { FRONT_FACE, frontAreaBounds, nearU } from "@/lib/face-area";
 import { trackPinch, type PinchPhase } from "@/lib/pinch";
 import { keepOutKindOf, zoneFromVertices, type KeepOutZone } from "@/lib/keep-out";
 import { layoutText, fillLinesAligned, measureLinesWidth, LINE_HEIGHT } from "@/lib/engraving-text";
+import { LOW_END } from "@/lib/device-tier";
 
 /**
  * Si falla el 3D (por ejemplo, se cortó la red al bajar el .glb) muestra la
@@ -976,7 +977,7 @@ function ThermosMesh({
     return base;
   }, [finish, product.id]);
 
-  const maxAnisotropy = useMemo(() => gl.capabilities.getMaxAnisotropy(), [gl]);
+  const maxAnisotropy = useMemo(() => Math.min(gl.capabilities.getMaxAnisotropy(), LOW_END ? 2 : 16), [gl]);
 
   // Rebuilding the four 1024×2048 canvas textures is the single most expensive
   // thing this component does, and it re-runs on every keystroke / drag frame —
@@ -1045,7 +1046,9 @@ function ThermosMesh({
   const spinLeft = useRef(0);
   const spinFromLogo = useRef(false);
   useEffect(() => {
-    spinLeft.current = Math.PI * 2;
+    // Gama baja: sin la vuelta de presentación (son segundos de render continuo
+    // justo cuando el cliente quiere empezar a diseñar).
+    spinLeft.current = LOW_END ? 0 : Math.PI * 2;
     spinFromLogo.current = true;
     invalidate();
   }, [product.id, invalidate]);
@@ -1944,7 +1947,7 @@ const SettledShadows = React.memo(function SettledShadows({ setMovingRef, positi
       opacity={0.5}
       scale={scale}
       blur={2.6}
-      resolution={1024}
+      resolution={LOW_END ? 256 : 1024}
       frames={moving ? 0 : 1}
       far={4}
       color="#000000"
@@ -1965,14 +1968,15 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
       // Cap the pixel ratio so high-DPI phones don't render 3–4× the pixels of a
       // transmission/glass scene (keeps it smooth and eases GPU memory pressure).
       // Piso 1 (no 1.5): en gama baja el dpr nativo es la resolución justa.
-      dpr={[1, LOW_PERF ? 1.5 : 2]}
+      dpr={[1, LOW_END ? 1 : LOW_PERF ? 1.5 : 2]}
       // Solo se dibuja cuando algo cambia (giro, arrastre, diseño): quieto, el
       // visor no gasta batería ni CPU. ThermosMesh pide cuadros mientras anima.
       frameloop="demand"
       // Sin preserveDrawingBuffer (obliga a copiar el buffer en cada cuadro, caro
       // en GPUs de celular): la captura del resumen dibuja un cuadro con
       // renderNowRef y lo lee en la misma tarea, cuando el buffer sigue vigente.
-      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+      // Gama baja: sin antialiasing (multiplica el costo de cada cuadro en GPUs chicas).
+      gl={{ antialias: !LOW_END, alpha: true, powerPreference: "high-performance" }}
       // preventDefault on context loss lets the browser fire `contextrestored`
       // and R3F rebuild the scene instead of leaving a black canvas. We surface a
       // placeholder while lost and force a re-render once the context is back.

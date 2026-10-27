@@ -10,6 +10,7 @@
  * Módulo pesado (exportador, RoomEnvironment): se importa recién al pedir AR.
  */
 import * as THREE from "three";
+import { LOW_END } from "./device-tier";
 
 export type ArMode = "quicklook" | "webxr";
 
@@ -114,8 +115,11 @@ export async function startWebXR(model: ArModel, opts: { onEnd?: () => void } = 
     throw e;
   }
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // La imagen de la cámara la compone el sistema: el modelo no necesita más de
+  // 1,5× de píxeles (1× en gama baja, sin antialias). Antes: hasta 2× con
+  // antialias, encima del visor que sigue abierto (dos contextos de GPU).
+  const renderer = new THREE.WebGLRenderer({ antialias: !LOW_END, alpha: true, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, LOW_END ? 1 : 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;

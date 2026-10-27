@@ -8,6 +8,7 @@ import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, type Placement } from "@
 import { buildEngraveMask } from "@/lib/image-processing";
 import { makeFaceMaps } from "@/lib/engraving-face";
 import { trackPinch, type PinchPhase } from "@/lib/pinch";
+import { LOW_END } from "@/lib/device-tier";
 import { makeLeatherGrain } from "@/lib/leather-texture";
 
 class WebGLErrorBoundary extends Component<
@@ -607,9 +608,9 @@ function ThreeCanvas({ obj, onContextLost, onContextRestored, ...props }: Object
   const { camY } = frame(obj);
   return (
     <Canvas
-      dpr={[1, 2]}
+      dpr={[1, LOW_END ? 1 : 2]}
       // preserveDrawingBuffer: keep the last frame readable for PNG capture.
-      gl={{ antialias: true, alpha: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
+      gl={{ antialias: !LOW_END, alpha: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
       onCreated={({ gl, invalidate }) => {
         const canvas = gl.domElement;
         canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); onContextLost?.(); }, false);

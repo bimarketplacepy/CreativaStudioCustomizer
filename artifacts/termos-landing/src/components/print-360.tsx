@@ -3,6 +3,7 @@ import { whatsappUrl } from "@/lib/contact";
 import { startCustomizer } from "@/lib/section-reveal";
 import { track } from "@/lib/analytics";
 import { MACHINES } from "@/lib/machines";
+import { LOW_END } from "@/lib/device-tier";
 
 /**
  * Impresión 360° a todo color con la Dacen F5 (DACEN.md §10–12). En vez de
@@ -95,10 +96,13 @@ function Vaso360() {
     let raf = 0;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const wide = window.innerWidth >= 1024;
-    const D = wide ? 230 : 180, H = wide ? 300 : 236, N = wide ? 64 : 52;
+    const D = wide ? 230 : 180, H = wide ? 300 : 236;
+    // Gama baja: menos tiras (cada una es una capa 3D para la GPU) y sin giro
+    // solo; se mueve igual con el dedo y con los botones de las caras.
+    const N = LOW_END ? 36 : wide ? 64 : 52;
     const r = D / 2, C = Math.PI * D, w = C / N;
 
-    let phi = 0, target: number | null = null, auto = !reduce, visible = true, last = performance.now();
+    let phi = 0, target: number | null = null, auto = !reduce && !LOW_END, visible = true, last = performance.now();
     const frontU = () => (((0.5 + phi / 360) % 1) + 1) % 1;
     const render = () => {
       body.style.transform = `translateZ(${-r}px) rotateY(${-phi}deg)`;
@@ -130,7 +134,7 @@ function Vaso360() {
     // Armar el cilindro cuando la tipografía ya está (el arte la usa).
     const build = () => {
       if (disposed) return;
-      const art = makeArt(1400, 740);
+      const art = LOW_END ? makeArt(1000, 528) : makeArt(1400, 740);
       cup.style.width = `${D}px`; cup.style.height = `${H}px`;
       body.style.width = `${D}px`; body.style.height = `${H}px`;
       strip.style.backgroundImage = `url(${art})`;

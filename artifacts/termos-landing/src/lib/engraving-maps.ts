@@ -10,6 +10,7 @@ import {
 import { FACES, faceConfigFor, nearU, type MarkHalfExtents } from "./face-area";
 import { drawWrapLayer, type WrapLayer } from "./wrap-design";
 import { ctxMatrix, type VectorSink } from "./vector-marks";
+import { LOW_END } from "./device-tier";
 
 /** Text wraps once a row passes this fraction of the wrap-around circumference. */
 const TEXT_WRAP_FRAC = 0.5;
@@ -555,7 +556,10 @@ export function makeBodyMaps({
   const W = TEXTURE_W, H = TEXTURE_H;
   const m = bandMetrics(product, W, H);
   const draft = quality === "draft";
-  const s = draft ? 0.5 : 1;
+  // Gama baja: también la versión completa a la mitad (¼ de los píxeles). En
+  // la pantalla del celular no se distingue y el armado tarda ~4 veces menos.
+  // Solo afecta la vista: el archivo de producción se dibuja aparte.
+  const s = draft || LOW_END ? 0.5 : 1;
 
   // ── Albedo base (shared by both the engraved and the printed piece) ────────
   const [base, ctx] = newCanvas(s);
