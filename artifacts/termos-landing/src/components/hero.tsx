@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { label: "Stickers", id: "stickers" },
   { label: "Trabajos", id: "galeria" },
   { label: "Precios", id: "precios" },
+  { label: "Preguntas", id: "preguntas" },
 ];
 
 /** Fotos reales del taller. La primera es la imagen LCP en escritorio: su
@@ -83,7 +84,7 @@ export default function Hero() {
             <img src="/la-creativa-logo-96.webp" alt="" width={32} height={32} decoding="async" className="h-5 sm:h-7 object-contain brightness-0 invert shrink-0 w-auto" />
             <span className="text-[var(--cs-mark)] text-sm sm:text-[15px] font-semibold whitespace-nowrap">Creativa Studio</span>
           </a>
-          <nav aria-label="Secciones" className="hidden lg:flex flex-1 justify-center items-center gap-7 text-[15px] text-[var(--cs-mark-dim)] font-medium">
+          <nav aria-label="Secciones" className="hidden xl:flex flex-1 justify-center items-center gap-7 text-[15px] text-[var(--cs-mark-dim)] font-medium">
             {NAV_ITEMS.map(item => (
               <a key={item.id} href={`#${item.id}`} onClick={e => { e.preventDefault(); scrollToSection(item.id); }} className="hover:text-white transition-colors">
                 {item.label}
@@ -95,11 +96,11 @@ export default function Hero() {
             target="_blank"
             rel="noopener noreferrer"
             data-track="header"
-            className="hidden lg:inline-flex cs-btn cs-btn-ghost-dark cs-btn-sm ml-auto lg:ml-0"
+            className="hidden xl:inline-flex cs-btn cs-btn-ghost-dark cs-btn-sm"
           >
             <Chat className="w-4 h-4" /> Escribinos
           </a>
-          <div className="lg:hidden ml-auto flex items-center -mr-2">
+          <div className="xl:hidden ml-auto flex items-center -mr-2">
             <a
               href={whatsappUrl("¡Hola! Quiero consultar por una personalización.")}
               target="_blank"
@@ -125,7 +126,7 @@ export default function Hero() {
           </div>
         </div>
         {menuOpen && (
-          <nav id="mobile-nav" aria-label="Secciones" className="lg:hidden border-t border-white/10 bg-[var(--cs-ink)] px-4 pb-3">
+          <nav id="mobile-nav" aria-label="Secciones" className="xl:hidden border-t border-white/10 bg-[var(--cs-ink)] px-4 pb-3">
             {NAV_ITEMS.map(item => (
               <a
                 key={item.id}

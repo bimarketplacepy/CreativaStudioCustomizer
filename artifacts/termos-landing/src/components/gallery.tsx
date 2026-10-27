@@ -1,95 +1,119 @@
-import React, { Suspense, lazy, useState } from "react";
-import { motion, MotionConfig } from "framer-motion";
-import { GALLERY_IMAGES } from "@/lib/gallery-images";
+import React, { Suspense, lazy, useMemo, useState } from "react";
+import { GALLERY_IMAGES, type GalleryKind } from "@/lib/gallery-images";
 import { track } from "@/lib/analytics";
-import { scrollToSection } from "@/lib/section-reveal";
+import { scrollToSection, startCustomizer } from "@/lib/section-reveal";
 import { requestDesignPreset } from "@/lib/design-preset";
-
-/** A curated selection of real work — a lookbook, not a dump of every file. */
-const CURATED = GALLERY_IMAGES.slice(0, 12);
 
 // El lightbox se monta recién al primer tap: su chunk no toca el bundle inicial.
 const GalleryLightbox = lazy(() => import("@/components/gallery-lightbox"));
 
+/** «Todo» muestra la selección variada; cada material, todas sus fotos. */
+const FILTERS: { id: "todo" | GalleryKind; label: string }[] = [
+  { id: "todo", label: "Todo" },
+  { id: "color", label: "Impresión a color" },
+  { id: "acero", label: "Acero" },
+  { id: "cuero", label: "Cuero" },
+  { id: "madera", label: "Madera" },
+  { id: "cristal", label: "Cristal" },
+  { id: "otros", label: "Otros" },
+];
+
 export default function Gallery() {
-  const scrollToCustomizer = () => {
-    track("cta_click", { location: "galeria" });
-    scrollToSection("customizer");
-  };
-  const designLike = (idx: number) => {
-    const preset = CURATED[idx]?.preset;
-    if (!preset) return;
-    track("cta_click", { location: "galeria_disenar_igual", product: preset.materialProductId });
-    setLightbox(null);
-    requestDesignPreset(preset);
-    scrollToSection("customizer");
-  };
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("todo");
+  const images = useMemo(
+    () => GALLERY_IMAGES.filter(img => (filter === "todo" ? img.featured : img.kind === filter)),
+    [filter],
+  );
   const [lightbox, setLightbox] = useState<number | null>(null);
 
-  return (
-    <section id="galeria" className="scroll-mt-20 bg-white py-20 md:py-28 px-6 border-t border-border">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="max-w-2xl mb-14">
-          <p className="text-[#8B1A2F] text-[11px] font-semibold uppercase tracking-[0.3em] mb-4">
-            El taller
-          </p>
-          <h2 className="font-serif font-light text-3xl md:text-5xl text-[#1A1614] leading-[1.1] mb-5">
-            Piezas que ya viven con alguien
-          </h2>
-          <p className="text-[#5f574d] font-light text-lg leading-relaxed">
-            Una selección de trabajos realizados en Creativa Studio. Cada una, pensada para una sola persona.
-          </p>
-        </div>
+  const designLike = (idx: number) => {
+    const img = images[idx];
+    if (!img) return;
+    setLightbox(null);
+    // La foto 360° no tiene preset de producto: va directo al panel 360°.
+    if (img.kind === "color" && !img.preset) {
+      track("cta_click", { location: "galeria_disenar_igual", product: "360" });
+      startCustomizer({ technique: "color" });
+      return;
+    }
+    if (!img.preset) return;
+    track("cta_click", { location: "galeria_disenar_igual", product: img.preset.materialProductId });
+    requestDesignPreset(img.preset);
+    scrollToSection("customizer");
+  };
+  const canDesignLike = (idx: number) => !!images[idx]?.preset || images[idx]?.kind === "color";
 
-        {/* Lookbook grid */}
-        <MotionConfig reducedMotion="user">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
-          {CURATED.map((img, idx) => (
-            <motion.figure
-              key={img.src}
-              initial={{ opacity: 0, y: 18 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-40px" }}
-              transition={{ duration: 0.55, delay: (idx % 4) * 0.06, ease: [0.16, 1, 0.3, 1] }}
-              className="group relative aspect-square overflow-hidden rounded-xl bg-neutral-100"
+  return (
+    <section id="galeria" aria-labelledby="galeria-title" className="scroll-mt-16 bg-[var(--cs-acero)]">
+      <div className="max-w-7xl mx-auto px-5 sm:px-6 py-16 md:py-24">
+        <h2 id="galeria-title" className="font-serif font-light text-[var(--cs-ink)] text-[clamp(2rem,4.5vw,3.25rem)] leading-[1.05]">
+          Piezas que ya viven con alguien
+        </h2>
+        <p className="mt-3 text-[var(--cs-grafito)] text-base md:text-lg max-w-[36rem]">
+          Trabajos reales del taller. Si te gusta uno, empezá el tuyo desde esa pieza.
+        </p>
+
+        <div role="group" aria-label="Filtrar por material" className="mt-7 -mx-5 sm:mx-0 px-5 sm:px-0 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {FILTERS.map(f => (
+            <button
+              key={f.id}
+              type="button"
+              aria-pressed={filter === f.id}
+              onClick={() => { setFilter(f.id); track("gallery_filter", { kind: f.id }); }}
+              className={`shrink-0 min-h-11 px-4 rounded-full border text-sm font-medium transition-colors ${
+                filter === f.id
+                  ? "bg-[var(--cs-ink)] border-[var(--cs-ink)] text-white"
+                  : "bg-white border-[var(--cs-line)] text-[var(--cs-grafito)] hover:border-[var(--cs-ink)]"
+              }`}
             >
-              <img
-                src={img.src}
-                // Same -700/900 pair the hero uses. The grid cell renders at
-                // ~190px on mobile (2 cols) / ~296px on desktop (4 cols), so
-                // the browser picks the 700px file instead of always paying
-                // for the 900px one (~222 KiB saved page-wide per Lighthouse).
-                srcSet={`${img.src.replace(/\.webp$/, "-700.webp")} 700w, ${img.src} 900w`}
-                sizes="(min-width: 1280px) 296px, (min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw"
-                alt={img.caption}
-                width={900}
-                height={900}
-                loading="lazy"
-                decoding="async"
-                className="absolute inset-0 h-full w-full object-cover transition-transform duration-[900ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.06]"
-              />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-              <figcaption className="pointer-events-none absolute inset-x-4 bottom-4 translate-y-2 opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100">
-                <span className="text-sm font-light text-white drop-shadow">{img.caption}</span>
-              </figcaption>
-              {/* Tap → lightbox con la variante 900w y el caption visible (en
-                  táctil no existe el hover que revela el figcaption). */}
-              <button
-                type="button"
-                aria-label={`Ver en grande: ${img.caption}`}
-                onClick={() => setLightbox(idx)}
-                className="absolute inset-0 z-10 cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#8B1A2F]"
-              />
-            </motion.figure>
+              {f.label}
+            </button>
           ))}
         </div>
-        </MotionConfig>
+
+        <ul className="mt-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-5 md:gap-x-4 md:gap-y-7 list-none p-0">
+          {images.map((img, idx) => (
+            <li key={img.src} className="grid gap-2.5 content-start">
+              <div className="group relative aspect-[4/5] overflow-hidden rounded-[14px] bg-neutral-200">
+                <img
+                  src={img.src}
+                  // Celda de ~190px en celular (2 col) a ~296px en escritorio
+                  // (4 col): el navegador elige el archivo de 700px.
+                  srcSet={`${img.src.replace(/\.webp$/, "-700.webp")} 700w, ${img.src} 900w`}
+                  sizes="(min-width: 1280px) 296px, (min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw"
+                  alt={img.caption}
+                  width={900}
+                  height={900}
+                  loading="lazy"
+                  decoding="async"
+                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04]"
+                />
+                <button
+                  type="button"
+                  aria-label={`Ver en grande: ${img.caption}`}
+                  onClick={() => setLightbox(idx)}
+                  className="absolute inset-0 z-10 cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--cs-bordo)]"
+                />
+                {canDesignLike(idx) && (
+                  <button
+                    type="button"
+                    onClick={() => designLike(idx)}
+                    className="absolute right-2 bottom-2 z-20 inline-flex items-center gap-1.5 min-h-9 px-2.5 rounded-lg bg-white/95 text-[var(--cs-ink)] text-[12.5px] font-semibold shadow-sm hover:bg-white"
+                  >
+                    <svg aria-hidden className="w-3.5 h-3.5 text-[var(--cs-bordo)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
+                    Diseñar uno igual
+                  </button>
+                )}
+              </div>
+              <p className="text-sm md:text-[15px] text-[var(--cs-ink)] leading-snug">{img.caption}</p>
+            </li>
+          ))}
+        </ul>
 
         {lightbox !== null && (
           <Suspense fallback={null}>
             <GalleryLightbox
-              images={CURATED}
+              images={images}
               index={lightbox}
               onClose={() => setLightbox(null)}
               onNavigate={setLightbox}
@@ -97,19 +121,6 @@ export default function Gallery() {
             />
           </Suspense>
         )}
-
-        {/* Single, quiet closing CTA */}
-        <div className="mt-16 flex flex-col items-center text-center gap-6">
-          <h3 className="font-serif font-light text-2xl md:text-3xl text-[#1A1614]">
-            ¿La tuya, cuál sería?
-          </h3>
-          <button
-            onClick={scrollToCustomizer}
-            className="bg-[#8B1A2F] hover:bg-[#721527] active:bg-[#721527] text-white px-10 py-4 min-h-12 text-xs font-semibold uppercase tracking-[0.25em] transition-colors"
-          >
-            Personalizar mi producto
-          </button>
-        </div>
       </div>
     </section>
   );

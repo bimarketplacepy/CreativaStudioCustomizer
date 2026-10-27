@@ -18,7 +18,7 @@ const htmlPath = join(root, "dist", "public", "index.html");
 const ssrDir = join(root, "dist", "prerender");
 const MARKER = '<div id="hero-root" style="display:contents"></div>';
 
-const { render } = await import(pathToFileURL(join(ssrDir, "entry-prerender.js")).href);
+const { render, faqJsonLd } = await import(pathToFileURL(join(ssrDir, "entry-prerender.js")).href);
 // React 19 antepone <link rel="preload" as="image"> de las <img> del hero. El
 // <head> ya precarga la imagen LCP (con el mismo imagesrcset) y los logos se
 // descubren igual con el HTML; dentro de la raíz solo estorbarían a la
@@ -30,9 +30,14 @@ if (!html.includes(MARKER)) {
   console.error(`[prerender] no se encontró ${MARKER} en ${htmlPath}`);
   process.exit(1);
 }
+// FAQPage (src/lib/faq.ts, misma fuente que la sección): en el HTML estático
+// para que los buscadores lo lean sin ejecutar JS ni scrollear.
+const faqLd = `<script type="application/ld+json">${faqJsonLd().replace(/</g, "\\u003c")}</script>`;
 await writeFile(
   htmlPath,
-  html.replace(MARKER, MARKER.replace("></div>", `>${heroHtml}</div>`)),
+  html
+    .replace(MARKER, MARKER.replace("></div>", `>${heroHtml}</div>`))
+    .replace("</head>", `    ${faqLd}\n  </head>`),
 );
 // El bundle SSR solo sirve para generar el HTML; no se publica.
 await rm(ssrDir, { recursive: true, force: true });

@@ -1,5 +1,6 @@
 import { renderToString } from "react-dom/server";
 import Hero from "@/components/hero";
+export { faqJsonLd } from "@/lib/faq";
 
 /**
  * Entrada SSR usada solo en el build (scripts/prerender.mjs): genera el HTML

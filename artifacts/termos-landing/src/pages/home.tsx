@@ -14,6 +14,7 @@ const Customizer = lazy(() => import("@/components/customizer"));
 const ForWhom = lazy(() => import("@/components/for-whom"));
 const PricingEngraving = lazy(() => import("@/components/pricing-engraving"));
 const Gallery = lazy(() => import("@/components/gallery"));
+const Faq = lazy(() => import("@/components/faq"));
 const Footer = lazy(() => import("@/components/footer"));
 const WhatsAppButton = lazy(() => import("@/components/whatsapp-button"));
 // First-visit onboarding modal: plays a mini demo of the customizer when the
@@ -88,6 +89,9 @@ export default function Home() {
       </LazySection>
       <LazySection minH="60vh">
         <Gallery />
+      </LazySection>
+      <LazySection minH="50vh">
+        <Faq />
       </LazySection>
       <LazySection minH="30vh">
         <Footer />

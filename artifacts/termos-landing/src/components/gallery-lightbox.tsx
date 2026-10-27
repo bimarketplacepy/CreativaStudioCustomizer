@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 
-type Img = { src: string; caption: string; preset?: unknown };
+type Img = { src: string; caption: string; preset?: unknown; kind?: string };
 
 /**
  * Lightbox de la galería — overlay propio, sin librerías. Se monta recién al
@@ -38,6 +38,23 @@ export default function GalleryLightbox({ images, index, onClose, onNavigate, on
     };
   });
 
+  // Foco: entra al diálogo al abrir, Tab queda adentro y al cerrar vuelve a la
+  // miniatura que lo abrió (quien navega con teclado no queda detrás).
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    dialogRef.current?.querySelector<HTMLElement>("button")?.focus();
+    return () => opener?.focus?.();
+  }, []);
+  const trapTab = (e: React.KeyboardEvent) => {
+    if (e.key !== "Tab" || !dialogRef.current) return;
+    const items = [...dialogRef.current.querySelectorAll<HTMLElement>("button")];
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+
   // Gestos: swipe horizontal navega, swipe vertical (>80px) cierra.
   const gesture = useRef<{ x: number; y: number; id: number } | null>(null);
   const onPointerDown = (e: React.PointerEvent) => {
@@ -56,6 +73,8 @@ export default function GalleryLightbox({ images, index, onClose, onNavigate, on
 
   return (
     <div
+      ref={dialogRef}
+      onKeyDown={trapTab}
       role="dialog"
       aria-modal="true"
       aria-label={`Foto ampliada: ${img.caption}`}
@@ -90,11 +109,11 @@ export default function GalleryLightbox({ images, index, onClose, onNavigate, on
         />
         <figcaption className="mt-4 flex items-center justify-between gap-3 text-white">
           <span className="text-sm font-light">{img.caption}</span>
-          {img.preset != null && onDesignLike && (
+          {(img.preset != null || img.kind === "color") && onDesignLike && (
             <button
               type="button"
               onClick={() => onDesignLike(index)}
-              className="ml-auto shrink-0 min-h-10 px-4 rounded-full bg-[#8B1A2F] hover:bg-[#721527] text-white text-xs font-semibold uppercase tracking-[0.15em]"
+              className="ml-auto cs-btn cs-btn-primary cs-btn-sm"
             >
               Diseñar uno igual
             </button>

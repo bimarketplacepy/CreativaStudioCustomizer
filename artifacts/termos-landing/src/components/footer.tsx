@@ -7,7 +7,6 @@ import { track } from "@/lib/analytics";
 
 /** Every support topic opens WhatsApp with the question already framed. */
 const SUPPORT_LINKS = [
-  { label: "Preguntas frecuentes", message: "¡Hola! ¿Cómo están? Tengo una duda sobre los grabados y me encantaría que me orienten 😊" },
   { label: "Retiro en el local", message: "¡Hola! ¿Qué tal? Quería consultarles cómo es el retiro en el local. ¡Gracias!" },
   { label: "Cambios y devoluciones", message: "¡Hola! ¿Cómo va? Tengo una consulta sobre cambios y devoluciones, ¿me ayudan?" },
   { label: "Regalos corporativos", message: "¡Hola! ¿Qué tal? Me interesan los regalos corporativos personalizados y me encantaría que me cuenten un poco más." },
@@ -21,6 +20,7 @@ const EXPLORE = [
   { label: "Stickers", id: "stickers" },
   { label: "Trabajos realizados", id: "galeria" },
   { label: "Precios", id: "precios" },
+  { label: "Preguntas frecuentes", id: "preguntas" },
 ];
 
 const LINK = "inline-block py-1.5 hover:text-white transition-colors";

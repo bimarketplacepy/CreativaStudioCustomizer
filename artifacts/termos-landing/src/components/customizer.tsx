@@ -4,7 +4,6 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileDesignScreen, useVisualViewport } from "@/components/mobile-screen";
 import { EditorTour, Hint, HINT_AR_KEY, HINT_DONE_KEY, TOUR_KEY, markSeen, seen, type TourStep } from "@/components/editor-tour";
 import { motion, AnimatePresence, MotionConfig } from "framer-motion";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -258,20 +257,21 @@ const SEG_TAB = "flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-c
 // On phones the customizer is a step-by-step wizard (progress + fixed nav)
 // instead of one long scroll. Desktop keeps the full layout.
 
-/** Compact progress header: "Paso N de M" + a bar segment per step. */
+/** Compact progress header: un tramo por paso con su nombre debajo; el
+ *  tramo actual en bordó (la línea del láser del sistema visual). */
 function WizardProgress({ step, labels }: { step: number; labels: string[] }) {
   const total = labels.length;
   return (
     <div className="md:hidden mb-6">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-semibold text-primary uppercase tracking-wide">Paso {step} de {total}</span>
-        <span className="text-xs text-muted-foreground">{labels[step - 1]}</span>
-      </div>
-      <div className="flex gap-1.5">
-        {labels.map((_, i) => (
-          <div key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${i < step ? "bg-primary" : "bg-border"}`} />
+      <p className="sr-only">Paso {step} de {total}: {labels[step - 1]}</p>
+      <ol aria-hidden className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${total}, minmax(0, 1fr))` }}>
+        {labels.map((l, i) => (
+          <li key={l} className="grid gap-1.5">
+            <span className={`h-[3px] rounded-full transition-colors ${i < step ? "bg-[var(--cs-bordo)]" : "bg-border"}`} />
+            <span className={`text-xs ${i + 1 === step ? "font-semibold text-foreground" : "text-muted-foreground"}`}>{l}</span>
+          </li>
         ))}
-      </div>
+      </ol>
     </div>
   );
 }
@@ -281,8 +281,10 @@ function WizardProgress({ step, labels }: { step: number; labels: string[] }) {
  * resumen) el botón principal envía el pedido: es el paso que convierte y el
  * CTA no puede quedar abajo, fuera de la vista.
  */
-function WizardNav({ step, total, onBack, onNext, nextLabel, design, inline, final }: {
+function WizardNav({ step, total, onBack, onNext, nextLabel, design, inline, final, price }: {
   step: number; total: number; onBack: () => void; onNext: () => void; nextLabel?: string;
+  /** Total estimado, siempre a la vista mientras se elige (no solo al final). */
+  price?: { value: string; label: string } | null;
   /** El siguiente paso es el de Diseño: botón grande, con pincel, que se note. */
   design?: boolean;
   /** Dentro de la pantalla de Diseño (no fija sobre la página). */
@@ -294,19 +296,27 @@ function WizardNav({ step, total, onBack, onNext, nextLabel, design, inline, fin
       className={`md:hidden ${inline ? "shrink-0" : "fixed inset-x-0 bottom-0 z-40"} bg-white/95 backdrop-blur border-t border-border px-4 pt-3 flex items-center gap-3`}
       style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
     >
-      <button
-        type="button"
-        onClick={onBack}
-        disabled={step === 1}
-        className="inline-flex items-center gap-1 px-4 py-3 min-h-11 rounded-full border border-border text-sm font-medium text-muted-foreground disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        <ChevronLeft className="w-4 h-4" /> Atrás
-      </button>
+      {step > 1 ? (
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Atrás"
+          className="shrink-0 inline-flex items-center justify-center w-12 h-12 rounded-[10px] border border-border text-muted-foreground active:bg-secondary"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+      ) : null}
+      {price ? (
+        <div className="flex-1 min-w-0 grid leading-tight">
+          <span className="text-[17px] font-semibold text-foreground tabular-nums truncate">{price.value}</span>
+          <span className="text-xs text-muted-foreground truncate">{price.label}</span>
+        </div>
+      ) : step === 1 ? null : <span className="flex-1" />}
       {step < total && (design ? (
         <button
           type="button"
           onClick={onNext}
-          className="wiz-design-cta flex-1 inline-flex items-center justify-center gap-2 px-5 py-3.5 min-h-12 rounded-full bg-primary text-primary-foreground text-base font-bold shadow-lg shadow-primary/30 active:scale-[0.98] transition-transform"
+          className={`wiz-design-cta cs-btn cs-btn-primary ${price ? "" : "flex-1"} text-base`}
         >
           <Paintbrush className="w-5 h-5" /> {nextLabel ?? "Diseñar"} <ChevronRight className="w-5 h-5" />
         </button>
@@ -314,7 +324,7 @@ function WizardNav({ step, total, onBack, onNext, nextLabel, design, inline, fin
         <button
           type="button"
           onClick={onNext}
-          className="flex-1 inline-flex items-center justify-center gap-1 px-4 py-3 min-h-11 rounded-full bg-primary text-primary-foreground text-sm font-semibold shadow-sm active:scale-[0.98] transition-transform"
+          className={`cs-btn cs-btn-primary ${price ? "" : "flex-1"}`}
         >
           {nextLabel ?? "Siguiente"} <ChevronRight className="w-4 h-4" />
         </button>
@@ -324,7 +334,7 @@ function WizardNav({ step, total, onBack, onNext, nextLabel, design, inline, fin
           type="button"
           onClick={final.onClick}
           disabled={final.disabled}
-          className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-3 min-h-11 rounded-full bg-primary text-primary-foreground text-sm font-semibold shadow-sm active:scale-[0.98] transition-transform disabled:opacity-60"
+          className={`cs-btn cs-btn-primary ${price ? "" : "flex-1"} disabled:opacity-60`}
         >
           {final.label}
         </button>
@@ -2034,6 +2044,9 @@ export default function Customizer() {
   // impresión a color (ver startCustomizer en section-reveal.ts). El handler
   // vive en un ref para usar siempre el estado actual del personalizador.
   const startIntentRef = useRef<(i: StartIntent) => void>(() => {});
+  /** Texto cargado desde la portada: girar la pieza para mostrarlo de frente
+   *  apenas el visor esté listo (al escribirlo a mano ya gira solo). */
+  const faceTextPending = useRef(false);
   React.useEffect(() => {
     const apply = () => { const i = takeStartIntent(); if (i) startIntentRef.current(i); };
     apply();
@@ -2696,6 +2709,15 @@ export default function Customizer() {
     : activeDesignKind === "text2" ? text2FaceU
     : hasText ? textFaceU : hasText2 ? text2FaceU : hasArt ? artFaceU : frontU;
 
+  React.useEffect(() => {
+    if (!faceTextPending.current || viewerReady === 0 || !text) return;
+    const t = setTimeout(() => {
+      faceTextPending.current = false;
+      thermosSnapRef.current?.(textPlacement.u);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [viewerReady, text, textPlacement.u]);
+
   // ── Seleccionar / terminar ──────────────────────────────────────────────────
   const selectDesign = React.useCallback((kind: DesignKind, source: string) => {
     setSelected(kind);
@@ -3240,6 +3262,7 @@ export default function Customizer() {
     if (t) {
       setText(t);
       setDrinkTab("text");
+      faceTextPending.current = true;
     }
     if (t || i.technique === "color") setMobileStep(2); // Diseño
     track("customizer_start", { text: !!t, own: i.ownProduct === true, technique: i.technique ?? "laser" });
@@ -3619,7 +3642,7 @@ export default function Customizer() {
 
   // Precios viven únicamente en la sección "Tarifas"; el CTA del personalizador
   // nunca muestra montos.
-  const ctaLabel = "Continuar por WhatsApp";
+  const ctaLabel = "Enviar pedido por WhatsApp";
 
   // Tabs shown in the modelled-blank panel: Color only if tintable, Imagen only
   // on stainless steel.
@@ -4004,10 +4027,11 @@ export default function Customizer() {
 
   // Bloque de acciones compartido por TODOS los productos: precio estimado,
   // CTA de WhatsApp, señales de confianza y acciones secundarias.
-  const renderOrderActions = () => (
+  const renderOrderActions = (showEstimate = true) => (
     <>
-      {/* Precio estimado — antes el cliente llegaba al final sin ningún monto. */}
-      <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3">
+      {/* Precio estimado — antes el cliente llegaba al final sin ningún monto.
+          La orden de trabajo (renderDrinkSummary) lo muestra adentro. */}
+      {showEstimate && <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3">
         <div className="flex items-baseline justify-between gap-3">
           <span className="text-sm text-muted-foreground">{estimate.total ? "Total estimado" : "Precio estimado"}</span>
           {estimate.price && (
@@ -4015,7 +4039,7 @@ export default function Customizer() {
           )}
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">{estimate.note}.</p>
-      </div>
+      </div>}
 
       {emptyWarning && isEmptyDesign && (
         <div data-empty-warning className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 space-y-2 scroll-mb-28" role="alert">
@@ -4039,18 +4063,18 @@ export default function Customizer() {
         </div>
       )}
 
-      <Button
+      <button
+        type="button"
         onClick={() => handleOrder()}
         disabled={isOrdered || isPreparing || isSoldOut}
-        size="lg"
-        className="w-full h-auto min-h-12 py-2.5 text-sm sm:text-base font-semibold leading-tight whitespace-normal bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+        className="cs-btn cs-btn-primary w-full min-h-12 py-2.5 whitespace-normal disabled:opacity-60 disabled:cursor-not-allowed"
       >
         {isPreparing ? (
           <><Loader2 className="w-4 h-4 animate-spin" /> Creando tu pedido...</>
         ) : isOrdered ? (
           lastOrderNumber ? `Pedido ${lastOrderNumber} creado ✓` : "Abriendo WhatsApp..."
-        ) : isSoldOut ? "Agotado" : ctaLabel}
-      </Button>
+        ) : isSoldOut ? "Agotado" : <><MessageCircle className="w-4 h-4" /> {ctaLabel}</>}
+      </button>
 
       {isSoldOut && (
         <p className="text-xs text-red-700 text-center leading-relaxed" role="status">
@@ -4313,20 +4337,32 @@ export default function Customizer() {
         </div>
       )}
 
-      {/* Resumen legible de la personalización. */}
-      <div>
-        <Label className="text-sm font-medium mb-2 block">Resumen de tu personalización</Label>
-        <dl className="rounded-xl border border-border divide-y divide-border overflow-hidden text-sm bg-white">
+      {/* Orden de trabajo del taller: lo que se va a producir y el total, en
+          el formato de la comanda que recibe el taller (mismo orderFields()
+          que el mensaje de WhatsApp). */}
+      <section aria-labelledby="orden-title" className="rounded-[14px] border border-border bg-white shadow-[0_18px_40px_-24px_rgba(22,18,15,0.35)] overflow-hidden">
+        <header className="flex items-baseline justify-between gap-3 px-4 pt-4 pb-3 border-b border-dashed border-border">
+          <h3 id="orden-title" className="font-serif font-light text-xl md:text-2xl text-[var(--cs-ink)]">Tu orden de trabajo</h3>
+          <span className="text-xs font-mono text-muted-foreground shrink-0">{lastOrderNumber ?? "Sin enviar"}</span>
+        </header>
+        <dl className="px-4 py-1 text-sm">
           {orderFields().map(([k, v]) => (
-            <div key={k} className="flex items-baseline justify-between gap-3 px-3 py-2">
+            <div key={k} className="flex items-baseline justify-between gap-3 py-2 border-b border-border/60 last:border-0">
               <dt className="text-muted-foreground shrink-0">{k}</dt>
               <dd className="font-medium text-foreground text-right break-words">{v}</dd>
             </div>
           ))}
         </dl>
-      </div>
+        <div className="px-4 py-3 bg-[var(--cs-acero)] flex items-baseline justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm text-foreground">{estimate.total ? "Total estimado" : "Precio estimado"}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{estimate.note}.</p>
+          </div>
+          {estimate.price && <p className="font-serif text-xl text-foreground tabular-nums shrink-0">{estimate.price}</p>}
+        </div>
+      </section>
 
-      {renderOrderActions()}
+      {renderOrderActions(false)}
     </div>
   );
 
@@ -4722,6 +4758,7 @@ export default function Customizer() {
         : mobileStep === designStepIndex - 1 ? "Diseñar" : "Siguiente"}
       design={mobileStep === designStepIndex - 1}
       inline={inline}
+      price={!inline && estimate.price ? { value: estimate.price, label: estimate.total ? "Total estimado" : isOwnProduct ? "Tu personalización" : "Precio estimado" } : null}
       final={{
         label: isPreparing
           ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando tu pedido...</>
@@ -4755,10 +4792,10 @@ export default function Customizer() {
       <div className="max-w-7xl mx-auto">
         {/* Header — compact on mobile (the long copy is desktop-only). */}
         <div className="mb-6 md:mb-10">
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <p className="text-[#8B1A2F] text-[11px] font-semibold uppercase tracking-[0.3em]">
-              El personalizador
-            </p>
+          <div className="flex items-end justify-between gap-3 mb-3 md:mb-4">
+            <h2 className="font-serif font-light text-[clamp(2rem,4.5vw,3.25rem)] text-[var(--cs-ink)] leading-[1.05]">
+              Creá tu pieza
+            </h2>
             {/* Subtle replay of the onboarding demo (customizer-tutorial.tsx
                 listens for this event; works even after "No volver a mostrar"). */}
             <button
@@ -4772,12 +4809,8 @@ export default function Customizer() {
               </span>
             </button>
           </div>
-          <h2 className="font-serif font-light text-3xl md:text-5xl text-[#1A1614] mb-4 leading-[1.1]">
-            Creá tu pieza
-          </h2>
           <p className={`hidden ${mode === "products" ? "md:block" : ""} text-[#5f574d] font-light text-lg max-w-xl leading-relaxed`}>
-            Elegí el material, luego el producto, y refinalo a tu gusto. El diseño final lo coordinamos
-            con vos por WhatsApp.
+            Elegí la pieza, diseñala y mirala en 3D. El diseño final lo revisamos con vos por WhatsApp.
           </p>
         </div>
 
