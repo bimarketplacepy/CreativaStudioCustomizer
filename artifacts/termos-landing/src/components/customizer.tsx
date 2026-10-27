@@ -722,6 +722,8 @@ function IconPicker({ value, onChange }: { value: string | null; onChange: (id: 
             key={ic.id}
             type="button"
             title={ic.name}
+            aria-label={ic.name}
+            aria-pressed={active}
             onClick={() => onChange(active ? null : ic.id)}
             className={`aspect-square rounded-lg border flex items-center justify-center transition-all ${active ? activeCard : `${idleCard} !text-foreground`}`}
           >
@@ -3877,6 +3879,8 @@ export default function Customizer() {
               key={c.id}
               onClick={() => handleSelectColor(c.id)}
               title={c.name}
+              aria-label={c.name}
+              aria-pressed={color === c.id && !customHex}
               className={`group relative aspect-square rounded-full overflow-hidden transition-all hover:scale-105 focus:outline-none ring-offset-2 ${
                 color === c.id && !customHex ? 'ring-2 ring-primary' : 'ring-0'
               }`}
@@ -5526,6 +5530,8 @@ export default function Customizer() {
                               key={c.id}
                               onClick={() => handleSelectColor(c.id)}
                               title={c.name}
+                              aria-label={c.name}
+                              aria-pressed={color === c.id && !customHex}
                               className={`group relative aspect-square rounded-full overflow-hidden transition-all hover:scale-105 focus:outline-none ring-offset-2 ${
                                 color === c.id && !customHex ? 'ring-2 ring-primary' : 'ring-0'
                               }`}

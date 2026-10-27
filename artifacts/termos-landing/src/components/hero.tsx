@@ -59,32 +59,22 @@ export default function Hero() {
     };
   }, [menuOpen]);
 
-  // "Traé de tu casa o comprá acá" + lo que quiere grabar: arranca el
-  // personalizador con eso cargado (startCustomizer en section-reveal.ts).
-  const [own, setOwn] = useState(false);
-  // Apenas el cliente toca la elección o el campo, el personalizador (3D)
-  // empieza a bajar en segundo plano: mientras escribe el nombre ya está
-  // llegando, en vez de esperar al botón (en 4G lenta son varios segundos).
+  // El personalizador (3D) empieza a bajar apenas el cliente apoya el dedo o
+  // el puntero en el botón, o le llega el foco: cuando suelta, ya está en
+  // camino (en 4G lenta son varios segundos menos de espera).
   const warmed = React.useRef(false);
   const warm = () => {
     if (warmed.current) return;
     warmed.current = true;
     import("@/components/customizer").catch(() => { warmed.current = false; });
   };
-  const [text, setText] = useState("");
-  const trimmed = text.trim();
-  const start = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    track("cta_click", { location: "hero_start", own, text: !!trimmed });
-    startCustomizer({ text: trimmed, ownProduct: own });
+  const start = () => {
+    track("cta_click", { location: "hero_start" });
+    startCustomizer({});
   };
-  const go360 = () => {
-    track("cta_click", { location: "hero_360" });
-    scrollToSection("impresion-360");
-  };
-  const goStickers = () => {
-    track("cta_click", { location: "hero_stickers" });
-    scrollToSection("stickers");
+  const goWork = () => {
+    track("cta_click", { location: "hero_trabajos" });
+    scrollToSection("galeria");
   };
 
   return (
@@ -163,83 +153,31 @@ export default function Hero() {
               <em className="italic cs-laser">a tu manera.</em>
             </h1>
 
-            <p className="mt-6 md:mt-7 text-[var(--cs-mark-dim)] text-base md:text-[19px] leading-relaxed max-w-[34rem]">
-              Grabado láser en termos, vasos, cuero, madera y cristal, e impresión a todo color
-              en 360° alrededor del vaso. Lo diseñás acá, lo ves en 3D y lo confirmás por WhatsApp.
+            <p className="mt-6 md:mt-7 text-[var(--cs-mark-dim)] text-base md:text-[19px] leading-relaxed max-w-[32rem]">
+              Grabado láser, impresión a todo color en 360° y stickers. Elegí una pieza de la
+              tienda o traé la tuya, y mirala en 3D antes de pedirla.
             </p>
 
-            <form onSubmit={start} onFocusCapture={warm} onPointerDownCapture={warm} className="mt-7 md:mt-9 grid gap-2.5 max-w-[34rem]">
-              <p id="fork-label" className="text-sm font-semibold text-[var(--cs-mark)]">Traé de tu casa o comprá acá</p>
-              <div role="group" aria-labelledby="fork-label" className="grid grid-cols-2 gap-2.5">
-                {[
-                  { own: false, title: "Lo elijo acá", sub: "Termos y vasos de la tienda", subShort: "De la tienda" },
-                  { own: true, title: "Traigo el mío", sub: "Pagás solo el grabado", subShort: "Solo el grabado" },
-                ].map(o => {
-                  const on = own === o.own;
-                  return (
-                    <button
-                      key={o.title}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => setOwn(o.own)}
-                      className={`text-left rounded-xl border px-3.5 py-3 sm:px-4 sm:py-3.5 transition-colors ${on ? "border-[var(--cs-laser)] bg-[#2A1E1C] shadow-[inset_0_0_0_1px_var(--cs-laser)]" : "border-white/20 bg-[var(--cs-ink-2)] hover:border-white/40"}`}
-                    >
-                      <span className="flex items-center justify-between gap-2 text-[15px] sm:text-base font-semibold text-[var(--cs-mark)]">
-                        {o.title}
-                        <span aria-hidden className={`w-[18px] h-[18px] rounded-full border-[1.5px] grid place-items-center shrink-0 ${on ? "bg-[var(--cs-laser)] border-[var(--cs-laser)]" : "border-white/40"}`}>
-                          {on && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-                        </span>
-                      </span>
-                      <span className="block mt-1 text-[12.5px] sm:text-[13.5px] text-[var(--cs-mark-dim)]">
-                        <span className="sm:hidden">{o.subShort}</span><span className="hidden sm:inline">{o.sub}</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2.5 mt-1">
-                <label htmlFor="hero-engrave" className="sr-only">¿Qué querés grabar?</label>
-                <input
-                  id="hero-engrave"
-                  value={text}
-                  onChange={e => setText(e.target.value.slice(0, 24))}
-                  maxLength={24}
-                  autoComplete="off"
-                  enterKeyHint="go"
-                  placeholder="¿Qué querés grabar? Ej.: Sofía"
-                  className="flex-1 min-w-0 min-h-12 rounded-[10px] border border-white/25 bg-[#0F0C0A] px-4 text-base text-white placeholder:text-[#8F857B] focus:outline-none focus:ring-2 focus:ring-[var(--cs-laser)]"
-                />
-                <button type="submit" className="cs-btn cs-btn-primary">
-                  <span className="truncate max-w-[16rem]">{trimmed ? `Ver «${trimmed}» en 3D` : "Verlo en 3D"}</span> <Arrow />
-                </button>
-              </div>
-            </form>
+            <div className="mt-7 md:mt-9 flex flex-col sm:flex-row gap-2.5 sm:gap-3">
+              <button
+                type="button"
+                onClick={start}
+                onPointerEnter={warm}
+                onPointerDown={warm}
+                onFocus={warm}
+                className="cs-btn cs-btn-primary"
+              >
+                Personalizar mi pieza <Arrow />
+              </button>
+              <button type="button" onClick={goWork} className="cs-btn cs-btn-ghost-dark">
+                Ver trabajos
+              </button>
+            </div>
 
-            <ul className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-[var(--cs-mark-dim)]">
+            <ul className="mt-5 md:mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm text-[var(--cs-mark-dim)]">
               <li className="flex items-center gap-2"><Check /> Revisamos el diseño con vos</li>
               <li className="flex items-center gap-2"><Check /> Pagás cuando lo confirmás</li>
             </ul>
-
-            <div className="mt-6 grid gap-2.5 justify-items-start">
-            <button
-              type="button"
-              onClick={go360}
-              className="group inline-flex items-center gap-3 rounded-full border border-[var(--cs-laser)]/50 bg-[var(--cs-laser)]/10 pl-1.5 pr-4 py-1.5 text-left text-sm text-[var(--cs-mark)] hover:bg-[var(--cs-laser)]/20 transition-colors"
-            >
-              <span className="rounded-full bg-[var(--cs-bordo)] text-white text-xs font-bold px-2.5 py-1">360°</span>
-              <span>Tu diseño en toda la vuelta del vaso, a todo color</span>
-              <span className="w-4 h-4 transition-transform group-hover:translate-x-0.5"><Arrow /></span>
-            </button>
-            <button
-              type="button"
-              onClick={goStickers}
-              className="group inline-flex items-center gap-3 rounded-full border border-white/25 bg-white/[0.05] pl-1.5 pr-4 py-1.5 text-left text-sm text-[var(--cs-mark)] hover:bg-white/10 transition-colors"
-            >
-              <span className="rounded-full bg-[var(--cs-mark)] text-[var(--cs-ink)] text-xs font-bold px-2.5 py-1">Stickers</span>
-              <span>Con tu diseño, desde 1 unidad</span>
-              <span className="w-4 h-4 transition-transform group-hover:translate-x-0.5"><Arrow /></span>
-            </button>
-            </div>
           </div>
 
           {/* Fotos reales: collage en escritorio, tira deslizable en celular. */}
