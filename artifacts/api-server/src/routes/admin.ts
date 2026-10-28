@@ -11,6 +11,9 @@ import { logger } from "../lib/logger";
 import { getCatalog } from "../lib/catalog";
 import { getDisabledProducts, setProductEnabled } from "../lib/product-settings";
 import { MACHINE_LABELS, isMachineId, orderMachine } from "../lib/machines";
+import { OdooClient, odooConfig } from "../lib/odoo";
+import { readOrder } from "../lib/odoo-checkout";
+import { applyOdooPayment } from "./odoo-webhook";
 
 const router: IRouter = Router();
 
@@ -47,6 +50,11 @@ router.get("/api/admin/orders", async (req, res) => {
         productionFilePath: true,
         designState: true,
         createdAt: true,
+        odooOrderId: true,
+        odooOrderName: true,
+        odooTotal: true,
+        odooPaymentState: true,
+        odooPaymentAt: true,
       },
     });
     const list = rows
@@ -63,6 +71,7 @@ router.get("/api/admin/orders", async (req, res) => {
           machine,
           machineLabel: MACHINE_LABELS[machine],
           createdAt: r.createdAt.toISOString(),
+          odooPaymentAt: r.odooPaymentAt ? r.odooPaymentAt.toISOString() : null,
           size: str(ds.sizeLabel) ?? str(ds.sizeId),
           ownProduct: ds.ownProduct === true,
           estimate: str(ds.engravingEstimate),
@@ -112,6 +121,45 @@ router.patch("/api/admin/orders/:orderNumber", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "admin: status update failed");
     res.status(500).json({ message: "No se pudo actualizar el estado" });
+  }
+});
+
+// POST /api/admin/orders/:orderNumber/odoo-refresh — «Actualizar pago»:
+// respaldo del webhook. Lee el pedido en Odoo (solo lectura) y aplica el
+// estado en la base de la landing. Nunca escribe en Odoo.
+router.post("/api/admin/orders/:orderNumber/odoo-refresh", async (req, res) => {
+  if (!hasKey(req)) {
+    res.status(401).json({ message: "No autorizado" });
+    return;
+  }
+  const cfg = odooConfig();
+  if (!cfg) {
+    res.status(503).json({ message: "Odoo no está configurado" });
+    return;
+  }
+  try {
+    const row = await db.query.ordersTable.findFirst({
+      where: eq(ordersTable.orderNumber, req.params.orderNumber),
+      columns: { odooOrderId: true },
+    });
+    if (!row) {
+      res.status(404).json({ message: "Pedido no encontrado" });
+      return;
+    }
+    if (!row.odooOrderId) {
+      res.status(409).json({ message: "Este pedido no tiene pedido de venta en Odoo (fue por WhatsApp)" });
+      return;
+    }
+    const info = await readOrder(new OdooClient(cfg), row.odooOrderId);
+    if (!info) {
+      res.status(404).json({ message: "El pedido ya no existe en Odoo" });
+      return;
+    }
+    const result = await applyOdooPayment(info);
+    res.json({ orderNumber: req.params.orderNumber, odooOrderName: info.name, odooTotal: info.amountTotal, odooPaymentState: info.paid ? "pagado" : "pendiente", changed: result.changed });
+  } catch (err) {
+    logger.error({ err }, "admin: odoo refresh failed");
+    res.status(502).json({ message: "No se pudo consultar Odoo" });
   }
 });
 
@@ -228,6 +276,8 @@ const ADMIN_HTML = `<!DOCTYPE html>
   .chip { min-height:36px; padding:6px 12px; border:1px solid var(--line); border-radius:999px; background:#fff; font:inherit; font-size:13px; cursor:pointer; }
   .chip[aria-pressed="true"] { background:var(--ink); color:#fff; border-color:var(--ink); }
   .tag.machine { background:#eef1f5; color:#33404f; }
+  .tag.pago { background:#fff4e5; color:#8a4b00; }
+  .tag.pago.pagado { background:#e6f4ea; color:#1e6b3a; }
   .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:6px; background:#f5eaec; color:var(--brand); margin-left:6px; }
   .meta { color:var(--muted); font-size:13px; margin-top:2px; }
   .text { font-size:13px; margin-top:4px; }
@@ -385,6 +435,14 @@ const ADMIN_HTML = `<!DOCTYPE html>
       if (o.iconName) extra.push("Ícono: " + esc(o.iconName));
       if (o.hasUploadedImage) extra.push("Logo/foto adjunta");
       if (o.estimate) extra.push("Precio estimado: " + esc(o.estimate));
+      var odooTag = o.odooOrderName
+        ? '<span class="tag pago ' + (o.odooPaymentState === "pagado" ? "pagado" : "") + '">Odoo ' + esc(o.odooOrderName) +
+          " · " + (o.odooPaymentState === "pagado" ? "Pagado" : "Pendiente de pago") +
+          (o.odooTotal ? " · Gs. " + Number(o.odooTotal).toLocaleString("es-PY") : "") + "</span>"
+        : "";
+      var refreshBtn = o.odooOrderName
+        ? '<button type="button" class="btn refresh" data-order="' + esc(o.orderNumber) + '">Actualizar pago</button>'
+        : "";
       var svgBtn = o.hasProduction
         ? '<a class="btn primary" href="/api/orders/' + esc(o.orderNumber) + '/production-file?key=' +
           encodeURIComponent(key()) + '" download>' +
@@ -408,12 +466,12 @@ const ADMIN_HTML = `<!DOCTYPE html>
         '<div><span class="num">' + esc(o.orderNumber) + '</span>' +
         '<span class="badge ' + esc(o.status) + '">' + esc(o.status).replace("_", " ") + "</span>" +
         '<span class="tag machine">' + esc(o.machineLabel || "") + "</span>" +
-        (o.ownProduct ? '<span class="tag">Trae su producto</span>' : "") +
+        (o.ownProduct ? '<span class="tag">Trae su producto</span>' : "") + odooTag +
         '<div class="meta">' + esc(o.product) + " — " + detalles + "</div>" +
         '<div class="meta">' + fmtDate(o.createdAt) + "</div>" +
         (extra.length ? '<div class="text">' + extra.join(" · ") + "</div>" : "") +
         "</div>" +
-        '<div class="actions">' + statusSelect(o) + svgBtn + imgBtn + "</div>" +
+        '<div class="actions">' + statusSelect(o) + svgBtn + imgBtn + refreshBtn + "</div>" +
         "</div>";
     }).join("");
   }
@@ -425,6 +483,25 @@ const ADMIN_HTML = `<!DOCTYPE html>
         return '<option value="' + s + '"' + (s === o.status ? " selected" : "") + ">" + STATUS_LABELS[s] + "</option>";
       }).join("") + "</select>";
   }
+
+  // «Actualizar pago»: consulta Odoo para ese pedido (respaldo del webhook).
+  list.addEventListener("click", function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest("button.refresh") : null;
+    if (!btn) return;
+    var num = btn.getAttribute("data-order");
+    btn.disabled = true; btn.textContent = "Consultando…";
+    fetch("/api/admin/orders/" + encodeURIComponent(num) + "/odoo-refresh", {
+      method: "POST", headers: { "x-internal-key": key() },
+    }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.message || ("http " + r.status)); return j; }); })
+      .then(function (j) {
+        var order = orders.filter(function (o) { return o.orderNumber === num; })[0];
+        if (order) { order.odooOrderName = j.odooOrderName; order.odooTotal = j.odooTotal; order.odooPaymentState = j.odooPaymentState; }
+        render(document.getElementById("search").value);
+      }).catch(function (err) {
+        btn.disabled = false; btn.textContent = "Actualizar pago";
+        alert("No se pudo actualizar: " + err.message);
+      });
+  });
 
   // Cambio de estado: PATCH y, si falla, vuelve el select a su valor previo.
   list.addEventListener("change", function (e) {

@@ -8,6 +8,8 @@ import {
   boolean,
   jsonb,
   timestamp,
+  integer,
+  numeric,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -56,6 +58,17 @@ export const ordersTable = pgTable("orders", {
   /** SVG vectorial de producción (uso interno del taller, invisible para el
    *  cliente): ej. "orders/CS-0001-produccion.svg". */
   productionFilePath: varchar("production_file_path", { length: 255 }),
+  // ── Pedido de venta en Odoo (botón «Comprar»). Null = solo WhatsApp. ──
+  /** id de sale.order en Odoo. */
+  odooOrderId: integer("odoo_order_id"),
+  /** Nombre legible del pedido en Odoo (S00042). */
+  odooOrderName: varchar("odoo_order_name", { length: 40 }),
+  /** Total calculado por Odoo (Gs.), tal como se mostró al cliente. */
+  odooTotal: numeric("odoo_total", { precision: 14, scale: 2 }),
+  /** Estado de pago que conoce la landing: pendiente / pagado. */
+  odooPaymentState: varchar("odoo_payment_state", { length: 20 }),
+  /** Cuándo se recibió/consultó por última vez el estado de pago. */
+  odooPaymentAt: timestamp("odoo_payment_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

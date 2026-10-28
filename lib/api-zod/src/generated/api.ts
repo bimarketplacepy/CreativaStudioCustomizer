@@ -167,6 +167,135 @@ export const CreateOrderBody = zod.object({
 });
 
 /**
+ * Same payload as /orders plus the customer. Creates or reuses the landing order (by designState.requestId) and its Odoo sale order (one design = one order, by client_order_ref). Returns the Odoo portal payment link. 400 invalid phone/email (Odoo not called); 409 variant sold out (nothing created in Odoo); 502 Odoo unreachable (customer can continue by WhatsApp).
+
+ * @summary Buy the design online (creates the sale order in Odoo)
+ */
+export const checkoutBodyOneProductMax = 120;
+
+export const checkoutBodyOneMaterialMax = 120;
+
+export const checkoutBodyOneColorMax = 120;
+
+export const checkoutBodyOneTechniqueMax = 120;
+
+export const checkoutBodyOneCustomTextMax = 500;
+
+export const checkoutBodyOneFontMax = 120;
+
+export const checkoutBodyOneTextColorMax = 40;
+
+export const checkoutBodyOneIconNameMax = 120;
+
+export const checkoutBodyOneHasUploadedImageDefault = false;
+export const checkoutBodyTwoClienteNombreMin = 2;
+export const checkoutBodyTwoClienteNombreMax = 120;
+
+export const checkoutBodyTwoClienteTelefonoMin = 6;
+export const checkoutBodyTwoClienteTelefonoMax = 40;
+
+export const checkoutBodyTwoClienteEmailMin = 5;
+export const checkoutBodyTwoClienteEmailMax = 120;
+
+export const CheckoutBody = zod
+  .object({
+    product: zod
+      .string()
+      .min(1)
+      .max(checkoutBodyOneProductMax)
+      .describe("Product type (Termo, Chopera, Hoppie, …)"),
+    material: zod.string().min(1).max(checkoutBodyOneMaterialMax),
+    color: zod
+      .string()
+      .max(checkoutBodyOneColorMax)
+      .optional()
+      .describe('Color name + hex, e.g. \"Borgoña (#6d2434)\"'),
+    technique: zod
+      .string()
+      .min(1)
+      .max(checkoutBodyOneTechniqueMax)
+      .describe("Grabado láser \/ Impresión UV \/ Plotter de corte"),
+    customText: zod.string().max(checkoutBodyOneCustomTextMax).optional(),
+    font: zod.string().max(checkoutBodyOneFontMax).optional(),
+    textColor: zod
+      .string()
+      .max(checkoutBodyOneTextColorMax)
+      .optional()
+      .describe("Only when technique is UV printing"),
+    iconName: zod.string().max(checkoutBodyOneIconNameMax).optional(),
+    hasUploadedImage: zod
+      .boolean()
+      .default(checkoutBodyOneHasUploadedImageDefault),
+    designState: zod
+      .record(zod.string(), zod.unknown())
+      .describe("Full snapshot of the design state, enough to reproduce it"),
+    previewImage: zod
+      .string()
+      .optional()
+      .describe(
+        "Rendered preview as a base64 data URL (image\/png or image\/jpeg)",
+      ),
+    customImage: zod
+      .string()
+      .optional()
+      .describe(
+        "Original uploaded logo\/photo as a data URL, at the highest resolution the client has. Used only to embed the artwork in the internal production file; never echoed back to the client.",
+      ),
+    productionImage: zod
+      .string()
+      .optional()
+      .describe(
+        "Production artwork as a PNG data URL, already at real size (e.g. the unwrapped 360° print for the Dacen F5 UV cylinder printer). For the Dacen it carries only the raster layers; texts and logos travel in productionVectors. Internal use only; never echoed back to the client.",
+      ),
+    productionVectors: zod
+      .array(zod.record(zod.string(), zod.unknown()))
+      .optional()
+      .describe(
+        "Vector marks of the Dacen F5 file (texts, gallery icon, SVG logos), with their transform in mm of the unwrapped print. The server turns them into outlines in a layered SVG on top of productionImage. Internal use only; never echoed back to the client.",
+      ),
+  })
+  .and(
+    zod.object({
+      cliente: zod.object({
+        nombre: zod
+          .string()
+          .min(checkoutBodyTwoClienteNombreMin)
+          .max(checkoutBodyTwoClienteNombreMax),
+        telefono: zod
+          .string()
+          .min(checkoutBodyTwoClienteTelefonoMin)
+          .max(checkoutBodyTwoClienteTelefonoMax)
+          .describe(
+            "Paraguayan mobile in any format; normalized server-side to +5959XXXXXXXX",
+          ),
+        email: zod
+          .string()
+          .min(checkoutBodyTwoClienteEmailMin)
+          .max(checkoutBodyTwoClienteEmailMax),
+      }),
+    }),
+  );
+
+export const CheckoutResponse = zod.object({
+  orderNumber: zod.string(),
+  previewImageUrl: zod.string().nullable(),
+  message: zod
+    .string()
+    .optional()
+    .describe("Present when the order was already paid"),
+  odoo: zod.object({
+    orderId: zod.number(),
+    orderName: zod.string().describe("Odoo sale order name, e.g. S00042"),
+    total: zod.number().describe("Total computed by Odoo (Gs.)"),
+    paymentUrl: zod
+      .string()
+      .nullable()
+      .describe("Absolute Odoo portal URL with access token"),
+    paid: zod.boolean(),
+  }),
+});
+
+/**
  * Returns the full order record (internal use).
  * @summary Get an order by its order number
  */

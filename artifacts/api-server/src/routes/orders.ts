@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { db, ordersTable, type Order } from "@workspace/db";
 import { CreateOrderBody } from "@workspace/api-zod";
+import type { z } from "zod";
 import { rateLimit } from "../middlewares/rate-limit";
 import {
   parseImageDataUrl,
@@ -131,7 +132,7 @@ async function generateProductionFile(
 }
 
 /** Public absolute origin, honouring the Replit proxy headers. */
-function originFrom(req: Request): string {
+export function originFrom(req: Request): string {
   const proto = (String(req.headers["x-forwarded-proto"] || req.protocol || "https"))
     .split(",")[0]!
     .trim();
@@ -141,7 +142,7 @@ function originFrom(req: Request): string {
 
 /** URL pública del preview, firmada con un token no adivinable (ver
  *  orderImageToken): el número de pedido solo no alcanza para verla. */
-const imageUrlFor = (req: Request, order: Pick<Order, "orderNumber" | "previewImagePath">) =>
+export const imageUrlFor = (req: Request, order: Pick<Order, "orderNumber" | "previewImagePath">) =>
   order.previewImagePath
     ? `${originFrom(req)}/api/orders/${order.orderNumber}/image?t=${orderImageToken(order.orderNumber)}`
     : null;
@@ -176,7 +177,7 @@ async function findByRequestId(requestId: string) {
   });
 }
 
-const responseFor = (req: Request, order: Order) => ({
+export const responseFor = (req: Request, order: Order) => ({
   orderNumber: order.orderNumber,
   previewImageUrl: isEufySticker(order.designState, order.productionFilePath)
     ? stickerPngUrlFor(req, order.orderNumber)
@@ -187,26 +188,23 @@ const responseFor = (req: Request, order: Order) => ({
  *  mientras el primero todavía guarda imágenes espera ese mismo resultado. */
 const inflight = new Map<string, Promise<Order | null>>();
 
-// POST /api/orders — máx. 30 pedidos por IP por hora. Con 10, clientes detrás
-// de la misma IP (CGNAT de las operadoras móviles, una oficina) se bloqueaban
-// entre sí.
-router.post("/orders", rateLimit({ max: 30, windowMs: 60 * 60 * 1000 }), async (req, res) => {
-  const parsed = CreateOrderBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ message: "Datos de pedido inválidos" });
-    return;
-  }
-  const body = parsed.data;
+export type OrderBody = z.infer<typeof CreateOrderBody>;
+export type OrderCreateResult =
+  | { ok: true; order: Order; reused: boolean }
+  | { ok: false; status: number; message: string };
 
+/**
+ * Crea el pedido CS-XXXX de la landing o devuelve el ya creado con el mismo
+ * `designState.requestId` (últimas 24 h). Lo usan POST /api/orders (WhatsApp)
+ * y POST /api/checkout («Comprar»): un diseño reenviado nunca duplica pedido.
+ */
+export async function createOrReuseOrder(body: OrderBody): Promise<OrderCreateResult> {
   const rawRequestId = (body.designState as Record<string, unknown>)?.requestId;
   const requestId = typeof rawRequestId === "string" && REQUEST_ID_RE.test(rawRequestId) ? rawRequestId : null;
   if (requestId) {
     try {
       const existing = (await inflight.get(requestId)) ?? (await findByRequestId(requestId));
-      if (existing) {
-        res.status(201).json(responseFor(req, existing));
-        return;
-      }
+      if (existing) return { ok: true, order: existing, reused: true };
     } catch (err) {
       logger.warn({ err }, "orders: requestId lookup failed");
     }
@@ -216,14 +214,8 @@ router.post("/orders", rateLimit({ max: 30, windowMs: 60 * 60 * 1000 }), async (
   let image = null;
   if (body.previewImage) {
     const result = parseImageDataUrl(body.previewImage);
-    if (result === "too-large") {
-      res.status(413).json({ message: "La imagen supera el tamaño máximo (3MB)" });
-      return;
-    }
-    if (!result) {
-      res.status(400).json({ message: "previewImage inválida (se espera data URL PNG/JPEG)" });
-      return;
-    }
+    if (result === "too-large") return { ok: false, status: 413, message: "La imagen supera el tamaño máximo (3MB)" };
+    if (!result) return { ok: false, status: 400, message: "previewImage inválida (se espera data URL PNG/JPEG)" };
     image = result;
   }
 
@@ -275,14 +267,31 @@ router.post("/orders", rateLimit({ max: 30, windowMs: 60 * 60 * 1000 }), async (
     }
 
     settle(order);
-    res.status(201).json(responseFor(req, order));
+    return { ok: true, order, reused: false };
   } catch (err) {
     settle(null);
     logger.error({ err }, "orders: create failed");
-    res.status(500).json({ message: "No se pudo crear el pedido" });
+    return { ok: false, status: 500, message: "No se pudo crear el pedido" };
   } finally {
     if (requestId) inflight.delete(requestId);
   }
+}
+
+// POST /api/orders — máx. 30 pedidos por IP por hora. Con 10, clientes detrás
+// de la misma IP (CGNAT de las operadoras móviles, una oficina) se bloqueaban
+// entre sí.
+router.post("/orders", rateLimit({ max: 30, windowMs: 60 * 60 * 1000 }), async (req, res) => {
+  const parsed = CreateOrderBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ message: "Datos de pedido inválidos" });
+    return;
+  }
+  const result = await createOrReuseOrder(parsed.data);
+  if (!result.ok) {
+    res.status(result.status).json({ message: result.message });
+    return;
+  }
+  res.status(201).json(responseFor(req, result.order));
 });
 
 // GET /api/orders/:orderNumber — pedido completo. USO INTERNO: contiene datos

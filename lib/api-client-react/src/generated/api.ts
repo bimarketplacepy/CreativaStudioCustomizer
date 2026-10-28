@@ -19,6 +19,9 @@ import type {
 import type {
   ApiErrorResponse,
   Catalog,
+  CheckoutErrorResponse,
+  CheckoutRequest,
+  CheckoutResult,
   CreateOrderRequest,
   CreateOrderResponse,
   HealthStatus,
@@ -271,6 +274,94 @@ export const useCreateOrder = <
   TContext
 > => {
   return useMutation(getCreateOrderMutationOptions(options));
+};
+
+/**
+ * Same payload as /orders plus the customer. Creates or reuses the landing order (by designState.requestId) and its Odoo sale order (one design = one order, by client_order_ref). Returns the Odoo portal payment link. 400 invalid phone/email (Odoo not called); 409 variant sold out (nothing created in Odoo); 502 Odoo unreachable (customer can continue by WhatsApp).
+
+ * @summary Buy the design online (creates the sale order in Odoo)
+ */
+export const getCheckoutUrl = () => {
+  return `/api/checkout`;
+};
+
+export const checkout = async (
+  checkoutRequest: CheckoutRequest,
+  options?: RequestInit,
+): Promise<CheckoutResult> => {
+  return customFetch<CheckoutResult>(getCheckoutUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(checkoutRequest),
+  });
+};
+
+export const getCheckoutMutationOptions = <
+  TError = ErrorType<CheckoutErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof checkout>>,
+    TError,
+    { data: BodyType<CheckoutRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof checkout>>,
+  TError,
+  { data: BodyType<CheckoutRequest> },
+  TContext
+> => {
+  const mutationKey = ["checkout"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof checkout>>,
+    { data: BodyType<CheckoutRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return checkout(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CheckoutMutationResult = NonNullable<
+  Awaited<ReturnType<typeof checkout>>
+>;
+export type CheckoutMutationBody = BodyType<CheckoutRequest>;
+export type CheckoutMutationError = ErrorType<CheckoutErrorResponse>;
+
+/**
+ * @summary Buy the design online (creates the sale order in Odoo)
+ */
+export const useCheckout = <
+  TError = ErrorType<CheckoutErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof checkout>>,
+    TError,
+    { data: BodyType<CheckoutRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof checkout>>,
+  TError,
+  { data: BodyType<CheckoutRequest> },
+  TContext
+> => {
+  return useMutation(getCheckoutMutationOptions(options));
 };
 
 /**

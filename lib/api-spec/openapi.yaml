@@ -88,6 +88,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiErrorResponse"
+  /checkout:
+    post:
+      operationId: checkout
+      tags: [orders]
+      summary: Buy the design online (creates the sale order in Odoo)
+      description: >
+        Same payload as /orders plus the customer. Creates or reuses the
+        landing order (by designState.requestId) and its Odoo sale order
+        (one design = one order, by client_order_ref). Returns the Odoo
+        portal payment link. 400 invalid phone/email (Odoo not called);
+        409 variant sold out (nothing created in Odoo); 502 Odoo unreachable
+        (customer can continue by WhatsApp).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutRequest"
+      responses:
+        "200":
+          description: Order ready to pay (or already paid)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResult"
+        "400":
+          description: Invalid payload, phone or email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutErrorResponse"
+        "409":
+          description: Variant sold out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutErrorResponse"
+        "502":
+          description: Odoo unreachable; continue by WhatsApp
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutErrorResponse"
   /orders/{orderNumber}:
     get:
       operationId: getOrder
@@ -301,6 +344,79 @@ components:
       required:
         - orderNumber
         - previewImageUrl
+    CheckoutCustomer:
+      type: object
+      properties:
+        nombre:
+          type: string
+          minLength: 2
+          maxLength: 120
+        telefono:
+          type: string
+          minLength: 6
+          maxLength: 40
+          description: Paraguayan mobile in any format; normalized server-side to +5959XXXXXXXX
+        email:
+          type: string
+          minLength: 5
+          maxLength: 120
+      required: [nombre, telefono, email]
+    CheckoutRequest:
+      allOf:
+        - $ref: "#/components/schemas/CreateOrderRequest"
+        - type: object
+          properties:
+            cliente:
+              $ref: "#/components/schemas/CheckoutCustomer"
+          required: [cliente]
+    CheckoutOdoo:
+      type: object
+      properties:
+        orderId:
+          type: integer
+        orderName:
+          type: string
+          description: Odoo sale order name, e.g. S00042
+        total:
+          type: number
+          description: Total computed by Odoo (Gs.)
+        paymentUrl:
+          type: string
+          nullable: true
+          description: Absolute Odoo portal URL with access token
+        paid:
+          type: boolean
+      required: [orderId, orderName, total, paymentUrl, paid]
+    CheckoutResult:
+      type: object
+      properties:
+        orderNumber:
+          type: string
+        previewImageUrl:
+          type: string
+          nullable: true
+        message:
+          type: string
+          description: Present when the order was already paid
+        odoo:
+          $ref: "#/components/schemas/CheckoutOdoo"
+      required: [orderNumber, previewImageUrl, odoo]
+    CheckoutErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        field:
+          type: string
+          description: Invalid field (telefono | email)
+        soldOut:
+          type: boolean
+        whatsapp:
+          type: boolean
+          description: True when the customer should continue by WhatsApp
+        orderNumber:
+          type: string
+      required: [message]
     Order:
       type: object
       properties:

@@ -153,6 +153,58 @@ export interface CreateOrderResponse {
   previewImageUrl: string | null;
 }
 
+export interface CheckoutCustomer {
+  /**
+   * @minLength 2
+   * @maxLength 120
+   */
+  nombre: string;
+  /**
+   * Paraguayan mobile in any format; normalized server-side to +5959XXXXXXXX
+   * @minLength 6
+   * @maxLength 40
+   */
+  telefono: string;
+  /**
+   * @minLength 5
+   * @maxLength 120
+   */
+  email: string;
+}
+
+export type CheckoutRequest = CreateOrderRequest & {
+  cliente: CheckoutCustomer;
+};
+
+export interface CheckoutOdoo {
+  orderId: number;
+  /** Odoo sale order name, e.g. S00042 */
+  orderName: string;
+  /** Total computed by Odoo (Gs.) */
+  total: number;
+  /** Absolute Odoo portal URL with access token */
+  paymentUrl: string | null;
+  paid: boolean;
+}
+
+export interface CheckoutResult {
+  orderNumber: string;
+  previewImageUrl: string | null;
+  /** Present when the order was already paid */
+  message?: string;
+  odoo: CheckoutOdoo;
+}
+
+export interface CheckoutErrorResponse {
+  message: string;
+  /** Invalid field (telefono | email) */
+  field?: string;
+  soldOut?: boolean;
+  /** True when the customer should continue by WhatsApp */
+  whatsapp?: boolean;
+  orderNumber?: string;
+}
+
 export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
 
 export const OrderStatus = {

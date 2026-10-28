@@ -21,7 +21,8 @@
     "opentype.js": "^2.0.0",
     "pino": "^9",
     "pino-http": "^10",
-    "wawoff2": "^2.0.1"
+    "wawoff2": "^2.0.1",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
