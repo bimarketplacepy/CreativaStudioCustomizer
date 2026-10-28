@@ -80,7 +80,7 @@ export const MATERIALS: MaterialDef[] = [
     desc: "Billeteras, guampas y termos forrados en cuero.",
     products: [
       { id: "guampa-cuero", name: "Guampa forrada",  desc: "Guampa forrada en cuero.", drinkwareProductId: "guampa" },
-      { id: "termo-cuero",  name: "Termo forrado",    desc: "Termo forrado en cuero.",  drinkwareProductId: "termo" },
+      { id: "termo-cuero",  name: "Termo forrado",    desc: "Termo de tereré forrado en cuero, con bolsillo lateral.",  drinkwareProductId: "termo-terere" },
       { id: "billetera",    name: "Billetera",        desc: "Billetera de cuero tipo bifold.", objectId: "billetera" },
     ],
   },

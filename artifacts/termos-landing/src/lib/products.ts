@@ -1,7 +1,7 @@
 import type { FaceId } from "./placement";
 import type { KeepOutZone } from "./keep-out";
 
-export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids";
+export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids" | "termo-terere";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -408,6 +408,39 @@ export const PRODUCTS: ProductDef[] = [
     sizes: [
       { id: "termo-sleek-620", name: "620ml", label: "Clásico", scale: 1.00 },
       { id: "termo-sleek-710", name: "710ml", label: "Grande",  scale: 1.05 },
+    ],
+  },
+  {
+    id: "termo-terere",
+    name: "Termos forrados",
+    singular: "Termo forrado",
+    // Termo de tereré forrado en cuero (artifacts/3D/termo-terere.glb): funda
+    // de cuero cosida con la costura atrás (−Z), bolsillo con tira en el
+    // costado (−X del .glb = u 0.25, «Costado der.»), tapa negra de jarra con
+    // pico al frente y asa que baja hasta 0,146 m a los costados. Perfil =
+    // radio de la funda medido sobre el .glb (m × 10, centrado en 0,1358 m).
+    // Se graba al frente y en el costado izquierdo: atrás está la costura y
+    // del otro lado el bolsillo. La banda corta en 0,14 m, debajo del asa.
+    desc: "Termo de tereré forrado en cuero, con bolsillo lateral y tapa con pico.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.645, -1.358], [0.650, -1.308], [0.650, 0.242],
+      [0.656, 0.342], [0.656, 0.482],
+    ],
+    band: [-1.13, 0.04],
+    model: {
+      url: "/models/termo-terere.glb?v=1",
+      unitsPerMeter: 10,
+      centerYm: 0.1358,
+      heightM: 0.2716,
+      reachM: 0.097,
+      // Piezas de la funda (mismo material «body» en el .glb): del color elegido.
+      paint: ["sleeve_seam", "pocket", "pocket_tie", "lid_grip"],
+    },
+    engraveFaces: ["front", "left"],
+    sizes: [
+      { id: "termo-terere-unico", name: "Único", label: "Único", scale: 1.00 },
     ],
   },
   {
