@@ -17,7 +17,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Info,
   WrapText, Rows3, CornerDownLeft, Settings2, ChevronDown, ChevronLeft, ChevronRight,
   ChevronUp, ChevronsLeftRight, Crosshair, CirclePlay, Orbit, Link2, MessageCircle, MapPin, HandCoins,
-  Undo2, Trash2, Search, ScanEye, Maximize2, Paintbrush, X, Heart, Repeat,
+  Undo2, Trash2, Search, ScanEye, Maximize2, Paintbrush, X, Heart, Repeat, ShoppingBag,
 } from "lucide-react";
 import Thermos3D, { type ScreenRect } from "./thermos-3d";
 import type { PinchPhase } from "@/lib/pinch";
@@ -92,7 +92,8 @@ import { submitOrder } from "@/lib/submit-order";
 import { AiPhraseIdeas } from "./ai-tools";
 import type { PhraseIdea } from "@/lib/ai";
 import { dataUrlToJpeg, downloadDataUrl } from "@/lib/share";
-import type { CreateOrderRequest } from "@workspace/api-client-react";
+import { checkout as checkoutApi, type CreateOrderRequest } from "@workspace/api-client-react";
+import { CheckoutDialog, type CheckoutCustomer, type CheckoutFailure } from "@/components/checkout-dialog";
 import { Download, Loader2 } from "lucide-react";
 
 /** Text scale bounds. Capped low so a name never blows out past the band. */
@@ -1948,6 +1949,12 @@ export default function Customizer() {
   const [orderFallback, setOrderFallback] = useState(false);
   // Subida del preview al tocar "Continuar por WhatsApp": estado de carga del botón.
   const [isPreparing, setIsPreparing] = useState(false);
+  // «Comprar» (pedido en Odoo + portal de pago). El requestId es estable por
+  // diseño: repetir el clic o volver atrás desde el pago reutiliza el mismo
+  // pedido CS-XXXX y el mismo pedido de venta en Odoo.
+  const [buyOpen, setBuyOpen] = useState(false);
+  const buyRequestIdRef = useRef<string | null>(null);
+  const buyFingerprintRef = useRef<string | null>(null);
   // PNG snapshot of the finished 3D piece, shown in the Step 4 summary and sent
   // with the WhatsApp message. Captured from the live canvas while it's mounted.
   const [previewImg, setPreviewImg] = useState<string | null>(null);
@@ -3706,6 +3713,84 @@ export default function Customizer() {
   // nunca muestra montos.
   const ctaLabel = "Enviar pedido por WhatsApp";
 
+  // «Comprar» solo con precio confirmado: pieza de la tienda (variante de Odoo
+  // con stock) y grabado láser. Impresión a color, stickers y «Traigo el mío»
+  // siguen solo por WhatsApp en esta etapa.
+  const canBuy = odooMode && !isOwnProduct && !!odooVariant && odooVariant.inStock && !isSoldOut
+    && effectiveTechnique === "laser" && !!estimate.total && !!estimate.price;
+
+  /** Huella del diseño que se compra: si cambia, es otro pedido. */
+  const buyFingerprint = () => JSON.stringify([
+    odooVariant?.id ?? null, plan, text.trim(), text2.trim(), iconId, !!customImage,
+    extraLidText, extraBaseText, effectiveTechnique,
+  ]);
+
+  /**
+   * requestId estable por diseño. Se guarda en sessionStorage junto con la
+   * huella del diseño: al volver atrás desde el portal de pago la página se
+   * recarga, y sin esto cada «Comprar» crearía un pedido nuevo. Si el cliente
+   * cambia el diseño, la huella no coincide y se genera otro id.
+   */
+  const BUY_RID_KEY = "cs.checkout.requestId";
+  const buyRequestId = () => {
+    const fp = buyFingerprint();
+    if (!buyRequestIdRef.current) {
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(BUY_RID_KEY) ?? "null") as { id: string; fp: string; at: number } | null;
+        if (saved && saved.fp === fp && Date.now() - saved.at < 23 * 3600_000) buyRequestIdRef.current = saved.id;
+      } catch { /* sin storage */ }
+    } else if (buyFingerprintRef.current !== fp) {
+      buyRequestIdRef.current = null;
+    }
+    if (!buyRequestIdRef.current) {
+      buyRequestIdRef.current = typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+    }
+    buyFingerprintRef.current = fp;
+    try { sessionStorage.setItem(BUY_RID_KEY, JSON.stringify({ id: buyRequestIdRef.current, fp, at: Date.now() })); } catch { /* modo privado */ }
+    return buyRequestIdRef.current;
+  };
+
+  /** Crea el pedido (landing + Odoo) y manda al portal de pago en la misma
+   *  pestaña. Devuelve un aviso para el formulario si no se pudo. */
+  const handleBuy = async (customer: CheckoutCustomer): Promise<CheckoutFailure | null> => {
+    track("checkout_submit", { product: orderProductName, material: materialId, plan });
+    try {
+      if (activeDesignKind) finishEditing();
+      thermosSnapRef.current?.(captureFaceU);
+      await new Promise(resolve => setTimeout(resolve, 150));
+      const full = capturePreview() ?? previewImgRef.current;
+      if (full) { setPreviewImg(full); previewImgRef.current = full; }
+      const jpeg = full ? await dataUrlToJpeg(full, 1080) : null;
+      const payload = orderPayload(jpeg, null);
+      const res = await checkoutApi({
+        ...payload,
+        designState: { ...payload.designState, requestId: buyRequestId() },
+        cliente: customer,
+      });
+      setLastOrderNumber(res.orderNumber);
+      if (res.odoo.paid) {
+        track("checkout_already_paid", { order_number: res.orderNumber });
+        return { message: res.message ?? "Ya pagaste este pedido.", viewUrl: res.odoo.paymentUrl };
+      }
+      if (!res.odoo.paymentUrl) return { message: "No pudimos generar el link de pago. Probá de nuevo o seguí por WhatsApp.", whatsapp: true };
+      track("checkout_redirect", { order_number: res.orderNumber, odoo: res.odoo.orderName });
+      window.location.assign(res.odoo.paymentUrl);
+      return null;
+    } catch (err) {
+      const e = err as { status?: number; data?: { message?: string; field?: string; soldOut?: boolean; whatsapp?: boolean } } | null;
+      const data = e?.data ?? {};
+      track("checkout_error", { status: e?.status ?? 0, reason: (data.message ?? (err instanceof Error ? err.message : "unknown")).slice(0, 80) });
+      if (e?.status === 400 && (data.field === "telefono" || data.field === "email" || data.field === "nombre")) {
+        return { message: data.message ?? "Revisá tus datos.", field: data.field };
+      }
+      if (e?.status === 409) return { message: data.message ?? "Ese color se agotó. Elegí otro color o tamaño." };
+      if (e?.status === 400) return { message: data.message ?? "Este diseño no se puede comprar online. Seguí por WhatsApp.", whatsapp: true };
+      return { message: data.message ?? "No pudimos conectar con la tienda. Podés seguir por WhatsApp.", whatsapp: true };
+    }
+  };
+
   // Tabs shown in the modelled-blank panel: Color only if tintable, Imagen only
   // on stainless steel.
   const objectTabs: { key: string; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
@@ -4127,18 +4212,33 @@ export default function Customizer() {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => handleOrder()}
-        disabled={isOrdered || isPreparing || isSoldOut}
-        className="cs-btn cs-btn-primary w-full min-h-12 py-2.5 whitespace-normal disabled:opacity-60 disabled:cursor-not-allowed"
-      >
-        {isPreparing ? (
-          <><Loader2 className="w-4 h-4 animate-spin" /> Creando tu pedido...</>
-        ) : isOrdered ? (
-          lastOrderNumber ? `Pedido ${lastOrderNumber} creado ✓` : "Abriendo WhatsApp..."
-        ) : isSoldOut ? "Agotado" : <><MessageCircle className="w-4 h-4" /> {ctaLabel}</>}
-      </button>
+      {/* «Comprar» (pago online en Odoo) al lado de WhatsApp, solo con precio
+          confirmado. Sin precio confirmado queda WhatsApp solo, como antes. */}
+      <div className={canBuy ? "grid grid-cols-1 sm:grid-cols-2 gap-2" : ""}>
+        {canBuy && (
+          <button
+            type="button"
+            onClick={() => { track("checkout_open", { product: orderProductName }); setBuyOpen(true); }}
+            disabled={isOrdered || isPreparing}
+            className="cs-btn cs-btn-primary w-full min-h-12 py-2.5 whitespace-normal disabled:opacity-60 disabled:cursor-not-allowed"
+            data-testid="buy-button"
+          >
+            <ShoppingBag className="w-4 h-4" /> Comprar
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => handleOrder()}
+          disabled={isOrdered || isPreparing || isSoldOut}
+          className={`cs-btn ${canBuy ? "cs-btn-ghost" : "cs-btn-primary"} w-full min-h-12 py-2.5 whitespace-normal disabled:opacity-60 disabled:cursor-not-allowed`}
+        >
+          {isPreparing ? (
+            <><Loader2 className="w-4 h-4 animate-spin" /> Creando tu pedido...</>
+          ) : isOrdered ? (
+            lastOrderNumber ? `Pedido ${lastOrderNumber} creado ✓` : "Abriendo WhatsApp..."
+          ) : isSoldOut ? "Agotado" : <><MessageCircle className="w-4 h-4" /> {ctaLabel}</>}
+        </button>
+      </div>
 
       {isSoldOut && (
         <p className="text-xs text-red-700 text-center leading-relaxed" role="status">
@@ -5813,6 +5913,15 @@ export default function Customizer() {
             flotando sobre el hero, Tarifas, la Galería y el footer. En el paso
             de Diseño la barra va dentro de su pantalla (ver wrapDesignStep). */}
         {isMobile && customizerInView && mobileStep !== designStepIndex && renderWizardNav(false)}
+
+        <CheckoutDialog
+          open={buyOpen}
+          onOpenChange={setBuyOpen}
+          total={estimate.price}
+          summary={[orderProductLabel, orderSizeName, orderColorName].filter(Boolean).join(" · ")}
+          onSubmit={handleBuy}
+          onWhatsApp={() => handleOrder()}
+        />
 
         </>
         )}
