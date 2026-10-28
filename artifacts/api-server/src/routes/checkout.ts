@@ -44,11 +44,14 @@ function linesFrom(designState: Record<string, unknown>) {
   const variantId = typeof designState.odooVariantId === "number" ? designState.odooVariantId : null;
   const plan = typeof designState.plan === "string" ? designState.plan : "names";
   const extra = (designState.extraEngraving ?? null) as { lid?: unknown; base?: unknown } | null;
-  const extraTexts =
-    (typeof designState.text2 === "string" && designState.text2.trim() ? 1 : 0) +
-    (extra && typeof extra.lid === "string" ? 1 : 0) +
-    (extra && typeof extra.base === "string" ? 1 : 0);
-  return { variantId, plan, extraTexts, technique: designState.technique, ownProduct: designState.ownProduct === true };
+  // Cada escritura extra se cobra (GRAB-EXTRA) y se nombra en el resumen que
+  // ve el cliente, para que la línea del pedido se entienda.
+  const extraLabels = [
+    typeof designState.text2 === "string" && designState.text2.trim() ? `texto 2 «${designState.text2.trim()}»` : null,
+    extra && typeof extra.lid === "string" ? `tapa «${extra.lid}»` : null,
+    extra && typeof extra.base === "string" ? `base «${extra.base}»` : null,
+  ].filter((l): l is string => !!l);
+  return { variantId, plan, extraTexts: extraLabels.length, extraLabels, technique: designState.technique, ownProduct: designState.ownProduct === true };
 }
 
 router.post("/checkout", rateLimit({ max: 30, windowMs: 60 * 60 * 1000 }), async (req, res) => {
@@ -94,7 +97,7 @@ router.post("/checkout", rateLimit({ max: 30, windowMs: 60 * 60 * 1000 }), async
   const origin = originFrom(req);
   const previewImageUrl = imageUrlFor(req, order);
   const adminUrl = `${origin}/admin?pedido=${order.orderNumber}`;
-  const designSummary = [order.product, order.color, order.technique, order.customText ? `«${order.customText}»` : null, order.iconName ? `ícono ${order.iconName}` : null]
+  const designSummary = [order.product, order.color, order.technique, order.customText ? `«${order.customText}»` : null, order.iconName ? `ícono ${order.iconName}` : null, ...lines.extraLabels]
     .filter(Boolean).join(" · ");
 
   // 2–5. Odoo: stock, contacto, pedido, link de pago.

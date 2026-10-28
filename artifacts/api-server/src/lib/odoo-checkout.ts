@@ -116,36 +116,42 @@ export async function serviceIds(client: OdooClient, codes: string[]): Promise<R
 }
 
 /**
- * Busca o crea el contacto (PROMPT §4.3): primero por email normalizado,
- * después por teléfono normalizado (los 9 dígitos con comodines entre medio
- * para tolerar el formato guardado, y confirmación exacta del lado de la API). Nunca fusiona ni modifica
- * contactos existentes. Devuelve el id y una nota si el email difiere.
+ * Busca o crea el contacto (PROMPT §4.3). El portal del pedido es público
+ * (link con access_token) y muestra nombre, dirección, teléfono y email del
+ * contacto: por eso solo se reutiliza uno existente si coinciden el email
+ * normalizado Y el teléfono normalizado. Si coincide uno solo, se crea un
+ * contacto nuevo con lo que escribió el cliente (quien conozca el email o el
+ * celular de otro no ve sus datos) y se deja una nota interna para revisar.
+ * Nunca fusiona ni modifica contactos existentes.
  */
 export async function findOrCreatePartner(client: OdooClient, c: Customer): Promise<{ id: number; created: boolean; note: string | null }> {
   const fields = ["name", "email", "phone", "active", "write_date"];
   type P = { id: number; name: string; email: string | false; phone: string | false };
 
   const byEmail = await client.call<P[]>("res.partner", "search_read",
-    [[["email", "=ilike", c.email]]], { fields, order: "write_date desc, id desc", limit: 5, context: ctx });
-  if (byEmail.length) {
-    if (byEmail.length > 1) logger.info({ email: c.email, ids: byEmail.map(p => p.id) }, "checkout: varios contactos con ese email; se usa el más reciente");
-    return { id: byEmail[0].id, created: false, note: null };
+    [[["email", "=ilike", c.email]]], { fields, order: "write_date desc, id desc", limit: 20, context: ctx });
+  const both = byEmail.filter(p => normalizePhonePy(p.phone || "") === c.phone);
+  if (both.length) {
+    if (both.length > 1) logger.info({ email: c.email, ids: both.map(p => p.id) }, "checkout: varios contactos con ese email y teléfono; se usa el más reciente");
+    return { id: both[0].id, created: false, note: null };
   }
 
   const byPhone = await client.call<P[]>("res.partner", "search_read",
     [[["phone", "ilike", phoneSearchPattern(c.phone)]]], { fields, order: "write_date desc, id desc", limit: 50, context: ctx });
-  const exact = byPhone.filter(p => normalizePhonePy(p.phone || "") === c.phone);
-  if (exact.length) {
-    if (exact.length > 1) logger.info({ phone: c.phone, ids: exact.map(p => p.id) }, "checkout: varios contactos con ese teléfono; se usa el más reciente");
-    const p = exact[0];
-    const other = p.email && normalizeEmail(p.email) !== c.email;
-    return { id: p.id, created: false, note: other ? `El cliente indicó otro email en la landing: ${c.email} (en Odoo figura ${p.email}).` : null };
-  }
+  const samePhone = byPhone.filter(p => normalizePhonePy(p.phone || "") === c.phone);
 
   const id = await client.call<number>("res.partner", "create", [{
     name: c.name, email: c.email, phone: c.phone, company_id: false, type: "contact",
   }], { context: ctx });
-  return { id, created: true, note: null };
+
+  const similar = [
+    byEmail.length ? `con el mismo email: ${byEmail.map(p => `#${p.id} ${p.name}`).join(", ")}` : null,
+    samePhone.length ? `con el mismo teléfono: ${samePhone.map(p => `#${p.id} ${p.name}`).join(", ")}` : null,
+  ].filter(Boolean);
+  const note = similar.length
+    ? `Contacto nuevo #${id}: ya había contactos ${similar.join("; ")}, pero no coincidían email y teléfono a la vez. Revisar si hay que fusionarlos.`
+    : null;
+  return { id, created: true, note };
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[ch]!));
@@ -158,6 +164,29 @@ export interface CreateOrderInput {
   adminUrl: string;
   designSummary: string;
   extraNote: string | null;
+}
+
+/**
+ * Nota interna en el chatter del pedido (subtipo «Nota»: no se manda al
+ * cliente ni aparece en el portal). Si falla, el pedido sigue: solo se avisa
+ * en el log, porque el link del taller también está en /admin.
+ */
+async function postInternalNote(client: OdooClient, orderId: number, lines: Array<string | null>): Promise<void> {
+  const items = lines.filter((l): l is string => !!l);
+  if (!items.length) return;
+  const html = items.map(l => `<p>${esc(l).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')}</p>`).join("");
+  const post = (body: string, extra: Record<string, unknown>) => client.call<number>("sale.order", "message_post", [[orderId]],
+    { body, message_type: "comment", subtype_xmlid: "mail.mt_note", context: ctx, ...extra });
+  try {
+    // body_is_html (Odoo 18+): sin él, un body por RPC se escapa como texto.
+    await post(html, { body_is_html: true });
+  } catch (err) {
+    try {
+      await post(items.join("\n"), {});
+    } catch (err2) {
+      logger.warn({ orderId, err: String(err), err2: String(err2) }, "checkout: no se pudo dejar la nota interna en Odoo");
+    }
+  }
 }
 
 /** Crea el pedido de venta (presupuesto) con la variante y el grabado. */
@@ -174,13 +203,9 @@ export async function createOrder(client: OdooClient, input: CreateOrderInput): 
   if (input.lines.extraTexts > 0) orderLines.push([0, 0, { product_id: ids[EXTRA_CODE], product_uom_qty: input.lines.extraTexts }]);
 
   const validity = new Date(Date.now() + VALIDITY_HOURS * 3600_000).toISOString().slice(0, 10);
-  const noteParts = [
-    `<p><b>Creativa Studio · diseño ${esc(input.ref)}</b></p>`,
-    `<p>${esc(input.designSummary)}</p>`,
-    input.previewImageUrl ? `<p>Imagen del diseño: <a href="${esc(input.previewImageUrl)}">${esc(input.previewImageUrl)}</a></p>` : "",
-    `<p>Taller: <a href="${esc(input.adminUrl)}">${esc(input.adminUrl)}</a></p>`,
-    input.extraNote ? `<p>${esc(input.extraNote)}</p>` : "",
-  ].filter(Boolean);
+  // `note` sale en el portal y en el PDF del cliente: solo el diseño. Lo
+  // interno (imagen, taller, avisos del contacto) va a una nota del chatter.
+  const note = `<p><b>Creativa Studio · diseño ${esc(input.ref)}</b></p><p>${esc(input.designSummary)}</p>`;
 
   const vals: Record<string, unknown> = {
     partner_id: input.partnerId,
@@ -194,12 +219,17 @@ export async function createOrder(client: OdooClient, input: CreateOrderInput): 
     prepayment_percent: 1.0,
     require_signature: false,
     origin: "Creativa Studio",
-    note: noteParts.join(""),
+    note,
     order_line: orderLines,
   };
   if (WEBSITE_ID) vals.website_id = WEBSITE_ID;
 
   const id = await client.call<number>("sale.order", "create", [vals], { context: ctx });
+  await postInternalNote(client, id, [
+    input.previewImageUrl ? `Imagen del diseño: ${input.previewImageUrl}` : null,
+    `Taller: ${input.adminUrl}`,
+    input.extraNote,
+  ]);
   const info = await readOrder(client, id);
   if (!info) throw new OdooCheckoutError("Odoo creó el pedido pero no se pudo releer");
   return info;

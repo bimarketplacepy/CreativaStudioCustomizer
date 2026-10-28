@@ -89,13 +89,27 @@ Base local: contenedor Docker `creativa-pg` (Postgres en :5544, base `creativa_t
 
 ## 7. Pasos para pasar a producción, en orden
 
-1. **Servicios de grabado en la base real:** `node artifacts/api-server/scripts/odoo-setup.mjs --url https://marketplace.odoo.com --db marketplace-main-33409600 --user <api> --key <key>` (sin `--demo`). Necesita `ODOO_ALLOW_PRODUCTION_WRITES=si` en esa corrida; probar antes con `--dry`.
-2. **Automatización en producción** (Ajustes → Técnico → Automatizaciones, o por API como en staging): modelo *Pedido de venta*, disparador *Al crear y editar*, campos disparadores `state` y `transaction_ids`, dominio `[("client_order_ref", "=like", "CS-%")]`; acción *Enviar webhook* a `https://creativastudio.marketplace.com.py/api/odoo/webhook?secret=<ODOO_WEBHOOK_SECRET>` con los campos `name, state, client_order_ref, amount_total, amount_paid`. Activarla.
-3. **Secrets en la publicación:** `ODOO_WEBHOOK_SECRET` (el mismo de la URL), `ODOO_SALE_COMPANY_ID=1`, `ODOO_SALE_WEBSITE_ID=1` (confirmar ids en producción con `scripts/odoo-preflight.mjs`), y el usuario de API con permiso de crear pedidos y contactos.
-4. **Habilitar la escritura en producción de forma explícita:** `ODOO_ALLOW_PRODUCTION_WRITES=si` en la publicación. Hasta entonces «Comprar» responde 502 y ofrece WhatsApp.
-5. **Pedido real de bajo monto** con Bancard para verificar: pedido en Odoo con 2 líneas y referencia CS-, pago, aviso recibido, `/admin` en «Pagado».
-6. Después: `pnpm --filter @workspace/db run push` en la base de la publicación (columnas `odoo_*`).
+1. **Columnas nuevas en la base de la publicación, antes de publicar el código:** `pnpm --filter @workspace/db run push` (columnas `odoo_*` de `orders`). El código nuevo las lee y las escribe: publicado sin ellas, fallan también los pedidos por WhatsApp.
+2. **Servicios de grabado en la base real:** `node artifacts/api-server/scripts/odoo-setup.mjs --url https://marketplace.odoo.com --db marketplace-main-33409600 --user <api> --key <key>` (sin `--demo`). Necesita `ODOO_ALLOW_PRODUCTION_WRITES=si` en esa corrida; probar antes con `--dry`.
+3. **Secrets en la publicación:** `ODOO_WEBHOOK_SECRET`, `ODOO_SALE_COMPANY_ID=1`, `ODOO_SALE_WEBSITE_ID=1` (confirmar ids en producción con `scripts/odoo-preflight.mjs`), y un usuario de API que pueda crear pedidos y contactos pero **no borrar** (`unlink`).
+4. **Publicar el código.** Sin el paso 5, «Comprar» responde 502 y ofrece WhatsApp; el resto de la landing sigue igual.
+5. **Habilitar la escritura en producción de forma explícita:** `ODOO_ALLOW_PRODUCTION_WRITES=si` en la publicación.
+6. **Automatización en producción** (Ajustes → Técnico → Automatizaciones, o por API como en staging): modelo *Pedido de venta*, disparador *Al crear y editar*, campos disparadores `state` y `transaction_ids`, dominio `[("client_order_ref", "=like", "CS-%")]`; acción *Enviar webhook* a `https://creativastudio.marketplace.com.py/api/odoo/webhook?secret=<ODOO_WEBHOOK_SECRET>` con los campos `name, state, client_order_ref, amount_total, amount_paid`. Activarla.
+7. **Pedido real de bajo monto** con Bancard para verificar: pedido en Odoo con referencia CS-, sin datos internos en el portal, nota interna con imagen y taller en el chatter, pago, aviso recibido (es la primera prueba del aviso de punta a punta) y `/admin` en «Pagado».
 
 ## 8. Fuera de alcance (sin cambios)
 
 Camino 2 (personalizar un termo ya comprado), botón «Personalizar» en la ficha de Odoo (camino 1), email de confirmación y «Ver mi diseño».
+
+## 9. Correcciones después de la revisión (28/10, pedido S00149 / CS-0016)
+
+La revisión de las capturas del portal (`artifacts/termos-landing/diseño/odoo1.jpeg` y `odoo2.jpeg`, en `mejoras`) encontró tres problemas. Se corrigieron en `odoo-checkout`; **falta repetir las pruebas 1 y 5b contra la base de pruebas**.
+
+| Problema | Corrección |
+|---|---|
+| **Privacidad del contacto.** El pedido se colgaba de un contacto existente si coincidía el email *o* el teléfono, y el portal (link público) mostraba su dirección, teléfono y email: quien escribiera el celular de otro cliente veía sus datos. Además, la nota «el cliente indicó otro email… (en Odoo figura X)» quedaba visible. | `findOrCreatePartner` reutiliza un contacto solo si coinciden **email y teléfono** normalizados. Si coincide uno solo, crea un contacto nuevo con lo que escribió el cliente y deja una **nota interna** con los ids de los contactos parecidos para revisar si hay que fusionarlos. Nunca modifica ni fusiona. |
+| **Datos internos en el portal.** La imagen del diseño y el link del taller (`/admin?pedido=…`) iban en `note`, que Odoo muestra como «Términos y condiciones» en el portal y en el PDF, y reemplazaba los términos de la empresa. | `note` lleva solo «Creativa Studio · diseño CS-XXXX» y el resumen. Imagen, taller y avisos del contacto van a una **nota interna del chatter** (`message_post` con subtipo `mail.mt_note`, `body_is_html`; si falla, se reintenta como texto y, si no, solo se registra en el log: el pedido sigue). |
+| **Escritura extra sin explicar.** Se cobraba `GRAB-EXTRA` pero el resumen no decía qué escritura era. | El resumen agrega `texto 2 «…»`, `tapa «…»` y `base «…»`, con la misma regla que cuenta las escrituras extra. |
+
+Para repetir en la base de pruebas: **1** (portal sin taller ni imagen; nota interna en el chatter), **5b** (con el contacto «0982 555-444» y otro email ahora se crea un contacto nuevo y queda la nota interna; con email y teléfono iguales se reutiliza) y un diseño con texto 2 (el resumen lo nombra).
+
