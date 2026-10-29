@@ -606,6 +606,11 @@ function ThreeCanvas({ obj, onContextLost, onContextRestored, ...props }: Object
   obj: ObjectDef; onContextLost?: () => void; onContextRestored?: () => void;
 }) {
   const { camY } = frame(obj);
+  // Al desmontar (cambio de producto) R3F llama forceContextLoss() sobre el canvas
+  // viejo, que dispara "webglcontextlost" y nunca "restored": sin quitar los
+  // listeners, el aviso "Restaurando vista 3D…" quedaba fijo sobre el canvas nuevo.
+  const detachRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => detachRef.current?.(), []);
   return (
     <Canvas
       dpr={[1, LOW_END ? 1 : 2]}
@@ -613,8 +618,14 @@ function ThreeCanvas({ obj, onContextLost, onContextRestored, ...props }: Object
       gl={{ antialias: !LOW_END, alpha: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
       onCreated={({ gl, invalidate }) => {
         const canvas = gl.domElement;
-        canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); onContextLost?.(); }, false);
-        canvas.addEventListener("webglcontextrestored", () => { onContextRestored?.(); invalidate(); }, false);
+        const lost = (e: Event) => { e.preventDefault(); onContextLost?.(); };
+        const restored = () => { onContextRestored?.(); invalidate(); };
+        canvas.addEventListener("webglcontextlost", lost, false);
+        canvas.addEventListener("webglcontextrestored", restored, false);
+        detachRef.current = () => {
+          canvas.removeEventListener("webglcontextlost", lost, false);
+          canvas.removeEventListener("webglcontextrestored", restored, false);
+        };
       }}
       // pan-y: el desliz vertical scrollea la página y el horizontal rota. En
       // modo diseño ObjectMesh pone "none" en el canvas (arrastre en 2 ejes).
@@ -668,6 +679,16 @@ export default function Object3D(props: Object3DProps) {
   const obj = getObject(props.objectId);
   const [webgl] = useState(() => isWebGLAvailable());
   const [contextLost, setContextLost] = useState(false);
+  // Si el navegador no devuelve el contexto (GPU sin memoria, demasiados
+  // contextos), se monta un canvas nuevo en vez de dejar el aviso para siempre.
+  const [canvasGen, setCanvasGen] = useState(0);
+  const viewKey = props.objectId;
+  useEffect(() => setContextLost(false), [viewKey]);
+  useEffect(() => {
+    if (!contextLost) return;
+    const t = setTimeout(() => { setContextLost(false); setCanvasGen(g => g + 1); }, 3000);
+    return () => clearTimeout(t);
+  }, [contextLost]);
   const fallback = <ObjectFallback obj={obj} text={props.text} />;
   if (!webgl) return fallback;
   return (
@@ -675,6 +696,7 @@ export default function Object3D(props: Object3DProps) {
     <WebGLErrorBoundary key={props.objectId} fallback={fallback}>
       <div className="relative w-full h-full">
         <ThreeCanvas
+          key={canvasGen}
           {...props}
           obj={obj}
           onContextLost={() => setContextLost(true)}

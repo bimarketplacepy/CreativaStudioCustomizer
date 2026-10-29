@@ -1963,6 +1963,11 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
   const { shadowY } = fitCamera(sil);
   const setShadowMovingRef = useRef<((moving: boolean) => void) | null>(null);
   const onMotionChange = useCallback((moving: boolean) => setShadowMovingRef.current?.(moving), []);
+  // Al desmontar (cambio de producto) R3F llama forceContextLoss() sobre el canvas
+  // viejo, que dispara "webglcontextlost" y nunca "restored": sin quitar los
+  // listeners, el aviso "Restaurando vista 3D…" quedaba fijo sobre el canvas nuevo.
+  const detachRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => detachRef.current?.(), []);
   return (
     <Canvas
       // Cap the pixel ratio so high-DPI phones don't render 3–4× the pixels of a
@@ -1982,8 +1987,14 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
       // placeholder while lost and force a re-render once the context is back.
       onCreated={({ gl, invalidate }) => {
         const canvas = gl.domElement;
-        canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); onContextLost?.(); }, false);
-        canvas.addEventListener("webglcontextrestored", () => { onContextRestored?.(); invalidate(); }, false);
+        const lost = (e: Event) => { e.preventDefault(); onContextLost?.(); };
+        const restored = () => { onContextRestored?.(); invalidate(); };
+        canvas.addEventListener("webglcontextlost", lost, false);
+        canvas.addEventListener("webglcontextrestored", restored, false);
+        detachRef.current = () => {
+          canvas.removeEventListener("webglcontextlost", lost, false);
+          canvas.removeEventListener("webglcontextrestored", restored, false);
+        };
       }}
       // none: todo gesto sobre el producto es del visor (girar en cualquier
       // dirección, inclinar para ver la base, mover el diseño). La página se
@@ -2090,6 +2101,16 @@ export default function Thermos3D(props: Thermos3DProps) {
 
   const [webgl] = useState(() => isWebGLAvailable());
   const [contextLost, setContextLost] = useState(false);
+  // Si el navegador no devuelve el contexto (GPU sin memoria, demasiados
+  // contextos), se monta un canvas nuevo en vez de dejar el aviso para siempre.
+  const [canvasGen, setCanvasGen] = useState(0);
+  const viewKey = product.model?.url ?? props.productId;
+  useEffect(() => setContextLost(false), [viewKey]);
+  useEffect(() => {
+    if (!contextLost) return;
+    const t = setTimeout(() => { setContextLost(false); setCanvasGen(g => g + 1); }, 3000);
+    return () => clearTimeout(t);
+  }, [contextLost]);
   if (!webgl) return fallback;
 
   return (
@@ -2102,6 +2123,7 @@ export default function Thermos3D(props: Thermos3DProps) {
     >
       <div className="relative w-full h-full">
         <ThreeCanvas
+          key={canvasGen}
           {...props}
           product={product}
           sil={sil}
