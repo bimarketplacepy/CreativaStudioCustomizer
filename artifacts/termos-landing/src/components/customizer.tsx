@@ -3986,7 +3986,9 @@ export default function Customizer() {
             <p className="text-sm font-semibold">Grabado láser</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {colorConsult
-                ? <>La impresión UV a color se hace solo en piezas cilíndricas{colorConsult === "handle" ? " sin manija" : ""}. Para color en esta pieza, consultá en el local o por WhatsApp.</>
+                ? colorConsult === "handle"
+                  ? <>Por la manija, esta pieza no admite impresión UV (ni 360° ni con relieve): la manija tapa parte de la vuelta. Se personaliza con grabado láser.</>
+                  : <>La impresión UV a color se hace solo en piezas cilíndricas. Para color en esta pieza, consultá en el local o por WhatsApp.</>
                 : <>Este producto solo admite grabado láser monocromático. La impresión UV a color
                   está reservada al drinkware de acero con pintura electrostática.</>}
             </p>

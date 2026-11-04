@@ -4,8 +4,8 @@
  * El 3D usa perfiles aproximados; el archivo para la máquina tiene que salir
  * de las medidas REALES (calibre) de cada producto y tamaño. Mientras no estén
  * medidas, los valores quedan en `null` (AJUSTAR) y manda el flag `dacen`, que
- * hoy reproduce exactamente la regla de `allowsColorPrint()`: todo el
- * drinkware de acero admite impresión a color, salvo la guampa.
+ * hoy reproduce exactamente la regla de `allowsColorPrint()`: el drinkware
+ * de acero cilíndrico y SIN manija en el cuerpo admite impresión a color.
  *
  * Vive en la landing: el api-server todavía tiene sus propias medidas del
  * frente en `production-svg.ts` (PRODUCT_AREAS_MM). Cuando el archivo de la
@@ -59,9 +59,11 @@ const steel = (extra: Partial<PrintSpecEntry> = {}): PrintSpecEntry => ({ ...UNM
  * landing ofrece solo grabado láser + "consultá en el local" para el color.
  */
 export const PRINT_SPECS: Record<ProductId, PrintSpecEntry> = {
-  "termo": steel(),
-  "termo-mate": steel(),
-  "termo-mate-forge": steel(),
+  // Manija en el cuerpo: estorba al giro de la Dacen (360°) y tapa parte de la
+  // vuelta. Sin impresión UV de ningún tipo (ni 360° ni con relieve): solo láser.
+  "termo": steel({ dacen: false, consult: "handle" }),
+  "termo-mate": steel({ dacen: false, consult: "handle" }),
+  "termo-mate-forge": steel({ dacen: false, consult: "handle" }),
   "termo-kids": steel(),
   "hoppie": steel(),
   "hoppie-hydrate": steel(),
