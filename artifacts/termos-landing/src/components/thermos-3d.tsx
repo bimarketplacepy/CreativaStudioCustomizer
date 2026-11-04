@@ -913,6 +913,19 @@ function ThermosMesh({
     return () => { cancelled = true; };
   }, [customImageUrl]);
 
+  // Estampado de fábrica del cuerpo (ej. el Vaso Guaraní): base de la textura.
+  const bodyPrintUrl = product.model?.bodyPrint ?? null;
+  const [bodyPrintEl, setBodyPrintEl] = useState<HTMLImageElement | null>(null);
+  useEffect(() => {
+    if (!bodyPrintUrl) { setBodyPrintEl(null); return; }
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => { if (!cancelled) setBodyPrintEl(img); };
+    img.onerror = () => { if (!cancelled) setBodyPrintEl(null); };
+    img.src = bodyPrintUrl;
+    return () => { cancelled = true; };
+  }, [bodyPrintUrl]);
+
   // Fondo 360°: la imagen se carga una vez; modo, zoom y corrimiento solo
   // rearman la textura.
   const wrapUrl = colorPrint ? wrap?.url ?? null : null;
@@ -963,7 +976,7 @@ function ThermosMesh({
     const base = { roughness: 0.35, metalness: 0.15, clearcoat: 0.8, clearcoatRoughness: 0.15 };
     if (finish === "matte") {
       // Hoppie, chopera y vaso con manija llevan powder-coat real: mate con cuerpo, no tiza.
-      if (product.id === "hoppie" || product.id === "botella-ancha" || product.id === "chopera" || product.id === "vaso-manija" || product.id === "vaso-hydrate" || product.id === "vaso-sunbeam" || product.id === "termo-mate" || product.id === "termo-mate-forge" || product.id === "termo-kids" || product.id === "hoppie-hydrate" || product.id === "copa-hydrate" || product.id === "vaso-espresso" || product.id === "taza-manija" || product.id === "mini-coffee" || product.id === "vaso-taza" || product.id === "coffee-cup" || product.id === "vaso-shaker" || product.id === "vaso-whisky" || product.id === "vaso-cafe" || product.id === "growler" || product.id === "ice-bucket" || product.id === "guampa")
+      if (product.id === "hoppie" || product.id === "botella-ancha" || product.id === "chopera" || product.id === "vaso-manija" || product.id === "vaso-hydrate" || product.id === "vaso-sunbeam" || product.id === "termo-mate" || product.id === "termo-mate-forge" || product.id === "termo-kids" || product.id === "hoppie-hydrate" || product.id === "copa-hydrate" || product.id === "vaso-espresso" || product.id === "taza-manija" || product.id === "mini-coffee" || product.id === "vaso-taza" || product.id === "coffee-cup" || product.id === "vaso-shaker" || product.id === "vaso-whisky" || product.id === "vaso-cafe" || product.id === "growler" || product.id === "ice-bucket" || product.id === "guampa" || product.id === "vaso-guarani")
         return { ...base, roughness: 0.6, metalness: 0.1, clearcoat: 0.06, clearcoatRoughness: 0.7 };
       return { ...base, roughness: 0.88, metalness: 0.0, clearcoat: 0.0, clearcoatRoughness: 0.8 };
     }
@@ -1014,10 +1027,11 @@ function ThermosMesh({
       text: dText, textPlacement: dTextPlacement, fontFamily, extraTexts: dExtraTexts, artMask, imageSize, artPlacement: dArtPlacement,
       anisotropy: maxAnisotropy, colorPrint, textColor, artImage: customImageEl, engraveStyle, singleFace,
       quality: settled ? "full" : "draft", wrap: colorPrint ? wrapLayer : null,
+      bodyPrint: bodyPrintUrl ? bodyPrintEl : null,
     }),
     // fontReady triggers re-creation once the font is actually loaded
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [glass, product, colorHex, matProps, finish, dText, dTextPlacement, dExtraTexts, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, textColor, customImageEl, engraveStyle, singleFace, settled, wrapLayer]
+    [glass, product, colorHex, matProps, finish, dText, dTextPlacement, dExtraTexts, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, textColor, customImageEl, engraveStyle, singleFace, settled, wrapLayer, bodyPrintUrl, bodyPrintEl]
   );
 
   // Four textures per rebuild, now coalesced to the settled input via useDeferredValue.

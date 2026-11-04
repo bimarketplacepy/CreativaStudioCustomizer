@@ -172,6 +172,9 @@ components:
           description: Absolute product page URL in the Odoo shop
         imageUrl:
           type: [string, "null"]
+        club:
+          type: [string, "null"]
+          description: Club or national team of a sports edition (e.g. Cerro Porteño, Albirroja); null for the plain line
         variants:
           type: array
           items:

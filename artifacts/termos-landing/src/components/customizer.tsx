@@ -736,33 +736,44 @@ function IconPicker({ value, onChange }: { value: string | null; onChange: (id: 
 }
 
 /** Laser vs Eufy Make picker shown once the customer is personalizing. */
-function TechniqueSelector({ value, onChange, compact }: {
+function TechniqueSelector({ value, onChange, compact, colorDisabled }: {
   value: TechniqueId; onChange: (id: TechniqueId) => void;
   /** Celular: las dos opciones lado a lado. */
   compact?: boolean;
+  /** La pieza no admite impresión UV: la opción a color se ve, pero no se elige. */
+  colorDisabled?: boolean;
 }) {
   return (
     <div className={compact ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 sm:grid-cols-2 gap-3"}>
       {TECHNIQUES.map(t => {
         const active = value === t.id;
+        const disabled = t.color && !!colorDisabled;
         const Icon = t.color ? Sparkles : Zap;
         return (
           <button
             key={t.id}
             type="button"
+            disabled={disabled}
+            aria-disabled={disabled}
             onClick={() => onChange(t.id)}
-            className={`text-left p-3 border rounded-xl transition-all ${active ? activeCard : idleCard}`}
+            className={`text-left p-3 border rounded-xl transition-all ${
+              disabled ? "border-dashed border-border text-muted-foreground/60 bg-secondary/30 cursor-not-allowed" : active ? activeCard : idleCard
+            }`}
           >
             <span className="flex items-center gap-2">
               <Icon className="w-4 h-4" />
               <span className="font-semibold text-sm">{t.name}</span>
               {t.color && !compact && (
-                <span className="ml-auto text-[11px] font-medium uppercase tracking-wide rounded-full px-2.5 py-0.5 bg-[#1A1614] text-white/90">
-                  Todo color
+                <span className={`ml-auto text-[11px] font-medium uppercase tracking-wide rounded-full px-2.5 py-0.5 ${
+                  disabled ? "bg-secondary text-muted-foreground" : "bg-[#1A1614] text-white/90"
+                }`}>
+                  {disabled ? "No disponible" : "Todo color"}
                 </span>
               )}
             </span>
-            <span className="block text-xs text-muted-foreground mt-1">{t.desc}</span>
+            <span className="block text-xs text-muted-foreground mt-1">
+              {disabled ? "No disponible en piezas con manija." : t.desc}
+            </span>
           </button>
         );
       })}
@@ -1887,7 +1898,7 @@ export default function Customizer() {
         name: p.name,
         brand: GENERIC_BRAND,
         type: p.drinkwareProductId!,
-        thumb: null, from: null, colors: null, odooId: null,
+        thumb: null, from: null, colors: null, odooId: null, club: null,
       }));
     return [...fromOdoo, ...generic];
   }, [catalog, materialId, material]);
@@ -1912,9 +1923,15 @@ export default function Customizer() {
           .filter(Boolean).join(" · ")
       : "";
   /** Sin modelo 3D propio, la vista usa la forma genérica del tipo: avisarlo. */
-  const approxNote = shopMode && !genericPick && odooProduct && !baseProduct.model?.exactFor?.includes(odooProduct.name)
-    ? `La vista 3D de ${odooProduct.name} es aproximada; el diseño y el grabado son los reales.`
-    : null;
+  // Los .glb son de Hydrate y traen su logo: sobre una pieza de otra marca
+  // (Stanley) se oculta, para no mostrar un Stanley con el logo de Hydrate.
+  const otherBrandPiece = shopMode && !genericPick && !!odooProduct && !/^hydrate$/i.test(odooProduct.brand.trim());
+  // Edición de club sin .glb propio: el 3D es el modelo liso, sin el estampado.
+  const approxNote = !(shopMode && !genericPick && odooProduct) || baseProduct.model?.exactFor?.includes(odooProduct.name)
+    ? null
+    : odooProduct.club
+      ? `La edición ${odooProduct.club} trae el estampado del club, que la vista 3D no muestra. Antes de grabar te confirmamos por WhatsApp dónde entra tu diseño.`
+      : `La vista 3D de ${odooProduct.name} es aproximada; el diseño y el grabado son los reales.`;
 
   // Tamaño que dibuja el 3D: el de Odoo mapeado al perfil, o el elegido a mano.
   const viewSize = odooMode ? viewSizeId(baseProduct, odooSizes, odooSize) : size;
@@ -3979,6 +3996,28 @@ export default function Customizer() {
             </p>
           )}
         </>
+      ) : colorConsult === "handle" ? (
+        <>
+          <TechniqueSelector value="laser" onChange={setTechnique} compact={isMobile} colorDisabled />
+          <div role="note" className="mt-3 flex items-start gap-2.5 p-3 border rounded-xl border-border bg-secondary/40">
+            <Info className="w-4 h-4 mt-0.5 text-primary shrink-0" />
+            <div>
+              <p className="text-sm font-semibold">¿Por qué este modelo no tiene impresión a color?</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Nuestra impresión UV (tanto la de 360° como la de relieve) se aplica
+                con la pieza girando sobre su eje. La manija impide ese giro y
+                cubre parte del cuerpo, por lo que no podemos garantizar un
+                resultado continuo y de calidad.
+              </p>
+              <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                Para este modelo trabajamos con <strong className="font-semibold text-foreground">grabado láser</strong>:
+                permanente, de alta definición y resistente al uso diario. Si
+                buscás un diseño a todo color, te recomendamos un modelo sin
+                manija en el cuerpo.
+              </p>
+            </div>
+          </div>
+        </>
       ) : (
         <div className="flex items-start gap-2 p-3 border rounded-xl border-border bg-secondary/40">
           <Zap className="w-4 h-4 mt-0.5 text-primary shrink-0" />
@@ -3986,9 +4025,7 @@ export default function Customizer() {
             <p className="text-sm font-semibold">Grabado láser</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {colorConsult
-                ? colorConsult === "handle"
-                  ? <>Por la manija, esta pieza no admite impresión UV (ni 360° ni con relieve): la manija tapa parte de la vuelta. Se personaliza con grabado láser.</>
-                  : <>La impresión UV a color se hace solo en piezas cilíndricas. Para color en esta pieza, consultá en el local o por WhatsApp.</>
+                ? <>La impresión UV a color se hace solo en piezas cilíndricas. Para color en esta pieza, consultá en el local o por WhatsApp.</>
                 : <>Este producto solo admite grabado láser monocromático. La impresión UV a color
                   está reservada al drinkware de acero con pintura electrostática.</>}
             </p>
@@ -4247,7 +4284,7 @@ export default function Customizer() {
               singleFace={singleFace}
               showGuides={false}
               frontFaceU={designFaceU}
-              hideLogo={designOnLogoSide || !!activeWrap}
+              hideLogo={designOnLogoSide || !!activeWrap || otherBrandPiece}
               glass={isGlass}
               onModelKeepOut={onModelKeepOut}
             />
@@ -4320,7 +4357,7 @@ export default function Customizer() {
       showGuides={guidesActive}
       frontFaceU={designFaceU}
       guideFace={activeDesignKind === "art" ? artFace : activeDesignKind === "text2" ? text2Face : textFace}
-      hideLogo={designOnLogoSide || !!activeWrap}
+      hideLogo={designOnLogoSide || !!activeWrap || otherBrandPiece}
       glass={isGlass}
       designActive={designActive}
       onDesignMove={onDesignMoveUV}

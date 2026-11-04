@@ -1,7 +1,7 @@
 import type { FaceId } from "./placement";
 import type { KeepOutZone } from "./keep-out";
 
-export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids" | "termo-terere";
+export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids" | "termo-terere" | "vaso-guarani" | "guampa-terere";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -99,6 +99,13 @@ export interface ProductModel {
   paintLight?: string[];
   /** Piezas pintadas con el color elegido, más oscuro (ranuras, huecos). */
   paintDark?: string[];
+  /**
+   * Estampado de fábrica del cuerpo (la textura del .glb exportada a PNG): va
+   * de base en lugar del color liso y el grabado se dibuja encima. Mapeo
+   * cilíndrico del .glb: ancho = vuelta entera (u 0 en −Z), alto = cuerpo
+   * entero de arriba a abajo (el perfil tiene que cubrir todo el "body").
+   */
+  bodyPrint?: string;
 }
 
 export const PRODUCTS: ProductDef[] = [
@@ -305,40 +312,42 @@ export const PRODUCTS: ProductDef[] = [
   },
   {
     id: "hoppie-hydrate",
-    name: "Hoppies",
-    singular: "Hoppie",
-    // Hydrate Hoppie (artifacts/3D/hoppie-hydrate-amarilla-landing.glb): mismo
-    // cuerpo recto y tapa negra con pico y asa que el Termo Kids, más alto.
-    // Perfil = radio del cuerpo medido sobre el .glb (m × 10, centrado en
-    // 0,1364 m). El .glb es el de 620 ml (volumen interior ≈ 0,62 L); los otros
-    // tamaños se escalan por volumen. Logo atrás (yawDeg 180); el asa va sobre
-    // la tapa. Solo el cuerpo lleva el color elegido: tapa y asa son negras.
-    desc: "Botella térmica con tapa de pico y asa.",
+    // En la tienda: "Termo Hydrate 530 Ml" (el termito) y "Termo Hydrate Litro"
+    // (946 ml). El id queda "hoppie-hydrate" para no romper links ni pedidos.
+    name: "Termos Hydrate",
+    singular: "Termo Hydrate",
+    // Hydrate Hoppie (artifacts/3D/hoppie.glb, 2026-11-04): cuerpo recto de
+    // 188 mm × Ø 74 mm, aro de acero y tapa negra con asa rebatible (lid_strap);
+    // 219 mm de alto con tapa. Perfil = radio del cuerpo medido sobre el .glb
+    // (m × 10, centrado en 0,1097 m). El .glb es el termito de 530 ml
+    // (escala 1); el Litro (946 ml) se escala por volumen: ∛(946/530) ≈ 1,21.
+    // Logo atrás (yawDeg 180). Solo el cuerpo lleva el color elegido: tapa y
+    // asa son las del .glb.
+    desc: "Botella térmica con tapa con asa.",
     cap: "none",
     handle: "none",
     profile: [
-      [0.347, -1.364], [0.365, -1.314], [0.365, 0.286],
-      [0.362, 0.336], [0.346, 0.396],
+      [0.355, -1.097], [0.370, -1.067], [0.370, 0.743],
+      [0.366, 0.763], [0.348, 0.783],
     ],
-    band: [-1.25, 0.24],
+    band: [-0.98, 0.62],
     frontFace: { uHalfWidth: 0.15 },
     model: {
-      url: "/models/hoppie-hydrate.glb?v=1",
-      exactFor: ["Hoppie"],
+      url: "/models/hoppie.glb?v=1",
+      exactFor: ["Termo Hydrate"],
       unitsPerMeter: 10,
-      centerYm: 0.1364,
-      heightM: 0.2728,
-      reachM: 0.0417,
+      centerYm: 0.1097,
+      heightM: 0.2194,
+      reachM: 0.0405,
       yawDeg: 180,
     },
     // Caras de grabado: las cuatro (el dorso es el lado del logo).
     engraveFaces: ["front", "left", "back", "right"],
     logoBack: true,
     sizes: [
-      { id: "hoppie-hydrate-530",  name: "530ml", label: "Chico",   scale: 0.95 },
-      { id: "hoppie-hydrate-620",  name: "620ml", label: "Mediano", scale: 1.00 },
-      { id: "hoppie-hydrate-710",  name: "710ml", label: "Clásico", scale: 1.05 },
-      { id: "hoppie-hydrate-1000", name: "1L",    label: "Grande",  scale: 1.17 },
+      { id: "hoppie-hydrate-530",  name: "530ml", label: "Termito", scale: 1.00 },
+      // "1L" es como Odoo nombra el Litro; mide 946 ml.
+      { id: "hoppie-hydrate-1000", name: "1L",    label: "Litro",   scale: 1.21 },
     ],
   },
   {
@@ -657,6 +666,38 @@ export const PRODUCTS: ProductDef[] = [
     ],
   },
   {
+    id: "guampa-terere",
+    name: "Guampas forradas",
+    singular: "Guampa forrada",
+    // Guampa de tereré forrada en cuero (artifacts/3D/guampa-terere.glb):
+    // funda cónica (más angosta abajo) entre dos bandas de cuero, con la
+    // costura y el cordón atrás (−Z) y pespunte arriba y abajo. Perfil = radio
+    // de la funda medido sobre el .glb (m × 14, centrado en 0,057 m). Se graba
+    // al frente y a los costados: atrás va el cordón.
+    desc: "Guampa de tereré forrada en cuero, con cordón y pespunte.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.357, -0.525], [0.382, -0.378], [0.406, -0.238], [0.430, -0.098],
+      [0.454,  0.042], [0.477,  0.182], [0.501,  0.322], [0.528,  0.476],
+    ],
+    // Zona grabable: la funda (19,5–91 mm) menos ~4 mm de pespunte arriba y abajo.
+    band: [-0.47, 0.42],
+    model: {
+      url: "/models/guampa-terere.glb?v=1",
+      unitsPerMeter: 14,
+      centerYm: 0.057,
+      heightM: 0.114,
+      reachM: 0.0435,
+      // Bandas de cuero de arriba y abajo (material «body» en el .glb): del color elegido.
+      paint: ["band_top", "band_bottom"],
+    },
+    engraveFaces: ["front", "left", "right"],
+    sizes: [
+      { id: "guampa-terere-unico", name: "Único", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
     id: "copa-hydrate",
     name: "Copas Hydrate",
     singular: "Copa",
@@ -897,6 +938,43 @@ export const PRODUCTS: ProductDef[] = [
         },
       },
       { id: "vaso-hydrate-900", name: "900ml", label: "Grande",  scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-guarani",
+    name: "Vasos Guaraní",
+    singular: "Vaso Guaraní",
+    // Hydrate "VASO 473 ML EDICION 2 GUARANI" (artifacts/3D/vaso-guarani.glb):
+    // vaso cónico sin tapa, aro de acero arriba, con el estampado del club
+    // (franjas amarillas y negras, escudo al frente del .glb y "Licencia
+    // oficial" en la costura) y el logo Hydrate en blanco. El estampado va de
+    // base (bodyPrint) y el grabado encima. Escudo y logo quedan atrás
+    // (yawDeg 180): se graba adelante y a los costados, no sobre el escudo.
+    // Perfil medido sobre el .glb (m × 12, centrado en 0,0775 m).
+    desc: "Vaso térmico de la edición oficial del Club Guaraní.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.371, -0.930], [0.394, -0.690], [0.412, -0.450], [0.430, -0.210],
+      [0.452,  0.030], [0.470,  0.270], [0.488,  0.510], [0.510,  0.774],
+    ],
+    band: [-0.86, 0.71],
+    frontFace: { uHalfWidth: 0.2 },
+    // El escudo es parte del estampado, no una pieza del .glb: se marca a mano.
+    keepOut: [{ kind: "logo", u: 0, halfU: 0.075, v0: 0.48, v1: 0.80 }],
+    model: {
+      url: "/models/vaso-guarani.glb?v=1",
+      unitsPerMeter: 12,
+      centerYm: 0.0775,
+      heightM: 0.155,
+      reachM: 0.0435,
+      exactFor: ["Vaso · Guaraní"],
+      yawDeg: 180,
+      bodyPrint: "/models/vaso-guarani-print.png?v=1",
+    },
+    engraveFaces: ["front", "left", "right"],
+    sizes: [
+      { id: "vaso-guarani-473", name: "473ml", label: "Único", scale: 1.00 },
     ],
   },
   {

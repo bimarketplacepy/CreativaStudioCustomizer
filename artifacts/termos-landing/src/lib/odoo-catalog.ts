@@ -44,6 +44,10 @@ export function matchingProducts(catalog: Catalog | undefined, productType: stri
  */
 const NAMED: [RegExp, string][] = [
   [/negro y naranja/, "#1d1d1d"],
+  // Paleta Stanley (nombres en inglés): antes que las reglas genéricas.
+  [/cherry blossom/, "#f2b8c6"], [/plum/, "#6b3b5a"], [/guava/, "#ee6d74"], [/petrol/, "#1f4e5a"],
+  [/lake/, "#6f9fb5"], [/dried pine|pine/, "#5c6b4e"], [/hammertone/, "#9ea3a6"], [/azul noche/, "#1c2a48"],
+  [/striker blue/, "#2c5fa8"], [/paraguay/, "#c62828"],
   [/verde militar/, "#4b5320"], [/verde salvia|salvia/, "#9caf88"], [/verde menta|menta|mint/, "#98d7c2"],
   [/verde pastel/, "#b8e0b0"], [/verde oliva|oliva|olive/, "#6b7a3a"], [/jade/, "#4f8f7a"], [/lima|lime/, "#c5d94a"],
   [/amarillo pastel/, "#f6e3a1"], [/amarillo sol|amarill|yellow/, "#f2c230"],
@@ -137,12 +141,15 @@ export function engravingPrice(catalog: Catalog | undefined, plan: EngravingPlan
   return typeof fromOdoo === "number" ? fromOdoo : (ENGRAVING_PLANS.find(p => p.id === plan)?.price ?? 0);
 }
 
+/** Sección de las ediciones de clubes y la selección (cualquier perfil 3D). */
+export const CLUB_SECTION = "Clubes y selección";
+
 /** Secciones del catálogo de la tienda en el personalizador, en este orden. */
 const CATALOG_SECTIONS: { title: string; types: string[] }[] = [
   { title: "Termos", types: ["termo-mate", "termo-mate-forge", "termo"] },
   { title: "Botellas", types: ["hoppie-hydrate", "hoppie", "termo-kids", "hoppie-kids", "termo-sleek", "botella-ancha", "growler"] },
-  { title: "Vasos", types: ["vaso-hydrate", "vaso-sunbeam", "vaso-espresso", "taza-manija", "mini-coffee", "vaso-taza", "coffee-cup", "vaso-shaker", "vaso-whisky", "vaso-cafe", "vaso-manija", "vaso", "chopera"] },
-  { title: "Guampas y copas", types: ["guampa", "copa-hydrate"] },
+  { title: "Vasos", types: ["vaso-hydrate", "vaso-sunbeam", "vaso-espresso", "taza-manija", "mini-coffee", "vaso-taza", "coffee-cup", "vaso-shaker", "vaso-whisky", "vaso-cafe", "vaso-guarani", "vaso-manija", "vaso", "chopera"] },
+  { title: "Guampas y copas", types: ["guampa", "guampa-terere", "copa-hydrate"] },
   { title: "Comida y bar", types: ["food-flask", "ice-bucket"] },
 ];
 
@@ -164,7 +171,15 @@ export interface ShopItem {
   /** Colores con stock (null en los genéricos: usan la paleta propia). */
   colors: number | null;
   odooId: number | null;
+  /** Club o selección de una edición deportiva (null en la línea lisa y los genéricos). */
+  club: string | null;
 }
+
+/**
+ * Otros nombres con los que se busca un perfil: el Termo Hydrate era el
+ * "Hoppie" de la landing, y en la tienda es el termito y el Litro.
+ */
+const SEARCH_ALIASES: Record<string, string> = { "hoppie-hydrate": "hoppie termito litro" };
 
 export interface CatalogSection { title: string; items: ShopItem[] }
 
@@ -181,6 +196,7 @@ export function odooShopItems(catalog: Catalog | undefined, material: string, kn
       from: priceFrom(p),
       colors: new Set(p.variants.filter(v => v.inStock).map(v => v.colorName)).size,
       odooId: p.id,
+      club: p.club ?? null,
     }));
 }
 
@@ -199,10 +215,16 @@ const fold = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u
  */
 export function shopSections(items: ShopItem[], opts: { brand?: string | null; section?: string | null; query?: string }): CatalogSection[] {
   const q = fold(opts.query?.trim() ?? "");
-  const list = items.filter(i => (q ? fold(i.name).includes(q) : !opts.brand || i.brand === opts.brand));
-  return CATALOG_SECTIONS
+  const list = items.filter(i => (q
+    ? fold(`${i.name} ${SEARCH_ALIASES[i.type] ?? ""}`).includes(q)
+    : !opts.brand || i.brand === opts.brand));
+  // Las ediciones de clubes van juntas en su sección, después de la línea lisa.
+  const sections = [
+    ...CATALOG_SECTIONS.map(s => ({ title: s.title, items: list.filter(i => !i.club && s.types.includes(i.type)) })),
+    { title: CLUB_SECTION, items: list.filter(i => i.club).sort((a, b) => a.club!.localeCompare(b.club!, "es") || a.name.localeCompare(b.name, "es")) },
+  ];
+  return sections
     .filter(s => !opts.section || s.title === opts.section)
-    .map(s => ({ title: s.title, items: list.filter(i => s.types.includes(i.type)) }))
     .filter(s => s.items.length > 0);
 }
 

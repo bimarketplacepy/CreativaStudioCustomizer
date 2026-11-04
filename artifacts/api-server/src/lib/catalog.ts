@@ -4,7 +4,7 @@
  * Cómo está cargado el Odoo de Marketplace (ver Mejoras.md §5c) y cómo se lee:
  * - Es el catálogo de TODAS las marcas → se filtra por marca con un campo de
  *   Studio (ODOO_BRAND_FIELD, por defecto `x_studio_marca`) = ODOO_BRAND
- *   (por defecto `HYDRATE`; admite varias separadas por coma).
+ *   (por defecto `HYDRATE,STANLEY`; admite varias separadas por coma).
  * - Solo productos CON STOCK (stock controlado y `free_qty` > 0) y PUBLICADOS
  *   en el e-commerce (ODOO_ONLY_PUBLISHED=false para incluir los no publicados).
  * - Cada color suele ser un producto aparte ("Hydrate 530ml Amarillo Sol", 1
@@ -30,7 +30,7 @@ import { logger } from "./logger";
 const CACHE_MS = 10 * 60 * 1000;
 const CURRENCY = process.env.ODOO_CURRENCY_LABEL || "Gs.";
 const BRAND_FIELD = process.env.ODOO_BRAND_FIELD?.trim() || "x_studio_marca";
-const BRANDS = (process.env.ODOO_BRAND ?? "HYDRATE").split(",").map(s => s.trim()).filter(Boolean);
+const BRANDS = (process.env.ODOO_BRAND ?? "HYDRATE,STANLEY").split(",").map(s => s.trim()).filter(Boolean);
 const ONLY_PUBLISHED = process.env.ODOO_ONLY_PUBLISHED !== "false";
 const MAX_TEMPLATES = 2000;
 
@@ -46,7 +46,7 @@ const TYPE_RULES: [RegExp, string][] = [
   [/\bfood flasks?\b/, "food-flask"],
   [/\bice buckets?\b|\bhieleras?\b/, "ice-bucket"],
   [/\bbowls?\b/, "bowl"],
-  [/\bguampas?\b|\bmate cup\b/, "guampa"],
+  [/\bguampas?\b|\bmate cup\b|\bmateros?\b/, "guampa"],
   [/\bhopp?ies?\b/, "hoppie"],
   [/\bchop(eras?|p)\b/, "chopera"],
   [/\bjugs?\b|\bbidon(es)?\b|\bgrowlers?\b|\bjarras?\b/, "jug"],
@@ -60,7 +60,7 @@ const TYPE_LABEL: Record<string, string> = {
   copa: "Copa", vaso: "Vaso", termo: "Termo", botella: "Botella",
   "food-flask": "Food Flask", "ice-bucket": "Ice Bucket", bowl: "Bowl",
   "vaso-manija": "Vaso", "botella-ancha": "Botella", "vaso-hydrate": "Vaso", "vaso-sunbeam": "Vaso",
-  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso", "vaso-whisky": "Vaso", "vaso-cafe": "Vaso", growler: "Growler", "termo-sleek": "Termo", "hoppie-kids": "Hoppie",
+  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso", "vaso-whisky": "Vaso", "vaso-cafe": "Vaso", growler: "Growler", "termo-sleek": "Termo", "hoppie-kids": "Hoppie", "vaso-guarani": "Vaso",
 };
 
 /**
@@ -80,7 +80,8 @@ const EXACT_MODEL: Record<string, { name: string; fallback: string }> = {
  */
 const NAMED_MODEL: Record<string, Record<string, string>> = {
   vaso: { "vaso": "vaso-hydrate", "vaso sunbeam": "vaso-sunbeam", "vaso taza espresso": "vaso-espresso", "vaso manija": "taza-manija", "vaso mini coffee mug": "mini-coffee", "vaso taza": "vaso-taza", "vaso coffee cup": "coffee-cup", "vaso shaker": "vaso-shaker", "vaso whisky lowball": "vaso-whisky", "vaso cafe": "vaso-cafe" },
-  termo: { "termo mate": "termo-mate", "termo mate forge": "termo-mate-forge" },
+  // "Termo Café" (ediciones de clubes) es el mismo vaso de la línea "350ml Café".
+  termo: { "termo mate": "termo-mate", "termo mate forge": "termo-mate-forge", "termo cafe": "vaso-cafe" },
   "botella-ancha": { "hoppie": "hoppie-hydrate", "termo kids": "termo-kids", "hoppie kids": "hoppie-kids", "termo sleek line": "termo-sleek" },
   // La "Copa" de Hydrate (vaso de vino sin tallo) puede clasificarse como copa o
   // como guampa (Odoo la tiene en "ACCESORIOS DE TERMOS / GUAMPAS").
@@ -121,6 +122,10 @@ function productLine(model: string, size: string | null): { model: string; size:
   if (m === "" && size && SLEEK_SIZES.has(size)) return { model: SLEEK, size };
   if (m === "termo" && size === "710ml") return { model: SLEEK, size };
   if (m === "termo" && size === "530ml") return { model: "", size };
+  // Ediciones de clubes del termito (532 ml) y del Litro (946 ml): misma línea
+  // que el Termo Hydrate liso ("530ml Negro", "Litro Blanco").
+  if (m === "termo" && size === "532ml") return { model: "", size: "530ml" };
+  if (m === "termo" && size === "946ml") return { model: "", size: "1L" };
   return { model: MODEL_ALIAS[m] ?? model, size };
 }
 
@@ -141,11 +146,12 @@ const NATURAL_STEEL = /\binox|\bacero\b|\bplat[ae]|\bsilver\b|\bnatural\b|\bstai
  * paleta Hydrate (Aqua, Avena, Cherry, Lima, Jade, Peach Fuzz, Choco Mousse…).
  * "Café" NO está: en Hydrate es una línea de producto ("350ml Café - Coral").
  */
-const COLOR_WORD = /^(negr[oa]|blanc[oa]|roj[oa]|azul|celeste|verde|rosa(do)?|gris|grafito|amarill[oa]|naranja|violeta|lila|lilac|lavanda|morad[oa]|marron|chocolate|choco|beige|avena|arena|crema|dorad[oa]|platead[oa]|plata|turquesa|aqua|menta|coral|fucsia|bordo|borgona|oliva|salmon|nude|champagne|cobre|cherry|lima|jade|peach|inox|acero|natural|black|white|red|blue|green|pink|soft|gr[ae]y|yellow|orange|purple|silver|gold|copper|teal|navy|lime|mint)$/;
+const COLOR_WORD = /^(negr[oa]|blanc[oa]|roj[oa]|azul|celeste|verde|rosa(do)?|gris|grafito|amarill[oa]|naranja|violeta|lila|lilac|lavanda|morad[oa]|marron|chocolate|choco|beige|avena|arena|crema|dorad[oa]|platead[oa]|plata|turquesa|aqua|menta|coral|fucsia|bordo|borgona|oliva|salmon|nude|champagne|cobre|cherry|lima|jade|peach|inox|acero|natural|guava|plum|lake|petrol|dried|striker|hammertone|messi|paraguay|black|white|red|blue|green|pink|soft|gr[ae]y|yellow|orange|purple|silver|gold|copper|teal|navy|lime|mint)$/;
 const SIZE_IN_NAME = /(\d+(?:[.,]\d+)?)\s*(ml|cc|lts?|litros?|l|oz)\b/i;
 
 /** Productos de la marca que NO se ofrecen para personalizar: packs, kits y bolsos. */
-const EXCLUDE = /\bkit\b|\bcombo\b|backpack|mochila|\bbolso\b|\bbag\b|pouch|\btote\b|\+/i;
+// "C/TAPA+ABRIDOR" (Vaso Classic de Stanley) es el vaso con su tapa, no un combo.
+const EXCLUDE = /\bkit\b|\bcombo\b|backpack|mochila|\bbolso\b|\bbag\b|pouch|\btote\b|\+(?!\s*abridor)/i;
 /**
  * Accesorios (tapas, straps, gomas/botas, fundas): Odoo los tiene bajo
  * "ACCESORIOS DE TERMOS", donde también están guampas y copas — por eso se
@@ -160,9 +166,44 @@ const ACCESSORY_CATEGORY = /accesorios de termos \/ (tapas|strap|gomas|fundas)/i
  */
 const CLUBS: [RegExp, string][] = [
   [/\bcerro\b/i, "Cerro Porteño"], [/\bolimpia\b/i, "Olimpia"], [/\bluque\b/i, "Sportivo Luqueño"],
-  [/\bguarani\b/i, "Guaraní"], [/\briver\b/i, "River Plate"], [/\bpalmeiras?\b/i, "Palmeiras"],
+  [/\bguarani\b/i, "Guaraní"], [/\briver\b/i, "River Plate"], [/\bpalmeir(?:as?)?\b/i, "Palmeiras"],
   [/\balbirroja\b/i, "Albirroja"],
 ];
+
+/**
+ * Ediciones de clubes (pedido del dueño, 2026-11-04: todas al personalizador).
+ * Cada una es un producto propio ("Termo Mate · Cerro Porteño") con el perfil
+ * 3D del modelo liso y el color de la edición. Las que tienen un .glb con el
+ * estampado del club usan ese perfil: "modelo visible|club" (normalizado).
+ */
+const CLUB_MODELS: Record<string, string> = { "vaso|guarani": "vaso-guarani" };
+
+/**
+ * Stanley: Odoo carga el mismo producto con varios nombres ("MATERO CLASSIC" y
+ * "MATERO/GUAMPA CLASSIC"; "QUENCHER", "QUENCHER FLOWSTATE" y "QUENCHER H2,0",
+ * que son el Quencher H2.0 FlowState). Se agrupan bajo el nombre de la derecha
+ * y cada uno usa la forma genérica más parecida (sin .glb propio todavía).
+ */
+const STANLEY = "stanley";
+const STANLEY_MODEL: Record<string, string> = {
+  "matero classic": "Matero Classic",
+  "guampa terere": "Matero Tereré", "matero terere": "Matero Tereré",
+  "quencher": "Quencher H2.0", "quencher flowstate": "Quencher H2.0", "quencher h2,0": "Quencher H2.0",
+  "quencher protour": "Quencher ProTour",
+};
+const STANLEY_TYPE: Record<string, string> = {
+  "quencher h2.0": "vaso-manija", "quencher protour": "vaso-manija",
+  "matero classic": "guampa", "matero terere": "guampa",
+  "termo classic": "termo", "botella aerolight": "botella-ancha",
+  "tumbler flip": "vaso", "go everyday tumbler": "vaso", "vaso classic": "vaso", "vaso everyday pint": "vaso",
+};
+
+/**
+ * Nombre visible de un perfil cuando el de Odoo no sirve. El "Hoppie" de la
+ * landing es, en la tienda, el "Termo Hydrate 530 Ml" (el termito) y el
+ * "Termo Hydrate Litro" (946 ml): se muestra como en la tienda.
+ */
+const DISPLAY_NAME: Record<string, string> = { "hoppie-hydrate": "Termo Hydrate" };
 
 const COLOR_ATTR = /\bcolou?r\b/;
 const SIZE_ATTR = /tama|capacidad|medida|size|volumen|litro|\boz\b|\bml\b/;
@@ -266,7 +307,10 @@ export interface ParsedName { model: string; size: string | null; color: string 
 export function parseProductName(name: string): ParsedName {
   let rest = name
     .replace(/(\S)[.*]+(?=\s|$)/g, "$1") // "Rojo." / "Pacifico*" → sin puntuación final
-    .replace(/\bc\/\s*/gi, "con "); // "Vaso c/ pico" = "Vaso con pico"
+    .replace(/\bc\/\s*tapa\s*\+\s*abridor\b/gi, " ") // Stanley: "C/TAPA+ABRIDOR" no es color
+    .replace(/\bc\/\s*/gi, "con ") // "Vaso c/ pico" = "Vaso con pico"
+    .replace(/\bmatero\/guampa\b/gi, "Matero") // Stanley: "MATERO/GUAMPA CLASSIC"
+    .replace(/\bh\s+silver\b/gi, "Hammertone Silver"); // Stanley: "940ML H SILVER"
 
   // Club + número de edición pegado ("Blanco Olimpia 2").
   let club: string | null = null;
@@ -295,6 +339,8 @@ export function parseProductName(name: string): ParsedName {
   const idx = words.findIndex(w => COLOR_WORD.test(norm(w).replace(/[^a-z]/g, "")));
   let color = idx >= 0 ? titleCase(words.slice(idx).join(" ").replace(/^[-–·,\s]+/, "")) : null;
   const model = (idx >= 0 ? words.slice(0, idx) : words).join(" ").replace(/[-–·,\s]+$/, "").trim();
+  // Stanley: la tapa del Termo Classic ("NEGRO PICO MATERO") va con el color.
+  if (color) color = color.replace(/\s+pico\s+(matero|plano)$/i, (_, p: string) => ` · Pico ${p.toLowerCase()}`);
   if (!color && editionName) color = editionName;
   else if (color && editionName) color = `${color} · ${editionName}`;
   if (edition) color = color ? `${color} · Ed. ${edition}` : `Edición ${edition}`;
@@ -396,10 +442,8 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
       excluded.add(t.name);
       continue;
     }
-    // Ediciones de clubes: fuera por ahora (decisión del dueño, 2026-10-09).
-    if (parseProductName(t.name).club) { excluded.add(t.name); continue; }
-    const type = productTypeOf(t.name, category);
-    if (!type) { unmatched.add(t.name); continue; }
+    const isStanley = norm(String(t[BRAND_FIELD] ?? "")) === STANLEY;
+    let type = productTypeOf(t.name, category);
 
     let attrColor: string | null = null;
     let colorHex: string | null = null;
@@ -417,7 +461,11 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
     }
     const parsed = parseProductName(t.name);
     const colorName = attrColor ? titleCase(attrColor) : parsed.color;
-    const named = productLine(parsed.model, attrSize ? normalizeSize(attrSize) : parsed.size);
+    const named = isStanley
+      ? { model: STANLEY_MODEL[norm(parsed.model)] ?? parsed.model, size: attrSize ? normalizeSize(attrSize) : parsed.size }
+      : productLine(parsed.model, attrSize ? normalizeSize(attrSize) : parsed.size);
+    if (isStanley) type = STANLEY_TYPE[norm(named.model)] ?? type;
+    if (!type) { unmatched.add(t.name); continue; }
     const size = named.size;
     if (norm(named.model) === "termo"
       || (named.model === SLEEK && colorName && SLEEK_HIDDEN_COLORS.has(norm(colorName)))) {
@@ -428,8 +476,9 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
     // Cristal solo por el NOMBRE: Odoo tiene el Whisky Lowball de acero también
     // en una categoría de cristalería.
     const n = norm(`${t.name} ${category}`);
+    // "Hammertone Silver" (Stanley) es pintura texturada, no acero natural.
     const material = LEATHER.test(n) ? "cuero" : GLASS.test(norm(t.name)) ? "cristal"
-      : colorName && NATURAL_STEEL.test(norm(colorName)) ? "inox"
+      : colorName && NATURAL_STEEL.test(norm(colorName)) && !/hammertone/.test(norm(colorName)) ? "inox"
       : !colorName && /\binox/.test(norm(t.name)) ? "inox" : "acero";
 
     entries.push({
@@ -469,9 +518,17 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
     // antepone el del perfil ("Hoppie", "Hoppie Kids").
     let name = first.model;
     if (!ruleType(name)) name = `${TYPE_LABEL[productType]} ${name}`.trim();
-    const exact = EXACT_MODEL[productType];
+    // Modelos .glb propios y nombres de la tienda: son de productos Hydrate.
+    const own = norm(String(first.t[BRAND_FIELD] ?? "")) !== STANLEY;
+    const exact = own ? EXACT_MODEL[productType] : undefined;
     if (exact && norm(name) !== norm(exact.name)) productType = exact.fallback;
-    productType = NAMED_MODEL[productType]?.[norm(name)] ?? productType;
+    if (own) productType = NAMED_MODEL[productType]?.[norm(name)] ?? productType;
+    if (own) name = DISPLAY_NAME[productType] ?? name;
+    // Edición de club: el perfil del modelo liso, salvo que tenga su propio .glb.
+    if (first.club) {
+      productType = CLUB_MODELS[`${norm(name)}|${norm(first.club)}`] ?? productType;
+      name = `${name} · ${first.club}`;
+    }
     categories[name] = [...new Set(list.map(e => e.category))];
     const published = list.find(e => e.t.is_published && e.t.website_url);
     const rawBrand = first.t[BRAND_FIELD];
@@ -485,6 +542,7 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
       // Servida por /api/catalog/image: la tienda solo publica la foto de los
       // productos publicados (al resto le muestra un ícono gris).
       imageUrl: pictured ? `/api/catalog/image/${pictured.t.id}` : null,
+      club: first.club,
       variants: mergeNearSizes(list.map(e => e.variant)),
     };
   })

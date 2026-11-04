@@ -293,6 +293,8 @@ export interface EngravingInput {
   quality?: "draft" | "full";
   /** Fondo "Todo el vaso (360°)": solo impresión a color (lib/wrap-design.ts). */
   wrap?: WrapLayer | null;
+  /** Estampado de fábrica del cuerpo (ProductModel.bodyPrint), en lugar del color liso. */
+  bodyPrint?: CanvasImageSource | null;
 }
 
 /** Printed text/brand ink when the piece is colour-printed rather than engraved. */
@@ -552,6 +554,7 @@ export function makeBodyMaps({
   singleFace = false,
   quality = "full",
   wrap = null,
+  bodyPrint = null,
 }: EngravingInput): BodyMaps {
   const W = TEXTURE_W, H = TEXTURE_H;
   const m = bandMetrics(product, W, H);
@@ -565,6 +568,16 @@ export function makeBodyMaps({
   const [base, ctx] = newCanvas(s);
   ctx.fillStyle = colorHex;
   ctx.fillRect(0, 0, W, H);
+
+  // Estampado de fábrica: cubre el cuerpo entero (mismo mapeo cilíndrico que
+  // el .glb). Con giro extra, la u del modelo se corre esa fracción de vuelta
+  // (ver useModelGeometries): la imagen se corre igual y se repite en la costura.
+  if (bodyPrint) {
+    const shift = (((product.model?.yawDeg ?? 0) / 360) % 1 + 1) % 1;
+    const x = shift * W;
+    ctx.drawImage(bodyPrint, x, 0, W, H);
+    if (x > 0) ctx.drawImage(bodyPrint, x - W, 0, W, H);
+  }
 
   if (isGradientFinish) {
     const fade = ctx.createLinearGradient(0, 0, 0, H);

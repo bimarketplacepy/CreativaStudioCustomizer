@@ -180,6 +180,12 @@ export default function Print360() {
               te lo pasamos por WhatsApp
             </a>.
           </p>
+          <p className="mt-3 text-[13px] leading-relaxed text-[var(--cs-mark-dim)]">
+            Disponible en piezas cilíndricas sin manija en el cuerpo. En los modelos
+            con manija, la impresión UV (360° o con relieve) no es posible porque la
+            manija impide el giro y cubre parte de la superficie: esos modelos se
+            personalizan con grabado láser.
+          </p>
         </div>
       </div>
     </section>

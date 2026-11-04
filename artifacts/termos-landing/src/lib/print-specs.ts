@@ -85,6 +85,9 @@ export const PRINT_SPECS: Record<ProductId, PrintSpecEntry> = {
   "termo-sleek": steel(),
   "hoppie-kids": steel(),
   "termo-terere": steel(),
+  "guampa-terere": steel(),
+  // Ya trae el estampado del club: solo grabado láser, sin impresión encima.
+  "vaso-guarani": steel({ dacen: false }),
   "chopera": steel({ dacen: false, consult: "handle" }),
   "copa": steel({ dacen: false, consult: "shape" }),
   "copa-hydrate": steel({ dacen: false, consult: "shape" }),

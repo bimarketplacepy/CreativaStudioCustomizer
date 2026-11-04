@@ -51,6 +51,11 @@ export interface CatalogProduct {
   url: string | null;
   /** @nullable */
   imageUrl: string | null;
+  /**
+   * Club or national team of a sports edition (e.g. Cerro Porteño, Albirroja); null for the plain line
+   * @nullable
+   */
+  club?: string | null;
   variants: CatalogVariant[];
 }
 
