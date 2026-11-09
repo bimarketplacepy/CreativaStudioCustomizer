@@ -91,7 +91,13 @@ export const PRINT_SPECS: Record<ProductId, PrintSpecEntry> = {
   "guampa-terere": steel(),
   // Ya trae el estampado del club: solo grabado láser, sin impresión encima.
   "vaso-guarani": steel({ dacen: false }),
+  // Ediciones con escudo grabado de fábrica: sin impresión 360° (taparía el escudo).
+  "vaso-luqueno": steel({ dacen: false }),
+  "taza-manija-palmeiras": steel({ dacen: false, consult: "handle" }),
   "chopera": steel({ dacen: false, consult: "handle" }),
+  // Manija en el cuerpo: sin Dacen. Los diseños de artistas (artist-designs.ts)
+  // van igual a color: los produce la eufyMake (UV DTF) por fuera de esta regla.
+  "taza-enlozada": steel({ dacen: false, consult: "handle" }),
   "copa": steel({ dacen: false, consult: "shape" }),
   "copa-hydrate": steel({ dacen: false, consult: "shape" }),
   // Base redondeada y paredes que se abren.

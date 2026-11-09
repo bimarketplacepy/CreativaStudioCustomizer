@@ -46,6 +46,8 @@ export function keepOutKindOf(partName: string): KeepOutKind | null {
   // "logo_funda" va sobre la funda de silicona (fuera de la banda): si cae
   // afuera, el recorte por v la descarta sola.
   if (n.startsWith("logo")) return "logo";
+  // Ediciones de clubes: escudo y textos grabados de fábrica.
+  if (/^(escudo|texto)/.test(n)) return "logo";
   if (/^(handle|strap|rivets)/.test(n)) return "handle";
   if (/^(label|reliev|relief)/.test(n)) return "relief";
   return null;

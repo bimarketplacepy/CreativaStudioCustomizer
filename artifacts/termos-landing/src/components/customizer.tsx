@@ -76,6 +76,7 @@ import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
 import { ADDRESS, whatsappUrl } from "@/lib/contact";
 import { clearSharedDesign, designLink, readSharedDesign, type SharedDesign } from "@/lib/design-link";
 import { onDesignPreset } from "@/lib/design-preset";
+import { designArtistFee, designPrice, getArtist, getArtistDesign, type ArtistDesign } from "@/lib/artist-designs";
 import { CUSTOMIZER_MODE_EVENT, CUSTOMIZER_START_EVENT, takeCustomizerMode, takeStartIntent, type StartIntent } from "@/lib/section-reveal";
 import { machineFor, normalizeTechnique } from "@/lib/machines";
 import { fitsDacen, printSpecFor } from "@/lib/print-specs";
@@ -195,9 +196,11 @@ function shadeHex(hex: string, amount: number): string {
 }
 
 /** Spanish article for a drinkware product name: "del termo", "de la copa". */
-const FEMININE_PRODUCTS = new Set(["copa", "guampa", "botella", "chopera", "jarra", "hielera"]);
+const FEMININE_PRODUCTS = new Set(["copa", "guampa", "botella", "chopera", "jarra", "hielera", "taza"]);
+/** Por la primera palabra: "taza enlozada" es femenino como "taza". */
+const isFeminineProduct = (noun: string) => FEMININE_PRODUCTS.has(noun.trim().toLowerCase().split(/\s+/)[0] ?? "");
 function productArticle(singular: string): string {
-  return FEMININE_PRODUCTS.has(singular.toLowerCase()) ? "de la" : "del";
+  return isFeminineProduct(singular) ? "de la" : "del";
 }
 
 const FINISHES: { id: string; name: string; material?: MaterialId }[] = [
@@ -2049,8 +2052,15 @@ export default function Customizer() {
   const artSingleFace = !FREE_PLACEMENT;
 
   const [technique, setTechnique] = useState<TechniqueId>("laser");
+  // Diseño de artista copiado desde «Recomendados» (artist-designs.ts). Vale
+  // solo sobre la pieza para la que el taller lo probó: ahí habilita la
+  // impresión a color aunque la pieza no entre en la Dacen (va a la eufyMake).
+  const [artistDesignId, setArtistDesignId] = useState<string | null>(null);
+  const artistCandidate = getArtistDesign(artistDesignId);
+  const artistForPiece = artistCandidate && artistCandidate.materialId === materialId
+    && artistCandidate.materialProductId === activeMProduct?.id ? artistCandidate : null;
   // Eufy (colour) is drinkware-with-coating only; everything else is laser-only.
-  const canColor = allowsColorPrint(materialId, activeMProduct);
+  const canColor = allowsColorPrint(materialId, activeMProduct) || !!artistForPiece;
   /** Acero que la Dacen no toma (manija / no cilíndrico): se consulta en el local. */
   const colorConsult = !canColor && (materialId === "acero" || materialId === "inox") && activeMProduct?.drinkwareProductId
     ? printSpecFor(activeMProduct.drinkwareProductId)?.consult ?? null
@@ -2129,7 +2139,7 @@ export default function Customizer() {
   // ── "Diseñar uno igual" desde la galería ───────────────────────────────────
   // Arranca con el producto de la foto (material + producto + talla por
   // defecto); en celular salta al paso de Diseño, como un link compartido.
-  React.useEffect(() => onDesignPreset(({ materialId: mid, materialProductId: pid }) => {
+  React.useEffect(() => onDesignPreset(({ materialId: mid, materialProductId: pid, artistDesignId: aid }) => {
     const m = MATERIALS.find(x => x.id === mid);
     const mp = m?.products.find(p => p.id === pid);
     if (!m || !mp) return;
@@ -2140,7 +2150,11 @@ export default function Customizer() {
     if (mp.drinkwareProductId) {
       const dp = getProduct(mp.drinkwareProductId);
       setSize(dp.sizes[1]?.id ?? dp.sizes[0].id);
+      // Forma propia sin producto de la tienda: queda elegida como genérico.
+      setGenericPick(!dp.model?.exactFor?.length);
     }
+    const art = getArtistDesign(aid);
+    if (art && art.materialId === m.id && art.materialProductId === mp.id) applyArtistDesign(art);
     setMobileStep(2); // Diseño
     track("customizer_preset", { material: m.id, product: mp.id });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2191,6 +2205,9 @@ export default function Customizer() {
     if (FONTS.some(f => f.id === d.text2FontId)) setText2Font(d.text2FontId!);
     if (d.text2Placement && typeof d.text2Placement === "object") setText2Placement({ ...TEXT2_DEFAULT_PLACEMENT, ...d.text2Placement });
     setDrinkTab("text");
+    // Diseño de artista: su arte es público, así que viaja en el link.
+    const art = getArtistDesign(d.artistDesignId);
+    if (art && art.materialId === d.materialId && art.materialProductId === d.materialProductId) applyArtistDesign(art);
     clearSharedDesign();
     track("design_link_open");
   }, []);
@@ -2289,8 +2306,32 @@ export default function Customizer() {
     setWrapDesignRaw(next);
   }, []);
   const wrapSpec = isDrinkware ? printSpecFor(productId, viewSize) : null;
-  const canWrap = isDrinkware && !isGlass && isColorPrint && !!wrapSpec && fitsDacen(wrapSpec);
+  /** El fondo es exactamente el arte del artista (no lo cambió ni lo movió). */
+  const artistApplied = !!artistForPiece && !!wrapDesign
+    && wrapDesign.url === artistForPiece.artwork.url && wrapDesign.mode === artistForPiece.artwork.mode;
+  const canWrap = isDrinkware && !isGlass && isColorPrint && ((!!wrapSpec && fitsDacen(wrapSpec)) || artistApplied);
   const activeWrap = canWrap ? wrapDesign : null;
+  /** El diseño de artista se ve, se cobra y viaja en el pedido. */
+  const activeArtist = artistApplied && activeWrap ? artistForPiece : null;
+  // Si el cliente cambia de pieza o reemplaza el fondo, el diseño de artista
+  // deja de aplicarse: se saca su arte (nunca queda sobre otra pieza sin cobrarse).
+  React.useEffect(() => {
+    if (!artistDesignId || artistApplied) return;
+    const d = getArtistDesign(artistDesignId);
+    if (d && wrapDesign?.url === d.artwork.url) setWrapDesign(null);
+    setArtistDesignId(null);
+  }, [artistDesignId, artistApplied, wrapDesign, setWrapDesign]);
+  /** Copiar un diseño de artista (la pieza ya tiene que estar elegida). */
+  const applyArtistDesign = (d: ArtistDesign) => {
+    setTechnique("color");
+    if (d.colorId) handleSelectColor(d.colorId);
+    if (d.finish) setFinish(d.finish);
+    setWrapDesign({
+      url: d.artwork.url, width: d.artwork.width, height: d.artwork.height, mode: d.artwork.mode,
+      scale: 1, offsetU: 0, offsetV: 0, logos: [],
+    });
+    setArtistDesignId(d.id);
+  };
   const wrapPrintSize = React.useMemo(
     () => (isDrinkware ? dacenPrintSize(productId, viewSize) : null),
     [isDrinkware, productId, viewSize],
@@ -3360,7 +3401,7 @@ export default function Customizer() {
   // la tienda tal cual figura en el e-commerce; sin producto de la tienda (forma
   // genérica), el de la forma en minúscula.
   const productNoun = isDrinkware && odooProduct ? odooProduct.name : orderProductName.toLowerCase();
-  const productTheNoun = `${FEMININE_PRODUCTS.has(productNoun.toLowerCase()) ? "la" : "el"} ${productNoun}`;
+  const productTheNoun = `${isFeminineProduct(productNoun) ? "la" : "el"} ${productNoun}`;
   const orderTechniqueName = isDrinkware
     ? activeTechnique.name
     : materialId === "plastico" ? "Plotter de corte" : "Grabado láser";
@@ -3416,8 +3457,23 @@ export default function Customizer() {
       const q = effectiveTechnique === "laser"
         ? quote({ technique: "laser", plan: activePlan.id, catalog, piecePrice: piece, pieceLabel: orderProductLabel, ownProduct: isOwnProduct, extraTexts: extraTextCount })
         : quote({ technique: "color", machine: productionMachine, piecePrice: piece, pieceLabel: orderProductLabel, coverage: activeWrap ? "wrap" : undefined });
+      // Diseño de artista: precio fijo que se suma a pieza e impresión.
+      const art = activeArtist ? designPrice(activeArtist) : 0;
+      const artNote = activeArtist ? `diseño de ${getArtist(activeArtist.artistId)?.name ?? "artista"} ${formatGs(art)}` : "";
       if (q.total !== null) {
-        return { price: formatGs(q.total), note: q.note, total: q.breakdown.length > 1 };
+        return {
+          price: formatGs(q.total + art),
+          note: artNote ? `${q.note} + ${artNote}` : q.note,
+          total: q.breakdown.length > 1 || !!art,
+        };
+      }
+      if (activeArtist) {
+        return {
+          price: piece !== null ? formatGs(piece + art) : formatGs(art),
+          note: piece !== null
+            ? `${orderProductLabel} ${formatGs(piece)} + ${artNote}. La impresión se cotiza aparte`
+            : `${artNote.charAt(0).toUpperCase()}${artNote.slice(1)}. La pieza y la impresión se cotizan aparte`,
+        };
       }
       // Sin precio de impresión: se muestra el de la pieza, si lo hay.
       return { price: piece !== null ? formatGs(piece) : null, note: q.note };
@@ -3450,7 +3506,8 @@ export default function Customizer() {
     if (selectedIcon) rows.push(["Ícono", selectedIcon.name]);
     else if (customImage) rows.push(["Logo/foto adjunta", "Sí"]);
     if (hasArt && isDrinkware && (FREE_PLACEMENT ? faceAtU(artPlacement.u) : artFace) !== "front") rows.push([selectedIcon ? "Ubicación del ícono" : "Ubicación de la imagen", where(artPlacement, artFace)]);
-    if (activeWrap) rows.push(["Diseño", `Todo el vaso (360°) · ${WRAP_MODES.find(m => m.id === activeWrap.mode)?.label ?? activeWrap.mode}`]);
+    if (activeArtist) rows.push(["Diseño de artista", `${activeArtist.title} · ${getArtist(activeArtist.artistId)?.name ?? activeArtist.artistId} (${formatGs(designPrice(activeArtist))})`]);
+    else if (activeWrap) rows.push(["Diseño", `Todo el vaso (360°) · ${WRAP_MODES.find(m => m.id === activeWrap.mode)?.label ?? activeWrap.mode}`]);
     if (activeWrap?.logos?.length) rows.push(["Logos sobre el fondo", String(activeWrap.logos.length)]);
     if (extraLidText !== null) rows.push(["Grabado en tapa", extraLidText || "Sí (texto a definir)"]);
     if (extraBaseText !== null) rows.push(["Grabado en base", extraBaseText || "Sí (texto a definir)"]);
@@ -3515,6 +3572,16 @@ export default function Customizer() {
         odooVariantId: isOwnProduct ? null : odooVariant?.id ?? null,
         sku: isOwnProduct ? null : odooVariant?.sku ?? null,
         piecePrice: isOwnProduct ? null : odooVariant?.price ?? null,
+        // Diseño de artista: qué se cobra y cuánto le corresponde al artista
+        // (liquidación mensual). provisional: el taller pide el archivo plano.
+        ...(activeArtist ? {
+          artistDesign: {
+            id: activeArtist.id, title: activeArtist.title, artistId: activeArtist.artistId,
+            artistName: getArtist(activeArtist.artistId)?.name ?? activeArtist.artistId,
+            price: designPrice(activeArtist), artistFee: designArtistFee(activeArtist),
+            provisional: !!activeArtist.provisional,
+          },
+        } : {}),
         // Todo el vaso (360°): el fondo ya va dibujado en el archivo de la Dacen;
         // acá quedan el modo y la resolución para el panel (sin la imagen).
         ...(activeWrap ? {
@@ -4041,6 +4108,38 @@ export default function Customizer() {
     </>
   );
 
+  /** Diseño de artista copiado: qué es, cuánto suma y cómo sacarlo. */
+  const renderArtistBanner = () => {
+    const d = activeArtist ?? (artistApplied ? artistForPiece : null);
+    if (!d) return null;
+    const artistName = getArtist(d.artistId)?.name ?? "artista";
+    return (
+      <div role="note" className="mb-4 flex items-start gap-3 p-3 border rounded-xl border-primary/40 bg-primary/5">
+        <img src={d.imageSmall ?? d.image} alt="" width={56} height={56} className="w-14 h-14 rounded-lg object-cover shrink-0" />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">Diseño de {artistName} · {d.title}</p>
+          {activeArtist ? (
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              + {formatGs(designPrice(d))}. Lo producimos tal cual lo ves; podés sumarle tu nombre o un texto.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              El diseño va con impresión a color.{" "}
+              <button type="button" onClick={() => setTechnique("color")} className="text-primary font-medium underline">Volver al diseño</button>
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => { track("artist_design_remove", { design: d.id }); setWrapDesign(null); }}
+            className="mt-1.5 text-xs text-primary font-medium hover:underline"
+          >
+            Quitar diseño
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const renderDrinkTechnique = () => (
     <div>
       <Label className="text-sm font-medium mb-2 block">Técnica de grabado</Label>
@@ -4049,7 +4148,9 @@ export default function Customizer() {
           <TechniqueSelector value={effectiveTechnique} onChange={setTechnique} compact={isMobile} />
           {effectiveTechnique === "color" && (
             <p className="text-xs text-muted-foreground mt-2">
-              La impresión UV a todo color se cotiza por WhatsApp según el diseño.
+              {activeArtist
+                ? "Este diseño se imprime a color sobre la pieza; el costo de la impresión te lo pasamos por WhatsApp."
+                : "La impresión UV a todo color se cotiza por WhatsApp según el diseño."}
             </p>
           )}
         </>
@@ -4100,6 +4201,7 @@ export default function Customizer() {
     textPlacement, artPlacement,
     extraLid: extraEngraving ? extraLid : null, extraBase: extraEngraving ? extraBase : null,
     ...(hasText2 ? { text2, text2FontId: text2Font, text2Placement } : {}),
+    artistDesignId: activeArtist?.id ?? null,
   });
 
   const handleCopyLink = async () => {
@@ -4159,7 +4261,7 @@ export default function Customizer() {
               // Con Odoo, el precio real de la variante elegida.
               : odooVariant ? `Pieza ${formatGs(odooVariant.price)}` : "Te cotizamos la pieza",
           },
-          { own: true, title: material.pens ? "Traigo los míos" : "Traigo el mío", sub: "Solo el grabado" },
+          { own: true, title: material.pens ? "Traigo los míos" : isFeminineProduct(productNoun) ? "Traigo la mía" : "Traigo el mío", sub: "Solo el grabado" },
         ].map(o => {
           const active = ownProduct === o.own;
           return (
@@ -4455,7 +4557,7 @@ export default function Customizer() {
         className="w-full min-h-12 flex items-center justify-between gap-3 rounded-xl border border-border px-4 py-2.5 text-left active:bg-secondary/50"
       >
         <span className="text-sm text-foreground leading-tight">
-          ¿Ya tenés tu {productNoun}? <span className="text-muted-foreground">Traelo y lo grabamos</span>
+          ¿Ya tenés tu {productNoun}? <span className="text-muted-foreground">{isFeminineProduct(productNoun) ? "Traela y la grabamos" : "Traelo y lo grabamos"}</span>
         </span>
         <span aria-hidden className={`shrink-0 w-10 h-6 rounded-full p-0.5 transition-colors ${ownProduct ? "bg-primary" : "bg-border"}`}>
           <span className={`block w-5 h-5 rounded-full bg-white shadow transition-transform ${ownProduct ? "translate-x-4" : ""}`} />
@@ -5369,6 +5471,8 @@ export default function Customizer() {
                 </div>
 
                 <div className="p-4 sm:p-5 min-h-[280px]">
+                  {/* Diseño de artista copiado: visible en todas las pestañas. */}
+                  {renderArtistBanner()}
                   {/* COLOR TAB (desktop editor; on mobile colour lives in Step 2 "Estilo") */}
                   {!isMobile && (
                   <TabsContent value="color" className="mt-0 space-y-5">

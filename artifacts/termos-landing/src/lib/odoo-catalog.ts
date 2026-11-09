@@ -180,7 +180,7 @@ export function engravingPrice(catalog: Catalog | undefined, plan: EngravingPlan
 const CATALOG_SECTIONS: { title: string; types: string[] }[] = [
   { title: "Termos", types: ["termo-mate", "termo-mate-forge", "termo"] },
   { title: "Botellas", types: ["hoppie-hydrate", "hoppie", "termo-kids", "hoppie-kids", "termo-sleek", "botella-ancha", "growler"] },
-  { title: "Vasos", types: ["vaso-hydrate", "vaso-sunbeam", "vaso-espresso", "taza-manija", "mini-coffee", "vaso-taza", "coffee-cup", "vaso-shaker", "vaso-whisky", "vaso-cafe", "vaso-guarani", "vaso-quencher", "vaso-protour", "vaso-flip", "vaso-manija", "vaso", "chopera"] },
+  { title: "Vasos", types: ["vaso-hydrate", "vaso-sunbeam", "vaso-espresso", "taza-manija", "taza-enlozada", "mini-coffee", "vaso-taza", "coffee-cup", "vaso-shaker", "vaso-whisky", "vaso-cafe", "vaso-guarani", "taza-manija-palmeiras", "vaso-luqueno", "vaso-quencher", "vaso-protour", "vaso-flip", "vaso-manija", "vaso", "chopera"] },
   { title: "Guampas y copas", types: ["guampa", "guampa-terere", "copa-hydrate"] },
   { title: "Comida y bar", types: ["food-flask", "ice-bucket"] },
 ];

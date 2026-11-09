@@ -60,7 +60,7 @@ const TYPE_LABEL: Record<string, string> = {
   copa: "Copa", vaso: "Vaso", termo: "Termo", botella: "Botella",
   "food-flask": "Food Flask", "ice-bucket": "Ice Bucket", bowl: "Bowl",
   "vaso-manija": "Vaso", "botella-ancha": "Botella", "vaso-hydrate": "Vaso", "vaso-sunbeam": "Vaso",
-  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso", "vaso-whisky": "Vaso", "vaso-cafe": "Vaso", growler: "Growler", "termo-sleek": "Termo", "hoppie-kids": "Hoppie", "vaso-guarani": "Vaso", "vaso-quencher": "Vaso", "vaso-flip": "Vaso", "vaso-protour": "Vaso",
+  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso", "vaso-whisky": "Vaso", "vaso-cafe": "Vaso", growler: "Growler", "termo-sleek": "Termo", "hoppie-kids": "Hoppie", "vaso-guarani": "Vaso", "vaso-quencher": "Vaso", "vaso-flip": "Vaso", "vaso-protour": "Vaso", "taza-manija-palmeiras": "Vaso", "vaso-luqueno": "Vaso",
 };
 
 /**
@@ -176,7 +176,11 @@ const CLUBS: [RegExp, string][] = [
  * 3D del modelo liso y el color de la edición. Las que tienen un .glb con el
  * estampado del club usan ese perfil: "modelo visible|club" (normalizado).
  */
-const CLUB_MODELS: Record<string, string> = { "vaso|guarani": "vaso-guarani" };
+const CLUB_MODELS: Record<string, string> = {
+  "vaso|guarani": "vaso-guarani",
+  "vaso manija|palmeiras": "taza-manija-palmeiras",
+  "vaso|sportivo luqueno": "vaso-luqueno",
+};
 
 /**
  * Stanley: Odoo carga el mismo producto con varios nombres ("MATERO CLASSIC" y

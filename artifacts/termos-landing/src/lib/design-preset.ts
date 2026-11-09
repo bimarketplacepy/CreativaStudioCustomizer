@@ -6,6 +6,8 @@
 export interface DesignPreset {
   materialId: string;
   materialProductId: string;
+  /** "Copiar diseño" de un artista (artist-designs.ts): llega ya aplicado. */
+  artistDesignId?: string;
 }
 
 const EVENT = "cs:design-preset";

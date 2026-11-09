@@ -35,6 +35,8 @@ export interface SharedDesign {
   text2?: string;
   text2FontId?: string;
   text2Placement?: Placement;
+  /** Diseño de artista copiado (artist-designs.ts; links anteriores no lo traen). */
+  artistDesignId?: string | null;
 }
 
 const PREFIX = "#diseno=";

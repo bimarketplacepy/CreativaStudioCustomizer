@@ -1,7 +1,7 @@
 import type { FaceId } from "./placement";
 import type { KeepOutZone } from "./keep-out";
 
-export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids" | "termo-terere" | "vaso-guarani" | "guampa-terere" | "vaso-quencher" | "vaso-flip" | "vaso-protour";
+export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids" | "termo-terere" | "vaso-guarani" | "guampa-terere" | "vaso-quencher" | "vaso-flip" | "vaso-protour" | "taza-manija-palmeiras" | "vaso-luqueno" | "taza-enlozada";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -1173,6 +1173,79 @@ export const PRODUCTS: ProductDef[] = [
     ],
   },
   {
+    id: "taza-manija-palmeiras",
+    name: "Vasos Manija Palmeiras",
+    singular: "Vaso Manija Palmeiras",
+    // Hydrate "MANIJA 710 ML VERDE MILITAR EDICION 1 PALMEIRAS"
+    // (artifacts/3D/HYDRATE/CLUBES/taza-hydrate-palmeiras.glb): el mismo
+    // jarro que el Vaso Manija (mismo perfil y medidas), con la manija en −X
+    // del .glb y los grabados del club: logo Hydrate, escudo y "logo_texto" al
+    // frente del .glb (+Z), "texto_licencia" y "texto_club" abajo atrás. Con
+    // yawDeg 180 escudo y logo quedan atrás, la manija a la izquierda (u 0.75)
+    // y los textos chicos abajo al frente (zona sin grabado, como el escudo).
+    desc: "Jarro térmico de 710 ml de la edición oficial de Palmeiras.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.427, -1.140], [0.479, -1.116], [0.515, -1.074], [0.527, -1.038],
+      [0.528, -1.020], [0.528,  0.792],
+    ],
+    band: [-1.00, 0.77],
+    // Cara frontal a 90° de la manija: el área no toca la manija.
+    frontFace: { uHalfWidth: 0.16 },
+    model: {
+      url: "/models/taza-hydrate-palmeiras.glb?v=1",
+      exactFor: ["Vaso Manija · Palmeiras"],
+      unitsPerMeter: 12,
+      centerYm: 0.095,
+      heightM: 0.19,
+      reachM: 0.079,
+      yawDeg: 180,
+      paint: ["handle"],
+    },
+    // Atrás van el escudo y el logo (no se graba encima); la manija a la izquierda.
+    engraveFaces: ["front", "right"],
+    sizes: [
+      { id: "taza-manija-palmeiras-710", name: "710ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-luqueno",
+    name: "Vasos Luqueño",
+    singular: "Vaso Luqueño",
+    // Hydrate "VASO 600ML AMARILLO SOL LUQUE" (artifacts/3D/HYDRATE/CLUBES/
+    // vaso-hydrate-luqueno.glb): el Vaso de 600 ml (base de acero, aro y tapa
+    // con deslizador) con logo Hydrate, escudo de Sportivo Luqueño y
+    // "logo_texto" al frente del .glb (+Z). Con yawDeg 180 quedan atrás:
+    // adelante y a los costados, la cara libre. Perfil medido sobre el .glb
+    // (m × 12, centrado en 0,088 m).
+    desc: "Vaso térmico de 600 ml de la edición oficial de Sportivo Luqueño.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.422, -0.924], [0.440, -0.882], [0.456, -0.756], [0.470, -0.606],
+      [0.482, -0.456], [0.493, -0.306], [0.500, -0.156], [0.508, -0.006],
+      [0.512,  0.144], [0.517,  0.294], [0.521,  0.444], [0.524,  0.594],
+      [0.529,  0.750], [0.530,  0.822],
+    ],
+    band: [-0.86, 0.70],
+    frontFace: { uHalfWidth: 0.2 },
+    model: {
+      url: "/models/vaso-hydrate-luqueno.glb?v=1",
+      exactFor: ["Vaso · Sportivo Luqueño"],
+      unitsPerMeter: 12,
+      centerYm: 0.088,
+      heightM: 0.176,
+      reachM: 0.0442,
+      yawDeg: 180,
+    },
+    // Atrás van el escudo y el logo: se graba adelante y a los costados.
+    engraveFaces: ["front", "left", "right"],
+    sizes: [
+      { id: "vaso-luqueno-600", name: "600ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
     id: "vaso-espresso",
     name: "Vasos Taza Espresso",
     singular: "Vaso Taza Espresso",
@@ -1243,6 +1316,39 @@ export const PRODUCTS: ProductDef[] = [
     logoBack: true,
     sizes: [
       { id: "taza-manija-unico", name: "Único", label: "Clásico", scale: 1.00 },
+    ],
+  },
+  {
+    id: "taza-enlozada",
+    name: "Tazas enlozadas",
+    singular: "Taza enlozada",
+    // Taza enlozada blanca GENÉRICA (artifacts/3D/GENERICOS/taza-enlozada-
+    // blanca.glb): cuerpo casi recto Ø 85 mm × 77 mm, aro de acero y manija
+    // en +X del .glb. Con yawDeg 180 la manija queda en u 0.25: mirando el
+    // frente, a la izquierda, como en las fotos de producto. Sin logo. Perfil
+    // medido sobre el .glb (m × 20, centrado en 0,0392 m).
+    desc: "Taza enlozada blanca de 350 ml con aro de acero.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.710, -0.784], [0.782, -0.744], [0.812, -0.694], [0.822, -0.643],
+      [0.830, -0.304], [0.838,  0.176], [0.848,  0.616], [0.850,  0.752],
+    ],
+    band: [-0.62, 0.70],
+    // Cara frontal a 90° de la manija: el área no toca la manija.
+    frontFace: { uHalfWidth: 0.16 },
+    model: {
+      url: "/models/taza-enlozada-blanca.glb?v=1",
+      unitsPerMeter: 20,
+      centerYm: 0.0392,
+      heightM: 0.0784,
+      reachM: 0.0707,
+      yawDeg: 180,
+    },
+    // Manija en u 0.25 (cara "right").
+    engraveFaces: ["front", "back", "left"],
+    sizes: [
+      { id: "taza-enlozada-350", name: "350ml", label: "Único", scale: 1.00 },
     ],
   },
   {
