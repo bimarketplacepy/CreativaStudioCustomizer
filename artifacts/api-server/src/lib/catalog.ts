@@ -60,7 +60,7 @@ const TYPE_LABEL: Record<string, string> = {
   copa: "Copa", vaso: "Vaso", termo: "Termo", botella: "Botella",
   "food-flask": "Food Flask", "ice-bucket": "Ice Bucket", bowl: "Bowl",
   "vaso-manija": "Vaso", "botella-ancha": "Botella", "vaso-hydrate": "Vaso", "vaso-sunbeam": "Vaso",
-  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso", "vaso-whisky": "Vaso", "vaso-cafe": "Vaso", growler: "Growler", "termo-sleek": "Termo", "hoppie-kids": "Hoppie", "vaso-guarani": "Vaso",
+  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso", "vaso-whisky": "Vaso", "vaso-cafe": "Vaso", growler: "Growler", "termo-sleek": "Termo", "hoppie-kids": "Hoppie", "vaso-guarani": "Vaso", "vaso-quencher": "Vaso", "vaso-flip": "Vaso", "vaso-protour": "Vaso",
 };
 
 /**
@@ -182,7 +182,7 @@ const CLUB_MODELS: Record<string, string> = { "vaso|guarani": "vaso-guarani" };
  * Stanley: Odoo carga el mismo producto con varios nombres ("MATERO CLASSIC" y
  * "MATERO/GUAMPA CLASSIC"; "QUENCHER", "QUENCHER FLOWSTATE" y "QUENCHER H2,0",
  * que son el Quencher H2.0 FlowState). Se agrupan bajo el nombre de la derecha
- * y cada uno usa la forma genérica más parecida (sin .glb propio todavía).
+ * y cada uno usa la forma genérica más parecida (el Quencher ya tiene .glb propio).
  */
 const STANLEY = "stanley";
 const STANLEY_MODEL: Record<string, string> = {
@@ -192,10 +192,11 @@ const STANLEY_MODEL: Record<string, string> = {
   "quencher protour": "Quencher ProTour",
 };
 const STANLEY_TYPE: Record<string, string> = {
-  "quencher h2.0": "vaso-manija", "quencher protour": "vaso-manija",
+  // Quencher H2.0 y ProTour: cada uno con su modelo propio.
+  "quencher h2.0": "vaso-quencher", "quencher protour": "vaso-protour",
   "matero classic": "guampa", "matero terere": "guampa",
   "termo classic": "termo", "botella aerolight": "botella-ancha",
-  "tumbler flip": "vaso", "go everyday tumbler": "vaso", "vaso classic": "vaso", "vaso everyday pint": "vaso",
+  "tumbler flip": "vaso-flip", "go everyday tumbler": "vaso", "vaso classic": "vaso", "vaso everyday pint": "vaso",
 };
 
 /**
@@ -509,7 +510,7 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
   );
 
   const categories: Record<string, string[]> = {};
-  const products: CatalogProduct[] = [...byKey.values()].map(list => {
+  const groups = [...byKey.values()].map(list => {
     const votes = new Map<string, number>();
     for (const e of list) votes.set(e.type, (votes.get(e.type) ?? 0) + 1);
     let productType = [...votes].sort((a, b) => b[1] - a[1])[0][0];
@@ -524,12 +525,10 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
     if (exact && norm(name) !== norm(exact.name)) productType = exact.fallback;
     if (own) productType = NAMED_MODEL[productType]?.[norm(name)] ?? productType;
     if (own) name = DISPLAY_NAME[productType] ?? name;
-    // Edición de club: el perfil del modelo liso, salvo que tenga su propio .glb.
-    if (first.club) {
-      productType = CLUB_MODELS[`${norm(name)}|${norm(first.club)}`] ?? productType;
-      name = `${name} · ${first.club}`;
-    }
-    categories[name] = [...new Set(list.map(e => e.category))];
+    // Edición de club: va como variante de su producto liso (ver mergeEditions);
+    // si tiene su propio .glb (Guaraní), la variante lleva ese perfil.
+    const clubType = first.club ? CLUB_MODELS[`${norm(name)}|${norm(first.club)}`] ?? null : null;
+    categories[first.club ? `${name} · ${first.club}` : name] = [...new Set(list.map(e => e.category))];
     const published = list.find(e => e.t.is_published && e.t.website_url);
     const rawBrand = first.t[BRAND_FIELD];
     const brand = typeof rawBrand === "string" && rawBrand.trim() ? titleCase(rawBrand.trim()) : (BRANDS[0] ? titleCase(BRANDS[0]) : "");
@@ -542,10 +541,12 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
       // Servida por /api/catalog/image: la tienda solo publica la foto de los
       // productos publicados (al resto le muestra un ícono gris).
       imageUrl: pictured ? `/api/catalog/image/${pictured.t.id}` : null,
-      club: first.club,
-      variants: mergeNearSizes(list.map(e => e.variant)),
+      variants: mergeNearSizes(list.map(e => ({
+        ...e.variant, club: first.club, modelType: clubType && clubType !== productType ? clubType : null,
+      }))),
     };
-  })
+  });
+  const products: CatalogProduct[] = mergeEditions(groups)
     .filter(p => {
       if (!DROPPED_TYPES.has(p.productType)) return true;
       excluded.add(p.name);
@@ -572,6 +573,38 @@ export async function fetchFromOdoo(client: OdooClient): Promise<SyncReport> {
     stats: { templates: tById.size, withoutStock: variants.length - stocked.length, variants: stocked.length, models: products.length },
   };
 }
+
+/**
+ * Las ediciones de clubes son el mismo termo que la línea lisa: se suman como
+ * variantes del producto liso de la misma marca, material y nombre (el
+ * personalizador las ofrece en «Edición»). Una edición sin línea lisa queda
+ * como producto propio con el nombre del modelo.
+ */
+function mergeEditions(groups: CatalogProduct[]): CatalogProduct[] {
+  const keyOf = (p: CatalogProduct) => `${norm(p.brand)}|${p.material}|${norm(EDITION_BASE[norm(p.name)] ?? p.name)}`;
+  const isEdition = (p: CatalogProduct) => p.variants.every(v => v.club);
+  const base = new Map<string, CatalogProduct>();
+  for (const p of groups) if (!isEdition(p)) base.set(keyOf(p), p);
+  const out: CatalogProduct[] = groups.filter(p => !isEdition(p)).map(p => ({ ...p, variants: [...p.variants] }));
+  const byKey = new Map(out.map(p => [keyOf(p), p]));
+  for (const p of groups.filter(isEdition)) {
+    const into = byKey.get(keyOf(p));
+    if (!into) {
+      const solo = { ...p, variants: [...p.variants] };
+      out.push(solo);
+      byKey.set(keyOf(p), solo);
+      continue;
+    }
+    // La variante conserva su perfil 3D si difiere del producto donde entra.
+    into.variants.push(...p.variants.map(v => ({
+      ...v, modelType: v.modelType ?? (p.productType !== into.productType ? p.productType : null),
+    })));
+  }
+  return out;
+}
+
+/** Ediciones con otro nombre que su línea lisa: "Termo Café" es el "Vaso Café". */
+const EDITION_BASE: Record<string, string> = { "termo cafe": "Vaso Café" };
 
 const EMPTY_ENGRAVING = { names: null, drawing: null, logo: null };
 

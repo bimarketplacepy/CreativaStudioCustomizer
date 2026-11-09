@@ -32,6 +32,16 @@ export interface CatalogVariant {
   available: number | null;
   /** Whether this variant can be ordered right now */
   inStock: boolean;
+  /**
+   * Club or national team of a sports edition of the product (e.g. Cerro Porteño, Albirroja); null for the plain line
+   * @nullable
+   */
+  club?: string | null;
+  /**
+   * Customizer 3D profile for this variant when it differs from the product's (an edition with its own model, e.g. vaso-guarani)
+   * @nullable
+   */
+  modelType?: string | null;
 }
 
 export interface CatalogProduct {
@@ -51,11 +61,6 @@ export interface CatalogProduct {
   url: string | null;
   /** @nullable */
   imageUrl: string | null;
-  /**
-   * Club or national team of a sports edition (e.g. Cerro Porteño, Albirroja); null for the plain line
-   * @nullable
-   */
-  club?: string | null;
   variants: CatalogVariant[];
 }
 

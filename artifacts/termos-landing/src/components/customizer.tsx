@@ -54,7 +54,7 @@ function UnwrappedDialog(props: React.ComponentProps<typeof UnwrappedDialogLazy>
 }
 import { ENGRAVING_PLANS, type EngravingPlanId } from "@/lib/engraving-plans";
 import type { ProcessedImage } from "@/lib/image-processing";
-import { DEFAULT_PRODUCT_ID, getProduct, getSize, productForSize, type ProductDef } from "@/lib/products";
+import { DEFAULT_PRODUCT_ID, getProduct, getSize, productForColor, productForSize, type ProductDef } from "@/lib/products";
 import { getObject } from "@/lib/objects";
 import {
   DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, LINE_HEIGHT_PRESETS, DEFAULT_LINE_HEIGHT,
@@ -85,6 +85,7 @@ import { PRICING, quote } from "@/lib/pricing";
 import {
   colorOptions, defaultVariant, engravingPrice, findVariant, formatGs, GENERIC_BRAND,
   matchingProducts, odooShopItems, priceFrom, sectionTitles, shopBrands, shopSections, sizeOptions,
+  editionOptions, effectiveEdition, productForEdition, editionModelType,
   useCatalog, viewSizeId, type CatalogSection, type ShopItem,
 } from "@/lib/odoo-catalog";
 import { track } from "@/lib/analytics";
@@ -1836,7 +1837,15 @@ export default function Customizer() {
   const [odooTemplateId, setOdooTemplateId] = useState<number | null>(null);
   const [odooColor, setOdooColor] = useState<string | null>(null);
   const [odooSize, setOdooSize] = useState<string | null>(null);
-  const odooProduct = odooProducts.find(p => p.id === odooTemplateId) ?? odooProducts[0] ?? null;
+  // Edición de club o selección (null = la línea lisa): filtra tamaños y colores.
+  const [odooEdition, setOdooEdition] = useState<string | null>(null);
+  const odooFullProduct = odooProducts.find(p => p.id === odooTemplateId) ?? odooProducts[0] ?? null;
+  const odooEditions = useMemo(() => (odooFullProduct ? editionOptions(odooFullProduct) : []), [odooFullProduct]);
+  const activeEdition = odooFullProduct ? effectiveEdition(odooFullProduct, odooEdition) : null;
+  const odooProduct = useMemo(
+    () => (odooFullProduct ? productForEdition(odooFullProduct, activeEdition) : null),
+    [odooFullProduct, activeEdition],
+  );
   const odooMode = !!odooProduct;
   // Solo los colores del tamaño elegido: elegir un color nunca cambia el tamaño.
   const odooColors = useMemo(() => (odooProduct ? colorOptions(odooProduct, odooSize) : []), [odooProduct, odooSize]);
@@ -1882,6 +1891,22 @@ export default function Customizer() {
     setOdooColor(v?.colorName ?? null);
     track("customizer_size_select", { product: productId, size: label, source: "odoo" });
   };
+  /** Elegir edición: tamaño y color vuelven a la primera variante de esa edición. */
+  const selectOdooEdition = (club: string | null) => {
+    setOdooEdition(club);
+    track("customizer_edition_select", { product: odooFullProduct?.name, edition: club ?? "lisa" });
+  };
+  // Una edición con modelo propio (Guaraní) cambia el perfil 3D; al volver a otra
+  // edición, vuelve el del producto. Sin resetear el producto elegido.
+  const editionType = odooFullProduct ? editionModelType(odooFullProduct, activeEdition) : null;
+  React.useEffect(() => {
+    if (!editionType || editionType === productId) return;
+    const mp = material.products.find(x => x.drinkwareProductId === editionType);
+    if (!mp) return;
+    setOdooTemplateId(odooFullProduct?.id ?? null);
+    setMaterialProductId(mp.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editionType]);
   // Catálogo del personalizador para el material elegido: los productos de la
   // tienda (Odoo, por marca) + las formas genéricas propias. Cuando hay
   // productos de la tienda, el cliente elige de acá en vez del tipo genérico.
@@ -1898,7 +1923,7 @@ export default function Customizer() {
         name: p.name,
         brand: GENERIC_BRAND,
         type: p.drinkwareProductId!,
-        thumb: null, from: null, colors: null, odooId: null, club: null,
+        thumb: null, from: null, colors: null, odooId: null, clubs: [], edition: null, editionInfo: {},
       }));
     return [...fromOdoo, ...generic];
   }, [catalog, materialId, material]);
@@ -1913,6 +1938,7 @@ export default function Customizer() {
     if (mp.id !== materialProductId) handleSelectMaterialProduct(mp.id);
     setGenericPick(it.odooId === null);
     setOdooTemplateId(it.odooId);
+    setOdooEdition(it.edition);
     track("customizer_catalog_select", { key: it.key, product: it.name, brand: it.brand, type: it.type });
   };
   /** Línea de detalle de la tarjeta "Tu producto": tamaño y precio de la variante. */
@@ -1923,21 +1949,23 @@ export default function Customizer() {
           .filter(Boolean).join(" · ")
       : "";
   /** Sin modelo 3D propio, la vista usa la forma genérica del tipo: avisarlo. */
-  // Los .glb son de Hydrate y traen su logo: sobre una pieza de otra marca
-  // (Stanley) se oculta, para no mostrar un Stanley con el logo de Hydrate.
-  const otherBrandPiece = shopMode && !genericPick && !!odooProduct && !/^hydrate$/i.test(odooProduct.brand.trim());
+  // Los .glb traen el logo de su marca (Hydrate, salvo model.brand): sobre una
+  // pieza de otra marca se oculta, para no mostrar un Stanley con el logo de Hydrate.
+  const modelBrand = (baseProduct.model?.brand ?? "Hydrate").toLowerCase();
+  const otherBrandPiece = shopMode && !genericPick && !!odooProduct && odooProduct.brand.trim().toLowerCase() !== modelBrand;
   // Edición de club sin .glb propio: el 3D es el modelo liso, sin el estampado.
   const approxNote = !(shopMode && !genericPick && odooProduct) || baseProduct.model?.exactFor?.includes(odooProduct.name)
     ? null
-    : odooProduct.club
-      ? `La edición ${odooProduct.club} trae el estampado del club, que la vista 3D no muestra. Antes de grabar te confirmamos por WhatsApp dónde entra tu diseño.`
+    : activeEdition
+      ? `La edición ${activeEdition} trae el estampado del club, que la vista 3D no muestra. Antes de grabar te confirmamos por WhatsApp dónde entra tu diseño.`
       : `La vista 3D de ${odooProduct.name} es aproximada; el diseño y el grabado son los reales.`;
 
   // Tamaño que dibuja el 3D: el de Odoo mapeado al perfil, o el elegido a mano.
   const viewSize = odooMode ? viewSizeId(baseProduct, odooSizes, odooSize) : size;
   const activeSize = getSize(baseProduct, viewSize);
   // El producto en ese tamaño: perfil, banda y modelo del tamaño si tiene propio.
-  const product = productForSize(baseProduct, viewSize);
+  // …y con el .glb del color de la variante, si ese color tiene uno propio.
+  const product = productForColor(productForSize(baseProduct, viewSize), odooMode ? odooColor : null);
 
   const [color, setColor] = useState(COLORS.find(c => c.name.startsWith(START_COLOR_NAME))?.id ?? COLORS[0].id);
   const [customHex, setCustomHex] = useState<string | null>(null);
@@ -2150,6 +2178,7 @@ export default function Customizer() {
     // Variante de Odoo: si el link es viejo o el producto ya no existe, el
     // efecto de selección vuelve sola a la primera variante con stock.
     if (typeof d.odooTemplateId === "number") setOdooTemplateId(d.odooTemplateId);
+    setOdooEdition(typeof d.odooEdition === "string" ? d.odooEdition : null);
     if (typeof d.odooColor === "string") setOdooColor(d.odooColor);
     if (typeof d.odooSize === "string") setOdooSize(d.odooSize);
     if (d.textPlacement && typeof d.textPlacement === "object") setTextPlacement({ ...DEFAULT_TEXT_PLACEMENT, ...d.textPlacement });
@@ -3193,6 +3222,7 @@ export default function Customizer() {
   const handleSelectMaterial = (id: MaterialId) => {
     setMaterialId(id);
     setOdooTemplateId(null);
+    setOdooEdition(null);
     setGenericPick(false);
     track("customizer_material_select", { material: id });
     // La captura anterior pertenece a otro producto: nunca ofrecer descargarla.
@@ -3243,6 +3273,7 @@ export default function Customizer() {
   const handleSelectMaterialProduct = (id: string) => {
     setMaterialProductId(id);
     setOdooTemplateId(null);
+    setOdooEdition(null);
     startColorPending.current = false;
     track("customizer_product_select", { material: materialId, product: id });
     // Ídem: la captura del producto anterior deja de ser válida.
@@ -3298,6 +3329,7 @@ export default function Customizer() {
           }
           setGenericPick(item ? item.odooId === null : false);
           setOdooTemplateId(item?.odooId ?? null);
+          setOdooEdition(null);
         }
       }
       setTechnique("color");
@@ -3768,7 +3800,32 @@ export default function Customizer() {
     </div>
   );
 
-  const renderDrinkSize = () => odooMode ? renderOdooSize() : product.sizes.length > 1 && (
+  /** Edición de club o selección: solo si el producto tiene alguna con stock. */
+  const renderOdooEdition = () => odooEditions.length > 1 && odooFullProduct && (
+    <div>
+      <Label className="text-sm font-medium text-foreground mb-3 block">Edición</Label>
+      <div className="flex flex-wrap gap-2">
+        {odooEditions.map(club => {
+          const active = activeEdition === club;
+          const sellable = odooFullProduct.variants.some(v => (v.club ?? null) === club && v.inStock);
+          return (
+            <button
+              key={club ?? "lisa"}
+              type="button"
+              onClick={() => selectOdooEdition(club)}
+              disabled={!sellable}
+              aria-pressed={active}
+              className={`min-h-11 px-3 py-2 border rounded-xl text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${active ? activeCard : idleCard}`}
+            >
+              {club ?? "Lisa"}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderDrinkSize = () => odooMode ? <>{renderOdooEdition()}{renderOdooSize()}</> : product.sizes.length > 1 && (
     <div>
       <Label className="text-sm font-medium text-foreground mb-3 block">
         Tamaño {productArticle(productNoun)} {productNoun}
@@ -4038,7 +4095,7 @@ export default function Customizer() {
   /** Estado mínimo para el link del diseño (sin el logo subido: no entra en una URL). */
   const sharedDesignState = (): SharedDesign => ({
     v: 1, materialId, materialProductId, sizeId: size, colorId: color, customHex, finish,
-    odooTemplateId: odooProduct?.id ?? null, odooColor, odooSize,
+    odooTemplateId: odooProduct?.id ?? null, odooColor, odooSize, odooEdition: activeEdition,
     technique: effectiveTechnique, text, fontId: font, textColor, iconId, ownProduct,
     textPlacement, artPlacement,
     extraLid: extraEngraving ? extraLid : null, extraBase: extraEngraving ? extraBase : null,
@@ -4272,6 +4329,7 @@ export default function Customizer() {
               fontStyle={activeFont.style}
               productId={productId}
               sizeId={viewSize}
+              modelColor={odooMode ? odooColor : null}
               customImageUrl={artUrl}
               imageSize={artImageSize}
               textPlacement={textPlacement}
@@ -4343,6 +4401,7 @@ export default function Customizer() {
       fontStyle={activeFont.style}
       productId={productId}
       sizeId={viewSize}
+      modelColor={odooMode ? odooColor : null}
       customImageUrl={artUrl}
       imageSize={artImageSize}
       textPlacement={textPlacement}

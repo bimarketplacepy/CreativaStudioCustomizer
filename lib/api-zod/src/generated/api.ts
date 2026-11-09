@@ -52,12 +52,6 @@ export const GetCatalogResponse = zod.object({
         .nullable()
         .describe("Absolute product page URL in the Odoo shop"),
       imageUrl: zod.string().nullable(),
-      club: zod
-        .string()
-        .nullish()
-        .describe(
-          "Club or national team of a sports edition (e.g. Cerro Porteño, Albirroja); null for the plain line",
-        ),
       variants: zod.array(
         zod.object({
           id: zod.number().describe("Odoo product.product id"),
@@ -77,6 +71,18 @@ export const GetCatalogResponse = zod.object({
           inStock: zod
             .boolean()
             .describe("Whether this variant can be ordered right now"),
+          club: zod
+            .string()
+            .nullish()
+            .describe(
+              "Club or national team of a sports edition of the product (e.g. Cerro Porteño, Albirroja); null for the plain line",
+            ),
+          modelType: zod
+            .string()
+            .nullish()
+            .describe(
+              "Customizer 3D profile for this variant when it differs from the product's (an edition with its own model, e.g. vaso-guarani)",
+            ),
         }),
       ),
     }),

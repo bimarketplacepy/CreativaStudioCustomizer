@@ -32,9 +32,44 @@ export function useCatalog(): Catalog | undefined {
   return ODOO_CATALOG_ENABLED ? data : undefined;
 }
 
-/** Productos de Odoo que corresponden al perfil 3D + material elegidos. */
+/**
+ * Productos de Odoo que corresponden al perfil 3D + material elegidos. Incluye
+ * los que tienen una edición con ese perfil propio (el Vaso, cuando se ve la
+ * edición Guaraní con vaso-guarani).
+ */
 export function matchingProducts(catalog: Catalog | undefined, productType: string, material: string): CatalogProduct[] {
-  return (catalog?.products ?? []).filter(p => p.productType === productType && p.material === material);
+  return (catalog?.products ?? []).filter(p => p.material === material
+    && (p.productType === productType || p.variants.some(v => v.modelType === productType)));
+}
+
+// ── Ediciones de clubes y selección ─────────────────────────────────────────
+/** Ediciones del producto: null (la línea lisa) primero si existe, después los clubes. */
+export function editionOptions(p: CatalogProduct): (string | null)[] {
+  const out: (string | null)[] = [];
+  if (p.variants.some(v => !v.club)) out.push(null);
+  for (const v of p.variants) if (v.club && !out.includes(v.club)) out.push(v.club);
+  return out;
+}
+
+/** Edición válida para el producto: la pedida si existe; si no, la lisa (o la primera). */
+export function effectiveEdition(p: CatalogProduct, edition: string | null): string | null {
+  const opts = editionOptions(p);
+  return opts.includes(edition) ? edition : opts[0] ?? null;
+}
+
+/**
+ * El producto visto en una edición: solo sus variantes y el club en el nombre
+ * ("Termo Mate · River Plate"), así resumen, pedido y WhatsApp la nombran.
+ */
+export function productForEdition(p: CatalogProduct, edition: string | null): CatalogProduct {
+  if (editionOptions(p).length < 2 && !edition) return p;
+  const variants = p.variants.filter(v => (v.club ?? null) === edition);
+  return { ...p, name: edition ? `${p.name} · ${edition}` : p.name, variants };
+}
+
+/** Perfil 3D de una edición: el suyo si tiene modelo propio (Guaraní), si no el del producto. */
+export function editionModelType(p: CatalogProduct, edition: string | null): string {
+  return p.variants.find(v => (v.club ?? null) === edition && v.modelType)?.modelType ?? p.productType;
 }
 
 /**
@@ -141,14 +176,11 @@ export function engravingPrice(catalog: Catalog | undefined, plan: EngravingPlan
   return typeof fromOdoo === "number" ? fromOdoo : (ENGRAVING_PLANS.find(p => p.id === plan)?.price ?? 0);
 }
 
-/** Sección de las ediciones de clubes y la selección (cualquier perfil 3D). */
-export const CLUB_SECTION = "Clubes y selección";
-
 /** Secciones del catálogo de la tienda en el personalizador, en este orden. */
 const CATALOG_SECTIONS: { title: string; types: string[] }[] = [
   { title: "Termos", types: ["termo-mate", "termo-mate-forge", "termo"] },
   { title: "Botellas", types: ["hoppie-hydrate", "hoppie", "termo-kids", "hoppie-kids", "termo-sleek", "botella-ancha", "growler"] },
-  { title: "Vasos", types: ["vaso-hydrate", "vaso-sunbeam", "vaso-espresso", "taza-manija", "mini-coffee", "vaso-taza", "coffee-cup", "vaso-shaker", "vaso-whisky", "vaso-cafe", "vaso-guarani", "vaso-manija", "vaso", "chopera"] },
+  { title: "Vasos", types: ["vaso-hydrate", "vaso-sunbeam", "vaso-espresso", "taza-manija", "mini-coffee", "vaso-taza", "coffee-cup", "vaso-shaker", "vaso-whisky", "vaso-cafe", "vaso-guarani", "vaso-quencher", "vaso-protour", "vaso-flip", "vaso-manija", "vaso", "chopera"] },
   { title: "Guampas y copas", types: ["guampa", "guampa-terere", "copa-hydrate"] },
   { title: "Comida y bar", types: ["food-flask", "ice-bucket"] },
 ];
@@ -171,8 +203,12 @@ export interface ShopItem {
   /** Colores con stock (null en los genéricos: usan la paleta propia). */
   colors: number | null;
   odooId: number | null;
-  /** Club o selección de una edición deportiva (null en la línea lisa y los genéricos). */
-  club: string | null;
+  /** Clubes y selección con edición de este producto (para buscarlos). */
+  clubs: string[];
+  /** Resultado de búsqueda por club: abre el producto con esa edición elegida. */
+  edition: string | null;
+  /** Precio "desde" y colores con stock de cada edición (para los resultados por club). */
+  editionInfo: Record<string, { from: number | null; colors: number }>;
 }
 
 /**
@@ -196,7 +232,12 @@ export function odooShopItems(catalog: Catalog | undefined, material: string, kn
       from: priceFrom(p),
       colors: new Set(p.variants.filter(v => v.inStock).map(v => v.colorName)).size,
       odooId: p.id,
-      club: p.club ?? null,
+      clubs: editionOptions(p).filter((c): c is string => !!c),
+      edition: null,
+      editionInfo: Object.fromEntries(editionOptions(p).filter((c): c is string => !!c).map(c => {
+        const e = productForEdition(p, c);
+        return [c, { from: priceFrom(e), colors: new Set(e.variants.filter(v => v.inStock).map(v => v.colorName)).size }];
+      })),
     }));
 }
 
@@ -215,16 +256,22 @@ const fold = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u
  */
 export function shopSections(items: ShopItem[], opts: { brand?: string | null; section?: string | null; query?: string }): CatalogSection[] {
   const q = fold(opts.query?.trim() ?? "");
-  const list = items.filter(i => (q
-    ? fold(`${i.name} ${SEARCH_ALIASES[i.type] ?? ""}`).includes(q)
-    : !opts.brand || i.brand === opts.brand));
-  // Las ediciones de clubes van juntas en su sección, después de la línea lisa.
-  const sections = [
-    ...CATALOG_SECTIONS.map(s => ({ title: s.title, items: list.filter(i => !i.club && s.types.includes(i.type)) })),
-    { title: CLUB_SECTION, items: list.filter(i => i.club).sort((a, b) => a.club!.localeCompare(b.club!, "es") || a.name.localeCompare(b.name, "es")) },
-  ];
-  return sections
+  // Con texto: el producto si coincide su nombre, y una entrada por cada edición
+  // cuyo club coincide ("cerro" → "Termo Mate · Cerro Porteño"), que lo abre en
+  // esa edición.
+  const list = q
+    ? items.flatMap(i => [
+        ...(fold(`${i.name} ${SEARCH_ALIASES[i.type] ?? ""}`).includes(q) ? [i] : []),
+        ...i.clubs.filter(c => fold(c).includes(q))
+          .map(c => ({
+            ...i, key: `${i.key}:${c}`, name: `${i.name} · ${c}`, edition: c,
+            from: i.editionInfo[c]?.from ?? i.from, colors: i.editionInfo[c]?.colors ?? i.colors,
+          })),
+      ])
+    : items.filter(i => !opts.brand || i.brand === opts.brand);
+  return CATALOG_SECTIONS
     .filter(s => !opts.section || s.title === opts.section)
+    .map(s => ({ title: s.title, items: list.filter(i => s.types.includes(i.type)) }))
     .filter(s => s.items.length > 0);
 }
 

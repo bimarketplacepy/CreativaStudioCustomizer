@@ -1,7 +1,7 @@
 import type { FaceId } from "./placement";
 import type { KeepOutZone } from "./keep-out";
 
-export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids" | "termo-terere" | "vaso-guarani" | "guampa-terere";
+export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids" | "termo-terere" | "vaso-guarani" | "guampa-terere" | "vaso-quencher" | "vaso-flip" | "vaso-protour";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -87,6 +87,18 @@ export interface ProductModel {
    * demás que usan la misma forma la ven como aproximación (y se avisa).
    */
   exactFor?: string[];
+  /**
+   * Marca del producto del .glb, que trae su logo (default "Hydrate"): sobre
+   * una pieza de otra marca el logo se oculta.
+   */
+  brand?: string;
+  /**
+   * Otro .glb según el color de la variante de Odoo (misma forma y medidas;
+   * cambian tapa, manija o logo, que no se pintan): `match` es una parte del
+   * nombre del color, sin mayúsculas ni tildes ("cherry blossom"). Sin
+   * coincidencia, `url`. Ver productForColor.
+   */
+  colorModels?: { match: string; url: string }[];
   /**
    * Giro extra (grados, eje Y) para que el FRENTE del personalizador (donde se
    * graba) no caiga sobre el logo que el modelo trae en su +Z: con 180 el logo
@@ -856,6 +868,189 @@ export const PRODUCTS: ProductDef[] = [
     ],
   },
   {
+    id: "vaso-quencher",
+    name: "Vasos Quencher",
+    singular: "Vaso Quencher",
+    // Stanley Quencher H2.0 FlowState 1183 ml (artifacts/3D/STANLEY/
+    // vaso-stanley-quencher-rosa-v3.glb; el de 591 y el de 887 ml tienen
+    // modelo propio, ver sizes): cuerpo cónico abajo (entra en el
+    // portavasos), parte superior recta con la manija, tapa giratoria y pajita.
+    // El logo Stanley viene al frente del .glb (+Z): yawDeg 180 lo deja atrás
+    // y la manija (+X del .glb) pasa a u 0.25. Cuerpo, manija y tapón de la
+    // tapa van del color elegido. Perfil medido sobre el .glb (m × 12,
+    // centrado en 0,156 m, la mitad del alto con pajita).
+    desc: "Vaso térmico Stanley de 1183 ml con manija, tapa giratoria y pajita.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.410, -1.836], [0.413, -1.770], [0.432, -1.326], [0.446, -1.008],
+      [0.451, -0.852], [0.473, -0.798], [0.502, -0.744], [0.534, -0.690],
+      [0.560, -0.642], [0.575, -0.588], [0.578, -0.558], [0.578, -0.200],
+      [0.578,  0.160], [0.578,  0.520], [0.578,  0.930],
+    ],
+    band: [-1.75, 0.88],
+    // Cara frontal a 90° de la manija, en la parte superior recta: el área no
+    // baja al cono del portavasos ni toca la manija.
+    frontFace: { uHalfWidth: 0.16, vCenter: 0.27, vHeightFrac: 0.46 },
+    model: {
+      url: "/models/vaso-stanley-quencher.glb?v=1",
+      exactFor: ["Quencher H2.0"],
+      brand: "Stanley",
+      unitsPerMeter: 12,
+      centerYm: 0.156,
+      heightM: 0.312,
+      reachM: 0.0933,
+      yawDeg: 180,
+      paint: ["handle", "lid_stopper"],
+    },
+    // Caras de grabado: manija a la derecha (u 0.25); el dorso es el lado del logo.
+    engraveFaces: ["front", "back", "left"],
+    logoBack: true,
+    sizes: [
+      {
+        id: "vaso-quencher-591", name: "591ml", label: "Chico", scale: 1.00,
+        // artifacts/3D/STANLEY/quancher591ml.glb: misma forma, más bajo y
+        // angosto. Perfil medido sobre el .glb (m × 12, centrado en 0,1138 m,
+        // la mitad del alto con pajita).
+        shape: {
+          profile: [
+            [0.428, -1.330], [0.438, -1.198], [0.448, -1.036], [0.460, -0.880],
+            [0.472, -0.700], [0.480, -0.544], [0.490, -0.484], [0.510, -0.442],
+            [0.529, -0.400], [0.539, -0.364], [0.540, -0.346], [0.540, -0.166],
+            [0.540,  0.074], [0.540,  0.314], [0.540,  0.518],
+          ],
+          band: [-1.25, 0.47],
+          frontFace: { uHalfWidth: 0.16, vCenter: 0.25, vHeightFrac: 0.42 },
+          model: {
+            url: "/models/vaso-stanley-quencher-591.glb?v=1",
+            exactFor: ["Quencher H2.0"],
+            brand: "Stanley",
+            unitsPerMeter: 12,
+            centerYm: 0.1138,
+            heightM: 0.2276,
+            reachM: 0.0888,
+            yawDeg: 180,
+            paint: ["handle", "lid_stopper"],
+          },
+        },
+      },
+      {
+        id: "vaso-quencher-887", name: "887ml", label: "Clásico", scale: 1.00,
+        // artifacts/3D/STANLEY/quancher887ml.glb: perfil medido sobre el .glb
+        // (m × 12, centrado en 0,14 m, la mitad del alto con pajita).
+        shape: {
+          profile: [
+            [0.412, -1.644], [0.426, -1.470], [0.443, -1.278], [0.458, -1.080],
+            [0.470, -0.888], [0.481, -0.864], [0.496, -0.834], [0.510, -0.810],
+            [0.523, -0.786], [0.532, -0.762], [0.538, -0.738], [0.540, -0.714],
+            [0.540, -0.360], [0.540,  0.000], [0.540,  0.360], [0.540,  0.786],
+          ],
+          band: [-1.56, 0.74],
+          frontFace: { uHalfWidth: 0.16, vCenter: 0.32, vHeightFrac: 0.54 },
+          model: {
+            url: "/models/vaso-stanley-quencher-887.glb?v=1",
+            exactFor: ["Quencher H2.0"],
+            brand: "Stanley",
+            unitsPerMeter: 12,
+            centerYm: 0.14,
+            heightM: 0.28,
+            reachM: 0.0924,
+            yawDeg: 180,
+            paint: ["handle", "lid_stopper"],
+          },
+        },
+      },
+      { id: "vaso-quencher-1183", name: "1183ml", label: "Grande",  scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-flip",
+    name: "Tumblers Flip",
+    singular: "Tumbler Flip",
+    // Stanley Tumbler Flip 887 ml: cuerpo cónico abajo, tapa con pajita
+    // rebatible y asa arriba. Un .glb por color (artifacts/3D/STANLEY/
+    // tumbler_flip_cherry.glb y tumbler_flip_plum.glb, misma forma): tapa,
+    // asa y logo traen el color de esa variante; el cuerpo se pinta con el
+    // color elegido. Logo Stanley al frente del .glb (+Z): yawDeg 180 lo deja
+    // atrás. Perfil medido sobre el .glb (m × 12, centrado en 0,14705 m, la
+    // mitad del alto con el asa).
+    desc: "Vaso térmico Stanley de 887 ml con tapa de pajita rebatible y asa.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.439, -1.729], [0.443, -1.699], [0.451, -1.465], [0.457, -1.255],
+      [0.462, -1.051], [0.470, -0.871], [0.481, -0.817], [0.497, -0.769],
+      [0.511, -0.715], [0.524, -0.667], [0.533, -0.613], [0.535, -0.325],
+      [0.538,  0.155], [0.540,  0.659],
+    ],
+    band: [-1.64, 0.62],
+    // Cara frontal en la parte superior recta, sin bajar al cono.
+    frontFace: { uHalfWidth: 0.2, vCenter: 0.28, vHeightFrac: 0.48 },
+    model: {
+      url: "/models/tumbler-flip-cherry.glb?v=1",
+      colorModels: [
+        { match: "cherry", url: "/models/tumbler-flip-cherry.glb?v=1" },
+        { match: "plum", url: "/models/tumbler-flip-plum.glb?v=1" },
+      ],
+      exactFor: ["Tumbler Flip"],
+      brand: "Stanley",
+      unitsPerMeter: 12,
+      centerYm: 0.14705,
+      heightM: 0.2941,
+      reachM: 0.0509,
+      yawDeg: 180,
+    },
+    // El asa va en la tapa: se graba en las cuatro caras; el dorso es el del logo.
+    logoBack: true,
+    sizes: [
+      { id: "vaso-flip-887", name: "887ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-protour",
+    name: "Vasos Quencher ProTour",
+    singular: "Quencher ProTour",
+    // Stanley Quencher ProTour 1,18 L, edición Messi Striker Blue
+    // (artifacts/3D/STANLEY/vaso_ messi.glb): aro dorado arriba, tapa
+    // transparente con tapita, manija en el cuerpo y dos franjas doradas de la
+    // edición: una ancha al frente del .glb (+Z, "logo") y una fina atrás
+    // ("logo_back"); las dos son zona sin grabado. La manija está en +X: con
+    // yawDeg 90 la cara opuesta a la manija (−X, libre) queda al frente, la
+    // manija atrás (u 0), la franja ancha a la izquierda (u 0.75) y la fina a
+    // la derecha (u 0.25). Cuerpo, manija y tapita van del color elegido.
+    // Perfil medido sobre el .glb (m × 12, centrado en 0,12895 m, la mitad
+    // del alto con la tapa).
+    desc: "Vaso térmico Stanley de 1,18 L con manija y tapa ProTour.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.430, -1.511], [0.438, -1.295], [0.448, -1.061], [0.455, -0.833],
+      [0.461, -0.695], [0.466, -0.647], [0.493, -0.599], [0.521, -0.557],
+      [0.551, -0.509], [0.576, -0.461], [0.586, -0.419], [0.587, -0.371],
+      [0.588,  0.373], [0.592,  1.153],
+    ],
+    band: [-1.43, 1.10],
+    // Cara frontal en la parte superior recta, entre las dos franjas doradas.
+    frontFace: { uHalfWidth: 0.16, vCenter: 0.29, vHeightFrac: 0.5 },
+    model: {
+      url: "/models/vaso-protour-messi.glb?v=1",
+      exactFor: ["Quencher ProTour"],
+      brand: "Stanley",
+      unitsPerMeter: 12,
+      centerYm: 0.12895,
+      heightM: 0.2579,
+      reachM: 0.0958,
+      yawDeg: 90,
+      paint: ["handle", "lid_cover"],
+    },
+    // Atrás va la manija y a la izquierda la franja ancha: se graba al frente
+    // y a la derecha (la franja fina se esquiva sola).
+    engraveFaces: ["front", "right"],
+    sizes: [
+      { id: "vaso-protour-1183", name: "1183ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
     id: "vaso-hydrate",
     name: "Vasos Hydrate",
     singular: "Vaso",
@@ -1313,6 +1508,29 @@ const sizedCache = new WeakMap<ProductSize, ProductDef>();
  * (`shape`), su perfil, banda y .glb pisan los del producto. Sin `shape`, el
  * mismo producto. Siempre el mismo objeto por tamaño (sirve de clave de caché).
  */
+const colorCache = new WeakMap<ProductDef, Map<string, ProductDef>>();
+const foldColor = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+/**
+ * El producto con el .glb del color de la variante (model.colorModels), si
+ * tiene uno propio para ese color; si no, el mismo producto.
+ */
+export function productForColor(product: ProductDef, colorName: string | null | undefined): ProductDef {
+  const options = product.model?.colorModels;
+  if (!options?.length || !colorName) return product;
+  const c = foldColor(colorName);
+  const hit = options.find(o => c.includes(o.match));
+  if (!hit || hit.url === product.model!.url) return product;
+  let byUrl = colorCache.get(product);
+  if (!byUrl) { byUrl = new Map(); colorCache.set(product, byUrl); }
+  let out = byUrl.get(hit.url);
+  if (!out) {
+    out = { ...product, model: { ...product.model!, url: hit.url } };
+    byUrl.set(hit.url, out);
+  }
+  return out;
+}
+
 export function productForSize(product: ProductDef, sizeId: string): ProductDef {
   const size = getSize(product, sizeId);
   if (!size.shape) return product;
