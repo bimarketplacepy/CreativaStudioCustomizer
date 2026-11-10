@@ -33,6 +33,11 @@ function designPreviewApiPlugin(): Plugin {
 
 export default defineConfig({
   base: basePath,
+  // Orígenes de la tienda Odoo (src/lib/embed.ts). En producción manda el
+  // <meta name="cs-shop-origins"> que inyecta server.mjs en tiempo de ejecución.
+  define: {
+    __CS_SHOP_ORIGINS__: JSON.stringify(process.env.CS_SHOP_ORIGINS ?? ""),
+  },
   plugins: [
     react(),
     tailwindcss(),

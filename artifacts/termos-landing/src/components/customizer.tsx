@@ -79,7 +79,8 @@ import { onDesignPreset } from "@/lib/design-preset";
 import { designArtistFee, designPrice, getArtist, getArtistDesign, type ArtistDesign } from "@workspace/print-specs";
 import { CUSTOMIZER_MODE_EVENT, CUSTOMIZER_START_EVENT, takeCustomizerMode, takeStartIntent, type StartIntent } from "@/lib/section-reveal";
 import { machineFor, normalizeTechnique } from "@workspace/print-specs";
-import { fitsDacen, printSpecFor } from "@workspace/print-specs";
+import { feasibility, fitsDacen, printSpecFor, type FeasibilityResult } from "@workspace/print-specs";
+import { backToShopUrl, isOdooEmbed, postToShop, startResizeReports, storeVariantId } from "@/lib/embed";
 import { dacenPrintSize, loadImage, renderDacenPng, renderUnwrappedPreview, type DacenPrintFile } from "@/lib/production-dacen";
 import { wrapEffectiveDpi, WRAP_MODES, type WrapDesign } from "@/lib/wrap-design";
 import { PRICING, quote } from "@/lib/pricing";
@@ -1879,13 +1880,13 @@ export default function Customizer() {
   }, [odooProduct]);
   /** Elegir color: siempre en el tamaño elegido (solo se listan los colores de ese tamaño). */
   const selectOdooColor = (name: string) => {
-    if (!odooProduct) return;
+    if (!odooProduct || storeLock === "locked") return;
     setOdooColor(name);
     track("customizer_color_select", { source: "odoo", color: name });
   };
   /** Elegir tamaño: mantiene el color si existe en ese tamaño; si no, el primero con stock. */
   const selectOdooSize = (label: string) => {
-    if (!odooProduct) return;
+    if (!odooProduct || storeLock === "locked") return;
     const same = findVariant(odooProduct, odooColor, label);
     const v = (same?.inStock ? same : null)
       ?? odooProduct.variants.find(x => x.size === label && x.inStock)
@@ -1897,6 +1898,7 @@ export default function Customizer() {
   };
   /** Elegir edición: tamaño y color vuelven a la primera variante de esa edición. */
   const selectOdooEdition = (club: string | null) => {
+    if (storeLock === "locked") return;
     setOdooEdition(club);
     track("customizer_edition_select", { product: odooFullProduct?.name, edition: club ?? "lisa" });
   };
@@ -1936,6 +1938,7 @@ export default function Customizer() {
   const shopKey = !shopMode ? null : genericPick ? `gen:${productId}` : odooProduct ? `odoo:${odooProduct.id}` : null;
   const shopItem = shopItems.find(i => i.key === shopKey) ?? null;
   const pickShopItem = (it: ShopItem) => {
+    if (storeLock === "locked") return;
     const mp = material.products.find(x => x.drinkwareProductId === it.type);
     if (!mp) return;
     startColorPending.current = false;
@@ -1945,6 +1948,58 @@ export default function Customizer() {
     setOdooEdition(it.edition);
     track("customizer_catalog_select", { key: it.key, product: it.name, brand: it.brand, type: it.type });
   };
+
+  // ── Pieza fija desde la tienda (?odoo=<id> o embed=odoo&product=<id>) ──────
+  // La ficha de Odoo manda la variante exacta: pieza, edición, color y tamaño
+  // quedan elegidos y bloqueados; el cliente solo diseña (PLAN-ODOO §6, pieza 2).
+  // "unavailable": el producto no se personaliza (sin perfil 3D) o está agotado.
+  const [storeLock, setStoreLock] = useState<"pending" | "locked" | "unavailable" | null>(storeVariantId ? "pending" : null);
+  const [storeLockReason, setStoreLockReason] = useState<string | null>(null);
+  const pieceLocked = storeLock === "locked";
+  React.useEffect(() => {
+    if (storeLock !== "pending" || !catalog) return;
+    let found: { p: (typeof catalog.products)[number]; v: (typeof catalog.products)[number]["variants"][number] } | null = null;
+    for (const p of catalog.products) {
+      const v = p.variants.find(x => x.id === storeVariantId);
+      if (v) { found = { p, v }; break; }
+    }
+    const type = found ? editionModelType(found.p, found.v.club ?? null) : null;
+    const m = found ? MATERIALS.find(x => x.id === found!.p.material) : null;
+    const mp = m && type ? m.products.find(x => x.drinkwareProductId === type) : null;
+    if (!found || !m || !mp) {
+      setStoreLock("unavailable");
+      setStoreLockReason(catalog.products.length
+        ? "Este producto todavía no se puede personalizar online. Escribinos por WhatsApp y lo vemos juntos."
+        : "No pudimos cargar el producto de la tienda. Probá de nuevo en un rato o escribinos por WhatsApp.");
+      track("store_piece_unavailable", { variant: storeVariantId, reason: found ? "sin_perfil" : "no_encontrado" });
+      return;
+    }
+    if (!found.v.inStock) {
+      setStoreLock("unavailable");
+      setStoreLockReason(`${found.p.name}${found.v.colorName ? ` ${found.v.colorName}` : ""} está agotado. Elegí otro color en la tienda.`);
+      track("store_piece_unavailable", { variant: storeVariantId, reason: "agotado" });
+      return;
+    }
+    startColorPending.current = false;
+    setMode("products");
+    setMaterialId(m.id);
+    setMaterialProductId(mp.id);
+    setGenericPick(false);
+    setOwnProduct(false);
+    setOdooTemplateId(found.p.id);
+    setOdooEdition(found.v.club ?? null);
+    setOdooColor(found.v.colorName ?? null);
+    setOdooSize(found.v.size ?? null);
+    setMobileStep(2); // Diseño
+    setStoreLock("locked");
+    track("store_piece_locked", { variant: storeVariantId, product: found.p.name, embed: isOdooEmbed });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, storeLock]);
+  // Embebido: avisar a la ficha cuando el editor está listo (o que no hay nada que personalizar).
+  React.useEffect(() => {
+    if (!isOdooEmbed || storeLock === "pending") return;
+    postToShop({ type: "cs:ready" });
+  }, [storeLock]);
   /** Línea de detalle de la tarjeta "Tu producto": tamaño y precio de la variante. */
   const shopDetail = genericPick
     ? "Forma genérica · se cotiza por WhatsApp"
@@ -2222,6 +2277,15 @@ export default function Customizer() {
   // Hide the floating WhatsApp CTA while the customizer section is on screen on
   // mobile, so it never covers the editor controls or the "Personalizar" CTA.
   const sectionRef = useRef<HTMLElement>(null);
+  /** «Volver a la tienda» (?volver=…), solo hacia un origen de la tienda. */
+  const backToShop = useMemo(() => backToShopUrl(), []);
+  // Embebido: avisar el alto a la ficha; sin nada que personalizar, cerrar el panel.
+  React.useEffect(() => (sectionRef.current ? startResizeReports(sectionRef.current) : undefined), []);
+  React.useEffect(() => {
+    if (!isOdooEmbed || storeLock !== "unavailable") return;
+    const t = setTimeout(() => postToShop({ type: "cs:close" }), 8000);
+    return () => clearTimeout(t);
+  }, [storeLock]);
   const [customizerInView, setCustomizerInView] = useState(false);
   React.useEffect(() => {
     const el = sectionRef.current;
@@ -3268,6 +3332,7 @@ export default function Customizer() {
   };
 
   const handleSelectMaterial = (id: MaterialId) => {
+    if (pieceLocked) return;
     setMaterialId(id);
     setOdooTemplateId(null);
     setOdooEdition(null);
@@ -3319,6 +3384,7 @@ export default function Customizer() {
   };
 
   const handleSelectMaterialProduct = (id: string) => {
+    if (pieceLocked) return;
     setMaterialProductId(id);
     setOdooTemplateId(null);
     setOdooEdition(null);
@@ -3829,11 +3895,23 @@ export default function Customizer() {
   // nunca muestra montos.
   const ctaLabel = "Enviar pedido por WhatsApp";
 
-  // «Comprar» solo con precio confirmado: pieza de la tienda (variante de Odoo
-  // con stock) y grabado láser. Impresión a color, stickers y «Traigo el mío»
-  // siguen solo por WhatsApp en esta etapa.
-  const canBuy = odooMode && !isOwnProduct && !!odooVariant && odooVariant.inStock && !isSoldOut
-    && effectiveTechnique === "laser" && !!estimate.total && !!estimate.price;
+  // Veredicto de factibilidad (PROMPT-ODOO-TIENDA §1.2): las mismas reglas que
+  // aplica el servidor al comprar, para avisar mientras se diseña. El servidor
+  // lo recalcula con los precios y el stock de Odoo; acá es una vista previa.
+  const shopPiece = odooMode && !genericPick && !!odooProduct && !isOwnProduct
+    ? { name: odooProduct.name, variantExists: !!odooVariant, inStock: !!odooVariant?.inStock, price: odooVariant?.price ?? null }
+    : null;
+  const buyVerdict: FeasibilityResult = feasibility(orderPayload(null).designState, {
+    shop: shopPiece,
+    // La impresión a color todavía no tiene precio en Odoo: se cotiza.
+    unpricedLines: effectiveTechnique === "color" && !estimate.total ? ["Impresión a color"] : [],
+  });
+  // «Comprar» para piezas de la tienda (drinkware con variante de Odoo). El
+  // veredicto decide el botón: OK «Comprar y pagar», REVISION «Enviar a
+  // revisión», IMPOSIBLE sin botón (los motivos y WhatsApp).
+  const buyFlow = odooMode && !genericPick && !isOwnProduct && !!odooVariant && isDrinkware && !material.pens;
+  const canBuy = buyFlow && buyVerdict.verdict !== "IMPOSIBLE";
+  const buyMode: "pay" | "review" = buyVerdict.verdict === "OK" ? "pay" : "review";
 
   /** Huella del diseño que se compra: si cambia, es otro pedido. */
   const buyFingerprint = () => JSON.stringify([
@@ -3890,16 +3968,32 @@ export default function Customizer() {
         track("checkout_already_paid", { order_number: res.orderNumber });
         return { message: res.message ?? "Ya pagaste este pedido.", viewUrl: res.odoo.paymentUrl };
       }
+      if (res.verdict === "REVISION") {
+        track("checkout_review", { order_number: res.orderNumber, reasons: res.reasons.map(r => r.code).join(",") });
+        return {
+          success: true,
+          message: `Listo: tu pedido ${res.orderNumber} quedó en revisión. Te mandamos la prueba por email para aprobarla y recién ahí pagás. Si tenés dudas, escribinos por WhatsApp.`,
+        };
+      }
+      // Embebido en la tienda: la ficha navega a su propio portal (cs:checkout).
+      if (isOdooEmbed && res.portalUrl && postToShop({ type: "cs:checkout", portalUrl: res.portalUrl })) {
+        track("checkout_redirect", { order_number: res.orderNumber, odoo: res.odoo.orderName, embed: true });
+        return null;
+      }
       if (!res.odoo.paymentUrl) return { message: "No pudimos generar el link de pago. Probá de nuevo o seguí por WhatsApp.", whatsapp: true };
       track("checkout_redirect", { order_number: res.orderNumber, odoo: res.odoo.orderName });
       window.location.assign(res.odoo.paymentUrl);
       return null;
     } catch (err) {
-      const e = err as { status?: number; data?: { message?: string; field?: string; soldOut?: boolean; whatsapp?: boolean } } | null;
+      const e = err as { status?: number; data?: { message?: string; field?: string; soldOut?: boolean; whatsapp?: boolean; reasons?: { message: string }[] } } | null;
       const data = e?.data ?? {};
       track("checkout_error", { status: e?.status ?? 0, reason: (data.message ?? (err instanceof Error ? err.message : "unknown")).slice(0, 80) });
       if (e?.status === 400 && (data.field === "telefono" || data.field === "email" || data.field === "nombre")) {
         return { message: data.message ?? "Revisá tus datos.", field: data.field };
+      }
+      // 422: el servidor decidió que el diseño no se puede producir.
+      if (e?.status === 422) {
+        return { message: "Así como está, este diseño no se puede producir:", reasons: (data.reasons ?? []).map(r => r.message), whatsapp: true };
       }
       if (e?.status === 409) return { message: data.message ?? "Ese color se agotó. Elegí otro color o tamaño." };
       if (e?.status === 400) return { message: data.message ?? "Este diseño no se puede comprar online. Seguí por WhatsApp.", whatsapp: true };
@@ -3977,7 +4071,7 @@ export default function Customizer() {
     </div>
   );
 
-  const renderDrinkSize = () => odooMode ? <>{renderOdooEdition()}{renderOdooSize()}</> : product.sizes.length > 1 && (
+  const renderDrinkSize = () => pieceLocked ? null : odooMode ? <>{renderOdooEdition()}{renderOdooSize()}</> : product.sizes.length > 1 && (
     <div>
       <Label className="text-sm font-medium text-foreground mb-3 block">
         Tamaño {productArticle(productNoun)} {productNoun}
@@ -4002,7 +4096,7 @@ export default function Customizer() {
     </div>
   );
 
-  const renderDrinkColor = () => isGlass ? (
+  const renderDrinkColor = () => pieceLocked ? renderLockedColor() : isGlass ? (
     // Glass comes in one finish only: clear. No colour picker, no finish grid.
     <div>
       <Label className="text-sm font-medium text-foreground mb-3 block">Material</Label>
@@ -4309,7 +4403,7 @@ export default function Customizer() {
   };
 
   /** Modelo de la tienda: solo cuando Odoo tiene más de un producto para este tipo. */
-  const renderOdooModel = () => odooProducts.length > 1 && (
+  const renderOdooModel = () => !pieceLocked && odooProducts.length > 1 && (
     <div>
       <Label className="text-sm font-medium text-foreground mb-3 block">Modelo</Label>
       <div className="flex flex-wrap gap-2">
@@ -4332,7 +4426,7 @@ export default function Customizer() {
   );
 
   /** "¿De dónde sale el producto?" — drinkware y bolígrafos. */
-  const renderOwnProduct = () => canBringOwn && (
+  const renderOwnProduct = () => !pieceLocked && canBringOwn && (
     <div>
       <Label className="text-sm font-medium text-foreground mb-3 block">
         {material.pens ? "¿Los bolígrafos?" : `¿Ya tenés tu ${productNoun}?`}
@@ -4374,6 +4468,51 @@ export default function Customizer() {
 
   // Bloque de acciones compartido por TODOS los productos: precio estimado,
   // CTA de WhatsApp, señales de confianza y acciones secundarias.
+  /** Color fijo de la pieza elegida en la tienda (sin selector). */
+  function renderLockedColor() {
+    return (
+      <div className="flex items-center gap-2 text-sm">
+        <span className="text-foreground shrink-0">Color</span>
+        <span className="w-5 h-5 rounded-full border border-border shrink-0" style={{ background: activeColorHex }} aria-hidden />
+        <span className="text-muted-foreground">{activeColorName}</span>
+      </div>
+    );
+  }
+
+  /** La pieza que llegó fija desde la ficha de la tienda (reemplaza los selectores). */
+  const renderLockedPiece = () => (
+    <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3" data-testid="locked-piece">
+      <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Tu producto · elegido en la tienda</p>
+      <p className="font-medium text-foreground mt-0.5">{odooProduct?.name ?? orderProductLabel}</p>
+      <p className="text-sm text-muted-foreground">{[orderSizeName, orderColorName, odooVariant ? formatGs(odooVariant.price) : null].filter(Boolean).join(" · ")}</p>
+      {approxNote && <p className="text-xs text-muted-foreground mt-2">{approxNote}</p>}
+      {backToShop && (
+        <a href={backToShop} className="inline-flex items-center gap-1 text-xs text-primary underline underline-offset-4 mt-2">
+          ← Volver a la tienda
+        </a>
+      )}
+    </div>
+  );
+
+  /** El producto de la tienda no se puede personalizar o está agotado. */
+  const renderStoreUnavailable = () => (
+    <div role="alert" className="max-w-xl rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-amber-900 space-y-3" data-testid="store-unavailable">
+      <p>{storeLockReason}</p>
+      <div className="flex flex-wrap gap-2">
+        <a className="cs-btn cs-btn-ghost cs-btn-sm" href={whatsappUrl("Hola, quiero personalizar un producto de la tienda.")} target="_blank" rel="noopener noreferrer">
+          <MessageCircle className="w-4 h-4" /> Escribinos por WhatsApp
+        </a>
+        {isOdooEmbed ? (
+          <button type="button" className="cs-btn cs-btn-primary cs-btn-sm" onClick={() => postToShop({ type: "cs:close" })}>Volver a la tienda</button>
+        ) : backToShop ? (
+          <a className="cs-btn cs-btn-primary cs-btn-sm" href={backToShop}>Volver a la tienda</a>
+        ) : (
+          <button type="button" className="cs-btn cs-btn-primary cs-btn-sm" onClick={() => { setStoreLock(null); setStoreLockReason(null); }}>Elegir otra pieza</button>
+        )}
+      </div>
+    </div>
+  );
+
   const renderOrderActions = (showEstimate = true) => (
     <>
       {/* Precio estimado — antes el cliente llegaba al final sin ningún monto.
@@ -4410,18 +4549,33 @@ export default function Customizer() {
         </div>
       )}
 
-      {/* «Comprar» (pago online en Odoo) al lado de WhatsApp, solo con precio
-          confirmado. Sin precio confirmado queda WhatsApp solo, como antes. */}
+      {/* Veredicto antes de comprar: con REVISION se avisa que hay prueba previa;
+          con IMPOSIBLE no hay botón de compra, solo los motivos y WhatsApp. */}
+      {buyFlow && buyVerdict.verdict === "REVISION" && (
+        <p className="text-xs text-muted-foreground" data-testid="verdict-review">
+          Te mandamos una prueba para aprobar antes de pagar.
+        </p>
+      )}
+      {buyFlow && buyVerdict.verdict === "IMPOSIBLE" && (
+        <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="verdict-impossible">
+          <p className="font-medium">Así como está, este diseño no se puede producir:</p>
+          <ul className="list-disc pl-5 mt-1 space-y-1">
+            {buyVerdict.reasons.filter(r => r.verdict === "IMPOSIBLE").map(r => <li key={r.code}>{r.message}</li>)}
+          </ul>
+          <p className="mt-2">Si querés, escribinos por WhatsApp y lo resolvemos juntos.</p>
+        </div>
+      )}
+      {/* «Comprar y pagar» / «Enviar a revisión» (Odoo) al lado de WhatsApp. */}
       <div className={canBuy ? "grid grid-cols-1 sm:grid-cols-2 gap-2" : ""}>
         {canBuy && (
           <button
             type="button"
-            onClick={() => { track("checkout_open", { product: orderProductName }); setBuyOpen(true); }}
+            onClick={() => { track("checkout_open", { product: orderProductName, verdict: buyVerdict.verdict }); setBuyOpen(true); }}
             disabled={isOrdered || isPreparing}
             className="cs-btn cs-btn-primary w-full min-h-12 py-2.5 whitespace-normal disabled:opacity-60 disabled:cursor-not-allowed"
             data-testid="buy-button"
           >
-            <ShoppingBag className="w-4 h-4" /> Comprar
+            <ShoppingBag className="w-4 h-4" /> {buyMode === "pay" ? "Comprar y pagar" : "Enviar a revisión"}
           </button>
         )}
         <button
@@ -4647,7 +4801,7 @@ export default function Customizer() {
 
   // "Traigo el mío" en el celular: una línea al final de "Tu pieza" (antes
   // eran dos tarjetas arriba de todo, y casi nadie lo usa).
-  const renderOwnProductLine = () => canBringOwn && (
+  const renderOwnProductLine = () => !pieceLocked && canBringOwn && (
     <div>
       <button
         type="button"
@@ -4748,6 +4902,7 @@ export default function Customizer() {
   /** Colores del producto en una tira (pantalla de Diseño del celular). */
   const renderColorDots = () => {
     if (isGlass || isInox) return null;
+    if (pieceLocked) return renderLockedColor();
     const items = odooMode && odooColors.length
       ? odooColors.map(c => ({ key: c.name, hex: c.hex, name: c.name, on: odooColor === c.name, disabled: !odooColorInStock(c.name), pick: () => selectOdooColor(c.name) }))
       : COLORS.map(c => ({ key: c.id, hex: c.hex, name: c.name, on: color === c.id && !customHex, disabled: false, pick: () => handleSelectColor(c.id) }));
@@ -5153,8 +5308,8 @@ export default function Customizer() {
     // aparecen sin deslizar (igual que Galería y Tarifas).
     <section ref={sectionRef} className="py-12 md:py-16 px-4 sm:px-6 bg-white border-b border-border">
       <div className="max-w-7xl mx-auto">
-        {/* Header — compact on mobile (the long copy is desktop-only). */}
-        <div className="mb-6 md:mb-10">
+        {/* Header — compact on mobile (the long copy is desktop-only). Embebido en la tienda: sin encabezado. */}
+        {!isOdooEmbed && <div className="mb-6 md:mb-10">
           <div className="flex items-end justify-between gap-3 mb-3 md:mb-4">
             <h2 className="font-serif font-light text-[clamp(2rem,4.5vw,3.25rem)] text-[var(--cs-ink)] leading-[1.05]">
               Creá tu pieza
@@ -5175,9 +5330,14 @@ export default function Customizer() {
           <p className={`hidden ${mode === "products" ? "md:block" : ""} text-[#5f574d] font-light text-lg max-w-xl leading-relaxed`}>
             Elegí la pieza, diseñala y mirala en 3D. El diseño final lo revisamos con vos por WhatsApp.
           </p>
-        </div>
+        </div>}
 
-        <div role="tablist" aria-label="Qué querés crear" className="mb-6 md:mb-8 inline-flex w-full sm:w-auto rounded-xl border border-border bg-secondary/40 p-1">
+        {storeLock === "unavailable" && renderStoreUnavailable()}
+        {storeLock === "pending" && (
+          <div className="min-h-[50vh] flex items-center justify-center text-sm text-muted-foreground">Cargando tu producto…</div>
+        )}
+        {(storeLock === null || storeLock === "locked") && <>
+        {!pieceLocked && <div role="tablist" aria-label="Qué querés crear" className="mb-6 md:mb-8 inline-flex w-full sm:w-auto rounded-xl border border-border bg-secondary/40 p-1">
           {([
             { id: "products", label: <><span className="sm:hidden">Termos y más</span><span className="hidden sm:inline">Termos, vasos y más</span></> },
             { id: "stickers", label: "Stickers" },
@@ -5197,7 +5357,7 @@ export default function Customizer() {
               {t.label}
             </button>
           ))}
-        </div>
+        </div>}
 
         {mode === "stickers" ? (
           <div>
@@ -5213,9 +5373,11 @@ export default function Customizer() {
         <>
         {isMobile && <WizardProgress step={mobileStep} labels={wizardLabels} />}
 
+        {/* Pieza fija desde la tienda: una tarjeta en lugar de material y producto. */}
+        {!isMobile && pieceLocked && <div className="mb-8 max-w-md">{renderLockedPiece()}</div>}
         {/* Desktop: material + product as the original card grids. On mobile these
             are replaced by the Step 1 chip pickers below. */}
-        {!isMobile && (
+        {!isMobile && !pieceLocked && (
         <>
         {/* STEP 1 — MATERIAL */}
         <div className="mb-8">
@@ -5301,6 +5463,7 @@ export default function Customizer() {
           <div key="wiz-1" className="cs-step-in pb-28">
             {renderMiniPreview(true)}
             <div className="space-y-7 pt-4">
+              {pieceLocked ? renderLockedPiece() : <>
               <MaterialChips materials={MATERIALS} value={materialId} onChange={handleSelectMaterial} />
               {shopMode && shopItem ? (
                 <div>
@@ -5322,6 +5485,7 @@ export default function Customizer() {
                   {renderOdooModel()}
                 </>
               )}
+              </>}
               {isDrinkware ? (
                 <>
                   {/* El color se elige en Diseño, sobre la pieza grande. */}
@@ -6123,10 +6287,12 @@ export default function Customizer() {
           summary={[orderProductLabel, orderSizeName, orderColorName].filter(Boolean).join(" · ")}
           onSubmit={handleBuy}
           onWhatsApp={() => handleOrder()}
+          mode={buyMode}
         />
 
         </>
         )}
+        </>}
       </div>
     </section>
   );

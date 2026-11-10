@@ -18,7 +18,10 @@ if (/^\/admin\/?$/.test(window.location.pathname)) {
   // hidrata. En dev (o si el pre-render faltara) la raíz llega vacía y se
   // renderiza normal. Fuera de la home (404) el hero no va.
   const heroRoot = document.getElementById("hero-root")!;
-  if (window.location.pathname !== import.meta.env.BASE_URL) {
+  // Embebido en la ficha de la tienda Odoo (?embed=odoo): solo el
+  // personalizador, sin encabezado ni portada (ver lib/embed.ts y pages/home.tsx).
+  const embedded = new URLSearchParams(window.location.search).get("embed") === "odoo" && window.parent !== window;
+  if (embedded || window.location.pathname !== import.meta.env.BASE_URL) {
     heroRoot.remove();
   } else if (heroRoot.hasChildNodes()) {
     hydrateRoot(heroRoot, <Hero />);

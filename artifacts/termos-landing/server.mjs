@@ -11,6 +11,11 @@
 //     fonts, images) and `no-cache` for index.html so deploys are picked up.
 //   - SPA fallback: unknown non-file routes return index.html.
 //   - Serves robots.txt / sitemap.xml / llms.txt as plain text when present.
+//   - Framing (PROMPT-ODOO-TIENDA §6): the page can be embedded ONLY by the
+//     Odoo shop and ONLY with ?embed=odoo — `Content-Security-Policy:
+//     frame-ancestors <CS_SHOP_ORIGINS>`. Every other HTML response sends
+//     `frame-ancestors 'none'`. In embed mode the shop origins are also
+//     injected as <meta name="cs-shop-origins"> for postMessage (src/lib/embed.ts).
 //
 // Listens on $PORT (Replit autoscale sets this), defaulting to 3000.
 
@@ -27,6 +32,39 @@ import { handleServeRequest } from "./upload-store.mjs";
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = join(__dirname, "dist", "public");
 const PORT = Number(process.env.PORT) || 3000;
+
+/**
+ * Orígenes exactos de la tienda Odoo que pueden incrustar el personalizador
+ * (CS_SHOP_ORIGINS, separados por coma o espacio). Solo https (o localhost).
+ */
+function parseShopOrigins(raw) {
+  const out = [];
+  for (const part of String(raw || "").split(/[\s,]+/)) {
+    if (!part) continue;
+    try {
+      const u = new URL(part);
+      const local = u.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/.test(u.hostname);
+      if ((u.protocol === "https:" || local) && !out.includes(u.origin)) out.push(u.origin);
+    } catch { /* se ignora lo que no es una URL */ }
+  }
+  return out;
+}
+const SHOP_ORIGINS = parseShopOrigins(process.env.CS_SHOP_ORIGINS);
+
+/** CSP de incrustación: la tienda solo con ?embed=odoo; el resto, nadie. */
+function frameAncestors(embed, origins = SHOP_ORIGINS) {
+  return embed && origins.length ? `frame-ancestors ${origins.join(" ")}` : "frame-ancestors 'none'";
+}
+
+/**
+ * El HTML embebido lleva los orígenes de la tienda (para postMessage) y oculta
+ * desde el primer pintado la portada pre-renderizada (main.tsx la quita).
+ */
+function injectShopOrigins(html) {
+  const meta = `<meta name="cs-shop-origins" content="${SHOP_ORIGINS.join(" ")}">` +
+    "<style>#hero-root{display:none!important}</style>";
+  return html.replace("</head>", `${meta}</head>`);
+}
 
 // Dominio público. El viejo (creativastudiopy.com) sigue conectado en Replit
 // y redirige acá con 301, salvo /api/* y /u/*: los links de pedidos ya
@@ -341,12 +379,34 @@ async function serve(req, res) {
     && (req.headers["accept-encoding"] || "").includes("gzip");
   const encoding = asyncGzip ? "gzip" : COMPRESSIBLE.has(type) ? pickEncoding(req.headers["accept-encoding"]) : null;
 
+  const isHtml = type.startsWith("text/html");
+  const embed = isHtml && url.searchParams.get("embed") === "odoo";
   const baseHeaders = {
     "Content-Type": type,
     "Cache-Control": cacheControl,
     "X-Content-Type-Options": "nosniff",
     Vary: "Accept-Encoding",
+    ...(isHtml ? { "Content-Security-Policy": frameAncestors(embed) } : {}),
   };
+
+  // Modo embebido: el mismo index.html con los orígenes de la tienda adentro.
+  if (embed) {
+    const encodingE = pickEncoding(req.headers["accept-encoding"]);
+    const key = `${filePath}|embed|${encodingE ?? "identity"}`;
+    let payload = compressedCache.get(key);
+    if (!payload) {
+      const html = Buffer.from(injectShopOrigins(await readFile(filePath, "utf-8")), "utf-8");
+      payload = encodingE ? compress(html, encodingE) : html;
+      compressedCache.set(key, payload);
+    }
+    res.writeHead(status, {
+      ...baseHeaders,
+      ...(encodingE ? { "Content-Encoding": encodingE } : {}),
+      "Content-Length": payload.length,
+    });
+    res.end(method === "HEAD" ? undefined : payload);
+    return;
+  }
 
   try {
     if (encoding) {

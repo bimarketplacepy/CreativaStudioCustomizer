@@ -3,6 +3,7 @@ import DeferUntilVisible from "@/components/defer-until-visible";
 import { hasSharedDesign } from "@/lib/design-link";
 import { scrollToSection } from "@/lib/section-reveal";
 import { ARTIST_DESIGNS_ENABLED } from "@workspace/print-specs";
+import { isOdooEmbed } from "@/lib/embed";
 
 // Everything below the hero is loaded on demand. The hero is the only
 // above-the-fold section: it is pre-rendered into index.html and hydrated from
@@ -68,6 +69,16 @@ export default function Home() {
     const id = window.location.hash.slice(1);
     if (/^[a-z-]+$/.test(id)) scrollToSection(id);
   }, []);
+
+  // Embebido en la ficha de la tienda Odoo: solo el personalizador (sin
+  // secciones, pie, WhatsApp flotante ni tutorial). WhatsApp queda en el resumen.
+  if (isOdooEmbed) {
+    return (
+      <Suspense fallback={<SectionFallback minH="90vh" label="Cargando personalizador…" />}>
+        <Customizer />
+      </Suspense>
+    );
+  }
 
   return (
     // Sin wrapper propio: el contenedor flex de página vive en index.html

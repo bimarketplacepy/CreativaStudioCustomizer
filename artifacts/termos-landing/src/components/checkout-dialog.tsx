@@ -1,7 +1,9 @@
 /**
- * Formulario corto de «Comprar»: nombre, celular y email. Valida en el
- * navegador con las mismas reglas del servidor y, al confirmar, delega en
- * `onSubmit` (que crea el pedido en Odoo y manda al portal de pago).
+ * Formulario corto de «Comprar y pagar» / «Enviar a revisión»: nombre,
+ * celular y email. Valida en el navegador con las mismas reglas del servidor
+ * y, al confirmar, delega en `onSubmit` (que pide el veredicto, crea el
+ * presupuesto en Odoo y, si se puede cobrar ya, manda al portal para firmar y
+ * pagar).
  */
 import React, { useEffect, useState } from "react";
 import { Loader2, MessageCircle } from "lucide-react";
@@ -21,6 +23,10 @@ export interface CheckoutFailure {
   whatsapp?: boolean;
   /** Pedido ya pagado: link para verlo. */
   viewUrl?: string | null;
+  /** No es un error: el pedido quedó enviado a revisión del taller. */
+  success?: boolean;
+  /** Motivos del veredicto del servidor (diseño que no se puede producir). */
+  reasons?: string[];
 }
 
 interface Props {
@@ -32,11 +38,14 @@ interface Props {
   onSubmit: (customer: CheckoutCustomer) => Promise<CheckoutFailure | null>;
   /** Fallback: enviar el mismo pedido por WhatsApp. */
   onWhatsApp: () => void;
+  /** «pay»: veredicto OK, va a firmar y pagar. «review»: el taller lo revisa antes de cobrar. */
+  mode?: "pay" | "review";
 }
 
 const STORAGE_KEY = "cs.checkout.customer";
 
-export function CheckoutDialog({ open, onOpenChange, total, summary, onSubmit, onWhatsApp }: Props) {
+export function CheckoutDialog({ open, onOpenChange, total, summary, onSubmit, onWhatsApp, mode = "pay" }: Props) {
+  const review = mode === "review";
   const [nombre, setNombre] = useState("");
   const [telefono, setTelefono] = useState("");
   const [email, setEmail] = useState("");
@@ -91,9 +100,14 @@ export function CheckoutDialog({ open, onOpenChange, total, summary, onSubmit, o
     <Dialog open={open} onOpenChange={busy ? () => {} : onOpenChange}>
       <DialogContent className="max-w-md rounded-2xl p-5 sm:p-6">
         <DialogHeader className="text-left">
-          <DialogTitle className="font-serif font-light text-2xl text-[var(--cs-ink)]">Comprar tu diseño</DialogTitle>
+          <DialogTitle className="font-serif font-light text-2xl text-[var(--cs-ink)]">
+            {review ? "Enviar a revisión" : "Comprar tu diseño"}
+          </DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
-            {summary}{total ? ` · ${total}` : ""}. Después del pago te confirmamos el diseño final por WhatsApp antes de grabar.
+            {summary}{total ? ` · ${total}` : ""}.{" "}
+            {review
+              ? "Te mandamos una prueba para aprobar antes de pagar: no se cobra nada hasta que la aceptes."
+              : "En el siguiente paso ves la prueba de tu diseño, la aceptás con tu firma y pagás."}
           </DialogDescription>
         </DialogHeader>
 
@@ -119,8 +133,13 @@ export function CheckoutDialog({ open, onOpenChange, total, summary, onSubmit, o
           </div>
 
           {failure && !failure.field && (
-            <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 space-y-2">
+            <div role={failure.success ? "status" : "alert"} className={failure.success
+              ? "rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-900 space-y-2"
+              : "rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 space-y-2"}>
               <p>{failure.message}</p>
+              {!!failure.reasons?.length && (
+                <ul className="list-disc pl-5 space-y-1">{failure.reasons.map(r => <li key={r}>{r}</li>)}</ul>
+              )}
               {failure.viewUrl && (
                 <a className="cs-btn cs-btn-ghost cs-btn-sm" href={failure.viewUrl}>Ver mi pedido</a>
               )}
@@ -133,10 +152,16 @@ export function CheckoutDialog({ open, onOpenChange, total, summary, onSubmit, o
           )}
 
           <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">
-            <button type="button" className="cs-btn cs-btn-ghost" onClick={() => onOpenChange(false)} disabled={busy}>Volver</button>
-            <button type="submit" className="cs-btn cs-btn-primary disabled:opacity-60" disabled={busy}>
-              {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Preparando el pago…</> : "Ir a pagar"}
+            <button type="button" className="cs-btn cs-btn-ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+              {failure?.success ? "Cerrar" : "Volver"}
             </button>
+            {!failure?.success && (
+              <button type="submit" className="cs-btn cs-btn-primary disabled:opacity-60" disabled={busy}>
+                {busy
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> {review ? "Enviando…" : "Preparando el pago…"}</>
+                  : review ? "Enviar a revisión" : "Ir a firmar y pagar"}
+              </button>
+            )}
           </div>
         </form>
       </DialogContent>
