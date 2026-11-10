@@ -1,8 +1,14 @@
-// Prepara una base de Odoo para «Comprar» (PROMPT-ODOO-PRUEBAS §3). IDEMPOTENTE.
-//  1. Servicios de grabado (type=service, sale_ok) buscados por default_code:
-//     GRAB-NOMBRES 35.000 · GRAB-ICONO 40.000 · GRAB-LOGO 50.000 · GRAB-EXTRA 5.000
-//     (montos de engraving-plans.ts y pricing.ts). Crea los que faltan, corrige
-//     precio/tipo de los que existen.
+// Prepara una base de Odoo para «Comprar» (PROMPT-ODOO-PRUEBAS §3 y
+// PROMPT-ODOO-TIENDA §1.4). IDEMPOTENTE.
+//  1. Servicios (type=service, sale_ok) buscados por default_code:
+//     - Grabado: GRAB-NOMBRES 35.000 · GRAB-ICONO 40.000 · GRAB-LOGO 50.000 ·
+//       GRAB-EXTRA 5.000 (montos de engraving-plans.ts y pricing.ts).
+//     - Impresión a color: IMP-COLOR-CHICO / -FRENTE / -360. Hoy SIN precio
+//       (se cotiza): se crean en 0 y el veredicto los manda a revisión. Si el
+//       taller les carga un precio en Odoo, el script no lo pisa.
+//     - Diseños de artistas: DISENO-ARTISTA-<ID> con el precio de
+//       artist-designs.ts (@workspace/print-specs), ej. Gs. 12.500.
+//     Crea los que faltan, corrige precio/tipo de los que existen.
 //  2. --demo: activa el proveedor de pago de prueba «Demo» (instala
 //     payment_demo si hace falta, lo pone en modo test y lo publica). SOLO en
 //     bases de prueba: el script se niega en producción.
@@ -13,11 +19,22 @@
 const PROD_HOSTS = ["marketplace.odoo.com"];
 const PROD_DBS = ["marketplace-main-33409600"];
 
+const { ARTIST_DESIGNS, designPrice, getArtist } = await import("../../../lib/print-specs/src/index.ts");
+
+// price: null = sin precio fijo (se crea en 0 y no se pisa el que cargue el taller).
 const SERVICES = [
   { code: "GRAB-NOMBRES", name: "Grabado láser: nombres y apellidos", price: 35000 },
   { code: "GRAB-ICONO", name: "Grabado láser: nombres + ícono pequeño", price: 40000 },
   { code: "GRAB-LOGO", name: "Grabado láser: nombres + logo", price: 50000 },
   { code: "GRAB-EXTRA", name: "Grabado láser: escritura extra (texto 2, tapa o base)", price: 5000 },
+  { code: "IMP-COLOR-CHICO", name: "Impresión a color: diseño chico", price: null },
+  { code: "IMP-COLOR-FRENTE", name: "Impresión a color: frente (logo o foto)", price: null },
+  { code: "IMP-COLOR-360", name: "Impresión a color: toda la vuelta (360°)", price: null },
+  ...ARTIST_DESIGNS.map(d => ({
+    code: `DISENO-ARTISTA-${d.id.toUpperCase()}`,
+    name: `Diseño de artista: ${d.title} (${getArtist(d.artistId)?.name ?? d.artistId})`,
+    price: designPrice(d),
+  })),
 ];
 
 const args = process.argv.slice(2);
@@ -49,8 +66,8 @@ if (!uid) { console.error("Login rechazado"); process.exit(1); }
 const call = (model, method, a, kw = {}, timeout) => rpc("object", "execute_kw", [DB, uid, KEY, model, method, a, kw], timeout);
 const write = async (label, fn) => { if (DRY) { console.log(`  (dry) ${label}`); return null; } const r = await fn(); console.log(`  ✓ ${label}`); return r; };
 
-// ── 1. Servicios de grabado ──────────────────────────────────────────────────
-console.log("\n1. Servicios de grabado");
+// ── 1. Servicios ─────────────────────────────────────────────────────────────
+console.log("\n1. Servicios (grabado, impresión a color, diseños de artistas)");
 const categ = (await call("product.category", "search_read", [[["complete_name", "=", "Services"]]], { fields: ["id"], limit: 1 }))[0]?.id ?? false;
 // Mismo tratamiento de IVA que las piezas: copiar impuestos de un producto publicado con stock.
 const sample = (await call("product.template", "search_read", [[["sale_ok", "=", true], ["is_published", "=", true], ["type", "=", "consu"]]], { fields: ["taxes_id"], limit: 1 }))[0];
@@ -58,16 +75,16 @@ const taxes = sample?.taxes_id ?? [];
 const report = [];
 for (const s of SERVICES) {
   const found = await call("product.product", "search_read", [[["default_code", "=", s.code]]], { fields: ["id", "product_tmpl_id", "lst_price", "type", "sale_ok", "active"], context: { active_test: false } });
-  const vals = { name: s.name, default_code: s.code, type: "service", sale_ok: true, purchase_ok: false, list_price: s.price, invoice_policy: "order", company_id: false, taxes_id: [[6, 0, taxes]] };
+  const vals = { name: s.name, default_code: s.code, type: "service", sale_ok: true, purchase_ok: false, list_price: s.price ?? 0, invoice_policy: "order", company_id: false, taxes_id: [[6, 0, taxes]] };
   if (categ) vals.categ_id = categ;
   if (!found.length) {
-    const id = await write(`crear ${s.code} = Gs. ${s.price.toLocaleString("es-PY")}`, () => call("product.template", "create", [vals]));
+    const id = await write(`crear ${s.code} = ${s.price === null ? "sin precio (se cotiza)" : `Gs. ${s.price.toLocaleString("es-PY")}`}`, () => call("product.template", "create", [vals]));
     report.push({ code: s.code, action: "creado", templateId: id });
     continue;
   }
   const v = found[0];
   const fix = {};
-  if (v.lst_price !== s.price) fix.list_price = s.price;
+  if (s.price !== null && v.lst_price !== s.price) fix.list_price = s.price;
   if (v.type !== "service") fix.type = "service";
   if (!v.sale_ok) fix.sale_ok = true;
   if (!v.active) fix.active = true;

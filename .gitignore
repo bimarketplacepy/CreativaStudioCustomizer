@@ -48,3 +48,6 @@ Thumbs.db
 .cache/
 .local/
 artifacts/api-server/scripts/.catalog-preview-*.mjs
+
+# Compilación temporal de scripts de Odoo (odoo-personalizables.mjs)
+artifacts/api-server/scripts/.build/
