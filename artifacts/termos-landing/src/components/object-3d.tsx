@@ -613,7 +613,7 @@ function ThreeCanvas({ obj, onContextLost, onContextRestored, ...props }: Object
   useEffect(() => () => detachRef.current?.(), []);
   return (
     <Canvas
-      dpr={[1, LOW_END ? 1 : 2]}
+      dpr={[1, LOW_END ? 1.5 : 2]}
       // preserveDrawingBuffer: keep the last frame readable for PNG capture.
       gl={{ antialias: !LOW_END, alpha: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
       onCreated={({ gl, invalidate }) => {

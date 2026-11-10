@@ -165,7 +165,7 @@
 - **Transacciones Demo:** S00201, S00202, S00217, S00218, S00220, S00226 (`done`; pagos `PBNK1/2026/00008`–`00012` y el de S00226); S00225 (`authorized`).
 - **7 entregas** `WH/OUT` de los pedidos confirmados (reservan stock: el **Vaso 900 ml Rosado Pastel** quedó agotado). Sin facturas.
 - **Contactos:** «Prueba Staging», «Prueba Embebida», «Prueba Celu», «Prueba Respaldo» (todos `@example.com`). «BI Marketplace» **no** es de prueba: no borrarlo.
-- **Configuración:** servicios `GRAB-*`, `IMP-COLOR-*` (en 0) y `DISENO-ARTISTA-AOPY-NAVIDAD-TAZA`; módulo `payment_demo` instalado y Demo en modo test y publicado (`capture_manually` se activó un rato y se dejó en `false`); 139 plantillas con `cs_personalizable` (a revisar con el mapeo estricto pedido después de esta tanda). `engine_url` restaurado.
+- **Configuración:** servicios `GRAB-*`, `IMP-COLOR-*` (en 0) y `DISENO-ARTISTA-AOPY-NAVIDAD-TAZA`; módulo `payment_demo` instalado y Demo en modo test y publicado (`capture_manually` se activó un rato y se dejó en `false`); 97 plantillas con `cs_personalizable` después del mapeo estricto (§8; antes 139). `engine_url` restaurado.
 
 **Cómo borrarlos en Odoo** (en este orden, con un usuario de Ventas/Contabilidad):
 1. **Transacción autorizada** (S00225): Facturación → Pagos en línea → Transacciones → filtrar `S00225` → «Anular».
@@ -182,6 +182,24 @@
 ```
 psql "$DATABASE_URL" -c 'drop database creativa_test'
 ```
+
+## 8. Mapeo estricto de personalizables (2026-11-10, noche)
+
+**Pedido:** que el botón «Personalizar» aparezca solo en los productos que tienen el **mismo estilo** que un modelo del personalizador, cruzando código, tipo, nombre e imagen, y no en todo lo de la categoría Termos, porque hay piezas que no se pueden personalizar por su tamaño o su forma.
+
+**Antes:** `odoo-personalizables.mjs` marcaba todo lo que tuviera un perfil 3D, **formas genéricas aproximadas incluidas**: 139 plantillas.
+
+**Ahora:** la regla `shopPersonalizable` (`lib/print-specs/src/shop-personalizable.ts`, con 7 pruebas) exige que (1) el nombre en la tienda, con la edición, sea un **modelo 3D exacto** del personalizador y (2) el código no esté en `STYLE_EXCLUSIONS`. Esa lista sale de comparar las fotos de las 138 plantillas con los modelos. La usan:
+- `scripts/odoo-personalizables.mjs`: marca y desmarca `cs_personalizable`, imprime el mapa y, con `--md`, lo guarda.
+- La landing: con `?embed=odoo` o `?odoo=`, un producto que no pasa la regla muestra «Este modelo todavía no se puede personalizar online» (con WhatsApp y «Volver a la tienda») en lugar de abrir el editor con una forma aproximada. La landing propia no cambia.
+
+**Resultado en staging:** 97 personalizables y 41 no (16 ediciones de clubes sin modelo propio, 20 formas genéricas o sin modelo, 5 de otro estilo por la foto: Vaso 470/473 ml pint ×3, Termo Mate 1200 ml con manija y Termo 530 ml con pajita). Aplicado con `--aplicar`: 42 desmarcadas, y la segunda pasada da 0 cambios. Verificado: la ficha del Vaso 473 Cherry no muestra el botón, la del Termo Mate 915 sí, y el link directo `?odoo=` del excluido muestra el aviso.
+
+**Mapa completo** por código: `docs/odoo-tienda/PERSONALIZABLES.md`.
+
+**Para producción:** correr `node scripts/odoo-personalizables.mjs` (informe), revisar el mapa y después `--aplicar` (§5 punto 3). Como staging es una copia del 09/11, los códigos coinciden; un producto nuevo entra recién cuando tenga su modelo en el personalizador.
+
+> «Vaso 900ml Rosado Pastel» se desmarcó en staging por **falta de stock** (lo agotaron los pedidos de prueba, §7.4), no por estilo. Vuelve a marcarse al cancelar esos pedidos y correr el script.
 
 ## 9. Rendimiento embebido (2026-11-10)
 

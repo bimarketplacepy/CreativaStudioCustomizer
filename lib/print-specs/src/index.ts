@@ -9,3 +9,4 @@ export * from "./dpi.ts";
 export * from "./artist-designs.ts";
 export * from "./pieces.ts";
 export * from "./feasibility.ts";
+export * from "./shop-personalizable.ts";

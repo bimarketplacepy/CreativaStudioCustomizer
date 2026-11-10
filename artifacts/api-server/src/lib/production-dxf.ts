@@ -9,10 +9,16 @@
 //    con tramos de ≤ 0,1 mm), que la láser rellena al grabar en modo "scan";
 //  - DXF R12 (AC1009): la versión que abren CorelDRAW, RDWorks y LightBurn;
 //  - unidades en mm, con el eje Y hacia arriba (el SVG lo tiene hacia abajo);
-//  - capas: GRABADO (lo que se graba) e INFO (borde del área, datos del
-//    pedido y avisos: apagarla o borrarla antes de grabar);
+//  - capas: GRABADO (lo que se graba, en ROJO: es el color que la láser toma
+//    como grabado) e INFO (borde del área, datos del pedido y avisos, en gris:
+//    la láser no la ve; se puede apagar o borrar);
+//  - todo lo de GRABADO sale fundido en una sola silueta: ningún contorno
+//    cruza a otro (las letras manuscritas se montan entre sí, ver
+//    outline-union.ts);
 //  - un logo/foto subido (raster) no entra en un DXF: queda su recuadro en la
 //    capa LOGO-VECTORIZAR y el aviso; el logo está en el SVG de referencia.
+
+import { unionOutlines } from "./outline-union";
 
 type Pt = [number, number];
 /** Matriz afín [a b c d e f]: x' = a·x + c·y + e, y' = b·x + d·y + f. */
@@ -310,6 +316,10 @@ function svgEntities(svg: string, tolMm: number): { entities: Entity[]; height: 
     // En GRABADO, un trazo sin relleno se pasa a su contorno con su ancho real.
     const strokeOnly = layer === "GRABADO" && frame.fill === "none" && frame.stroke && frame.stroke !== "none" && (frame.strokeWidth ?? 0) > 0;
     if (strokeOnly) polys = polys.flatMap(p => strokeOutline(p, frame.strokeWidth!));
+    // Con relleno, cada contorno es una forma cerrada aunque el trazado no
+    // traiga "Z" (los de las tipografías no la traen): sin esto las letras
+    // salían como polilíneas ABIERTAS y la láser no las puede rellenar.
+    else if (layer === "GRABADO" && frame.fill !== "none" && tag !== "line") polys = polys.map(p => ({ pts: p.pts, closed: true }));
     for (const p of polys) entities.push({ layer, poly: { pts: p.pts.map(pt => apply(frame.m, pt)), closed: p.closed } });
   }
   return { entities, height, width };
@@ -317,12 +327,25 @@ function svgEntities(svg: string, tolMm: number): { entities: Entity[]; height: 
 
 // ── Escritura DXF R12 ────────────────────────────────────────────────────────
 
-const LAYER_COLORS: Record<Layer, number> = { GRABADO: 7, INFO: 8, "LOGO-VECTORIZAR": 1 };
+// Colores ACI: 1 = rojo (lo que graba la láser), 8 = gris. Solo GRABADO va en
+// rojo; nada va en azul (el taller pidió sacar los recuadros azules): el
+// recuadro del logo a vectorizar no se graba y queda en gris, como la info.
+const LAYER_COLORS: Record<Layer, number> = { GRABADO: 1, INFO: 8, "LOGO-VECTORIZAR": 8 };
 const f = (n: number) => (Math.round(n * 1000) / 1000).toString();
 
 /** SVG de producción (mm) → DXF R12 en mm, Y hacia arriba. */
 export function svgToDxf(svg: string, opts: { tolMm?: number; comment?: string } = {}): string {
-  const { entities, height, width } = svgEntities(svg, opts.tolMm ?? 0.1);
+  const parsed = svgEntities(svg, opts.tolMm ?? 0.05);
+  const { height, width } = parsed;
+  // GRABADO: todos los contornos cerrados (textos, íconos, trazos) se funden en
+  // una sola silueta, así ninguno cruza a otro. Lo abierto queda como está.
+  const engrave = parsed.entities.filter(e => e.layer === "GRABADO");
+  const merged = unionOutlines(engrave.filter(e => e.poly.closed).map(e => e.poly.pts));
+  const entities: Entity[] = [
+    ...merged.map(pts => ({ layer: "GRABADO" as Layer, poly: { pts, closed: true } })),
+    ...engrave.filter(e => !e.poly.closed),
+    ...parsed.entities.filter(e => e.layer !== "GRABADO"),
+  ];
   const out: string[] = [];
   const g = (code: number, value: string | number) => out.push(String(code), String(value));
 
@@ -352,7 +375,8 @@ export function svgToDxf(svg: string, opts: { tolMm?: number; comment?: string }
       if (Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6) pts.pop();
     }
     if (pts.length < 2) continue;
-    g(0, "POLYLINE"); g(8, layer); g(66, 1); g(10, 0); g(20, 0); g(30, 0); g(70, poly.closed ? 1 : 0);
+    // Color en la entidad además de la capa: Corel a veces ignora el de la capa.
+    g(0, "POLYLINE"); g(8, layer); g(62, LAYER_COLORS[layer]); g(66, 1); g(10, 0); g(20, 0); g(30, 0); g(70, poly.closed ? 1 : 0);
     for (const [x, y] of pts) {
       g(0, "VERTEX"); g(8, layer); g(10, f(x)); g(20, f(height - y)); g(30, 0);
     }

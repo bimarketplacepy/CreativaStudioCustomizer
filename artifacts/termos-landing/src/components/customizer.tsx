@@ -96,8 +96,9 @@ import { onDesignPreset } from "@/lib/design-preset";
 import { ARTIST_DESIGNS, ARTIST_DESIGNS_ENABLED, designArtistFee, designPrice, getArtist, getArtistDesign, type ArtistDesign } from "@workspace/print-specs";
 import { CUSTOMIZER_MODE_EVENT, CUSTOMIZER_START_EVENT, takeCustomizerMode, takeStartIntent, type StartIntent } from "@/lib/section-reveal";
 import { machineFor, normalizeTechnique } from "@workspace/print-specs";
-import { feasibility, fitsDacen, printSpecFor, type FeasibilityResult } from "@workspace/print-specs";
+import { feasibility, fitsDacen, printSpecFor, shopPersonalizable, type FeasibilityResult } from "@workspace/print-specs";
 import { backToShopUrl, isOdooEmbed, postToShop, startResizeReports, storeVariantId } from "@/lib/embed";
+import { TEXT_STEP_MM, formatCm, measureTextMm, pieceSizeMm, realSizePayload, scaleForWidthMm, type TextSizeMm } from "@/lib/text-size";
 import { dacenPrintSize, loadImage, renderDacenPng, renderUnwrappedPreview, type DacenPrintFile } from "@/lib/production-dacen";
 import { wrapEffectiveDpi, WRAP_MODES, type WrapDesign } from "@/lib/wrap-design";
 import { PRICING, quote } from "@/lib/pricing";
@@ -175,6 +176,37 @@ function TextSizeSlider({ scale, onScale, maxScale }: { scale: number; onScale: 
           {Math.round(Math.min(scale, max) * 100)}%
         </span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Medida real del texto sobre la pieza (largo × alto de la tinta, en cm) con
+ * − / + para llevarla de a medio centímetro. Es la misma medida con la que sale
+ * el archivo de la láser, así lo que se lee acá es lo que se graba.
+ */
+function TextCmControl({ size, onStep, canGrow, canShrink }: {
+  size: TextSizeMm;
+  onStep: (dir: 1 | -1) => void;
+  canGrow: boolean;
+  canShrink: boolean;
+}) {
+  const btn = "w-10 h-10 shrink-0 grid place-items-center rounded-lg border border-border bg-white text-foreground hover:border-primary/50 hover:text-primary active:scale-95 transition-all disabled:opacity-35 disabled:pointer-events-none";
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-border bg-secondary/30 px-3 py-2">
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-muted-foreground">Medida real del texto</p>
+        <p className="text-sm font-semibold text-foreground tabular-nums" aria-live="polite">
+          {formatCm(size.widthMm)} × {formatCm(size.heightMm)} cm
+          <span className="ml-1.5 text-xs font-normal text-muted-foreground">largo × alto</span>
+        </p>
+      </div>
+      <button type="button" className={btn} disabled={!canShrink} onClick={() => onStep(-1)} aria-label="Achicar el texto medio centímetro" title="Achicar 0,5 cm">
+        <Minus className="w-4 h-4" />
+      </button>
+      <button type="button" className={btn} disabled={!canGrow} onClick={() => onStep(1)} aria-label="Agrandar el texto medio centímetro" title="Agrandar 0,5 cm">
+        <Plus className="w-4 h-4" />
+      </button>
     </div>
   );
 }
@@ -1992,6 +2024,16 @@ export default function Customizer() {
       track("store_piece_unavailable", { variant: storeVariantId, reason: found ? "sin_perfil" : "no_encontrado" });
       return;
     }
+    // Solo los mismos estilos que el personalizador (código y nombre contra el
+    // modelo 3D exacto): una forma aproximada o una edición sin modelo no se abre.
+    const shopName = found.v.club ? `${found.p.name} · ${found.v.club}` : found.p.name;
+    const allowed = shopPersonalizable(type, shopName, found.v.sku);
+    if (!allowed.ok) {
+      setStoreLock("unavailable");
+      setStoreLockReason("Este modelo todavía no se puede personalizar online. Escribinos por WhatsApp y lo vemos juntos.");
+      track("store_piece_unavailable", { variant: storeVariantId, reason: "no_personalizable", detail: allowed.reason });
+      return;
+    }
     if (!found.v.inStock) {
       setStoreLock("unavailable");
       setStoreLockReason(`${found.p.name}${found.v.colorName ? ` ${found.v.colorName}` : ""} está agotado. Elegí otro color en la tienda.`);
@@ -2525,6 +2567,63 @@ export default function Customizer() {
     if (!isWrap360) return;
     setTextPlacement(p => (p.scale > wrapMaxScale + 0.001 ? { ...p, scale: wrapMaxScale } : p));
   }, [isWrap360, wrapMaxScale]);
+
+  // ── Medida real del texto (cm) ─────────────────────────────────────────────
+  // Solo termos y vasos: la vuelta sale del calibre o, si falta, del modelo 3D.
+  const pieceMm = React.useMemo(
+    () => (isDrinkware && wrapPrintSize ? pieceSizeMm(product, wrapPrintSize.circumferenceMm) : null),
+    [isDrinkware, wrapPrintSize, product],
+  );
+  const textSizeInput = React.useMemo(
+    () => ({ text: renderText, fontFamily: textFontFamily, colorPrint: isColorPrint, placement: textPlacement, singleFace }),
+    [renderText, textFontFamily, isColorPrint, textPlacement, singleFace],
+  );
+  const text2SizeInput = React.useMemo(
+    () => ({ text: renderText2, fontFamily: text2FontFamily, colorPrint: isColorPrint, placement: text2Placement, singleFace }),
+    [renderText2, text2FontFamily, isColorPrint, text2Placement, singleFace],
+  );
+  const textMm = React.useMemo(
+    () => (pieceMm ? measureTextMm(product, pieceMm, textSizeInput) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pieceMm, product, textSizeInput, fontTick],
+  );
+  const text2Mm = React.useMemo(
+    () => (pieceMm ? measureTextMm(product, pieceMm, text2SizeInput) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pieceMm, product, text2SizeInput, fontTick],
+  );
+  /** − / + del largo: lleva el texto al medio centímetro siguiente (o anterior). */
+  const stepTextCm = (which: "text" | "text2", dir: 1 | -1) => {
+    const t2 = which === "text2";
+    const cur = t2 ? text2Mm : textMm;
+    if (!pieceMm || !cur) return;
+    const input = t2 ? text2SizeInput : textSizeInput;
+    const w = Math.round(cur.widthMm);
+    const target = dir > 0 ? Math.floor(w / TEXT_STEP_MM) * TEXT_STEP_MM + TEXT_STEP_MM : Math.ceil(w / TEXT_STEP_MM) * TEXT_STEP_MM - TEXT_STEP_MM;
+    if (target < TEXT_STEP_MM) return;
+    const from = input.placement.scale;
+    const max = !t2 && isWrap360 ? wrapMaxScale : TEXT_SCALE_MAX;
+    let s = scaleForWidthMm(sc => measureTextMm(product, pieceMm, input, sc)?.widthMm ?? null, from, target, TEXT_SCALE_MIN, max);
+    // Si el renglón cambió de corte y la cuenta no avanzó, igual se mueve un paso.
+    if (dir > 0 && s <= from) s = Math.min(max, from * 1.08);
+    if (dir < 0 && s >= from) s = Math.max(TEXT_SCALE_MIN, from * 0.92);
+    if (t2) applyText2Placement({ ...text2Placement, scale: s });
+    else applyTextPlacement({ ...textPlacement, scale: s });
+  };
+  const textCmControl = (which: "text" | "text2") => {
+    const cur = which === "text2" ? text2Mm : textMm;
+    if (!cur) return null;
+    const scale = (which === "text2" ? text2Placement : textPlacement).scale;
+    const max = which === "text" && isWrap360 ? wrapMaxScale : TEXT_SCALE_MAX;
+    return (
+      <TextCmControl
+        size={cur}
+        onStep={(dir) => stepTextCm(which, dir)}
+        canGrow={!cur.shrunk && scale < max - 0.001}
+        canShrink={scale > TEXT_SCALE_MIN + 0.001 && cur.widthMm > TEXT_STEP_MM}
+      />
+    );
+  };
 
   // Bloqueo de caracteres extra: si ni en el tamaño mínimo legible el texto
   // completa la vuelta, no se aceptan más caracteres (sí borrar).
@@ -3648,6 +3747,18 @@ export default function Customizer() {
         // Ubicación libre: u/v son de toda la vuelta (archivo de producción de
         // 360°) y las zonas sin grabado van como referencia para el taller.
         ...(FREE_PLACEMENT && isDrinkware ? { placementMode: "free", keepOut: keepOutZones } : {}),
+        // Medidas reales (mm) que vio el cliente: el archivo de la láser sale a
+        // ese tamaño y con esos renglones (lib/text-size.ts).
+        ...(pieceMm ? {
+          realSize: realSizePayload(
+            pieceMm,
+            trimmedText ? textMm : null,
+            trimmedText2 ? text2Mm : null,
+            artImageSize !== "none" && (selectedIcon || customImage)
+              ? TEXTURE_W * (artImageSize === "large" ? 0.34 : 0.19) * artPlacement.scale * pieceMm.mmPerPx
+              : null,
+          ),
+        } : {}),
         // Texto 2 (empresa / nombre, etc.): también va al archivo de producción.
         ...(trimmedText2 ? { text2: trimmedText2, text2FontId: text2Font, text2Placement } : {}),
         // Grabado extra (no está en el 3D): también va al archivo de producción.
@@ -5090,6 +5201,7 @@ export default function Customizer() {
                   <Label className="text-sm font-medium text-foreground mb-2 block">Letra</Label>
                   <FontQuickGrid fonts={FONTS} value={t2 ? text2Font : font} onChange={t2 ? setText2Font : setFont} sampleText={t2 ? text2 : text} />
                 </div>
+                {textCmControl(t2 ? "text2" : "text")}
                 {!t2 && textLayout.shrunk && (
                   <p className="text-xs text-primary/90 flex items-center gap-1.5 rounded-lg bg-[#f5eaec] border border-primary/20 px-3 py-2">
                     <Info className="w-3.5 h-3.5 shrink-0" />
@@ -5865,6 +5977,7 @@ export default function Customizer() {
                     </div>
 
                     <div>
+                      {textCmControl("text")}
                       <TextSizeSlider
                         scale={textPlacement.scale}
                         onScale={(s) => applyTextPlacement({ ...textPlacement, scale: s })}
@@ -5922,6 +6035,7 @@ export default function Customizer() {
                           <Label className="text-xs text-muted-foreground mb-2 block">Tipografía del texto 2</Label>
                           <FontCarousel fonts={FONTS} value={text2Font} onChange={setText2Font} sampleText={text2 || "Texto 2"} />
                         </div>
+                        {textCmControl("text2")}
                         <TextSizeSlider
                           scale={text2Placement.scale}
                           onScale={(sc) => applyText2Placement({ ...text2Placement, scale: sc })}

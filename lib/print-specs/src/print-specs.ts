@@ -96,6 +96,7 @@ export const PRINT_SPECS: Record<string, PrintSpecEntry> = {
   // Ediciones con escudo grabado de fábrica: sin impresión 360° (taparía el escudo).
   "vaso-luqueno": steel({ dacen: false }),
   "vaso-olimpia": steel({ dacen: false }),
+  "termo-hydrate-palmeiras": steel({ dacen: false }),
   "taza-manija-palmeiras": steel({ dacen: false, consult: "handle" }),
   "vaso-manija-cerro": steel({ dacen: false, consult: "handle" }),
   "vaso-manija-luqueno": steel({ dacen: false, consult: "handle" }),

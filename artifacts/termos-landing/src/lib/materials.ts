@@ -71,6 +71,7 @@ export const MATERIALS: MaterialDef[] = [
       { id: "vaso-protour", name: "Quencher ProTour", desc: "Vaso térmico Stanley de 1,18 L con manija y tapa ProTour.", drinkwareProductId: "vaso-protour" },
       { id: "vaso-manija", name: "Vaso con manija", desc: "Vaso térmico de 887 ml con manija lateral y tapa transparente.", drinkwareProductId: "vaso-manija" },
       { id: "hoppie-hydrate", name: "Termo Hydrate", desc: "Termito de 530 ml y Litro, con tapa con asa.", drinkwareProductId: "hoppie-hydrate" },
+      { id: "termo-hydrate-palmeiras", name: "Termo Hydrate Palmeiras", desc: "Termo de 1 litro de la edición oficial de Palmeiras.", drinkwareProductId: "termo-hydrate-palmeiras" },
       { id: "hoppie",  name: "Termo Frontier",  drinkwareProductId: "hoppie" },
       { id: "botella-ancha", name: "Botella", desc: "Botella térmica de boca ancha.", drinkwareProductId: "botella-ancha" },
       { id: "guampa",  name: "Guampa",  drinkwareProductId: "guampa" },

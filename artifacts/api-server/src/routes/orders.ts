@@ -115,7 +115,7 @@ async function generateProductionFile(
       extraLid: extraText(ds.extraEngraving, "lid"),
       extraBase: extraText(ds.extraEngraving, "base"),
       placementMode: typeof ds.placementMode === "string" ? ds.placementMode : null,
-      keepOut: Array.isArray(ds.keepOut) ? (ds.keepOut as never) : null,
+      realSize: ds.realSize ?? null,
     });
     const svgName = `orders/${order.orderNumber}-produccion.svg`;
     await storeOrderFile(svgName, Buffer.from(svg, "utf8"), "image/svg+xml");

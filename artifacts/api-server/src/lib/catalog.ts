@@ -60,7 +60,7 @@ const TYPE_LABEL: Record<string, string> = {
   copa: "Copa", vaso: "Vaso", termo: "Termo", botella: "Botella",
   "food-flask": "Food Flask", "ice-bucket": "Ice Bucket", bowl: "Bowl",
   "vaso-manija": "Vaso", "botella-ancha": "Botella", "vaso-hydrate": "Vaso", "vaso-sunbeam": "Vaso",
-  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso", "vaso-whisky": "Vaso", "vaso-cafe": "Vaso", growler: "Growler", "termo-sleek": "Termo", "hoppie-kids": "Hoppie", "vaso-guarani": "Vaso", "vaso-quencher": "Vaso", "vaso-flip": "Vaso", "vaso-protour": "Vaso", "taza-manija-palmeiras": "Vaso", "vaso-luqueno": "Vaso", "vaso-olimpia": "Vaso", "vaso-manija-cerro": "Vaso", "vaso-manija-luqueno": "Vaso", "vaso-taza-river": "Vaso", "vaso-taza-palmeiras": "Vaso",
+  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso", "vaso-whisky": "Vaso", "vaso-cafe": "Vaso", growler: "Growler", "termo-sleek": "Termo", "hoppie-kids": "Hoppie", "vaso-guarani": "Vaso", "vaso-quencher": "Vaso", "vaso-flip": "Vaso", "vaso-protour": "Vaso", "taza-manija-palmeiras": "Vaso", "vaso-luqueno": "Vaso", "vaso-olimpia": "Vaso", "vaso-manija-cerro": "Vaso", "vaso-manija-luqueno": "Vaso", "vaso-taza-river": "Vaso", "vaso-taza-palmeiras": "Vaso", "termo-hydrate-palmeiras": "Termo",
 };
 
 /**
@@ -185,6 +185,7 @@ const CLUB_MODELS: Record<string, string> = {
   "vaso con pico y agarre|sportivo luqueno": "vaso-manija-luqueno",
   "vaso taza|river plate": "vaso-taza-river",
   "vaso taza|palmeiras": "vaso-taza-palmeiras",
+  "termo hydrate|palmeiras": "termo-hydrate-palmeiras",
 };
 
 /**

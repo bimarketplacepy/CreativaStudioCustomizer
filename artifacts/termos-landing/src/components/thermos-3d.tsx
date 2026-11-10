@@ -1001,7 +1001,7 @@ function ThermosMesh({
     const base = { roughness: 0.35, metalness: 0.15, clearcoat: 0.8, clearcoatRoughness: 0.15 };
     if (finish === "matte") {
       // Hoppie, chopera y vaso con manija llevan powder-coat real: mate con cuerpo, no tiza.
-      if (product.id === "hoppie" || product.id === "botella-ancha" || product.id === "chopera" || product.id === "vaso-manija" || product.id === "vaso-hydrate" || product.id === "vaso-sunbeam" || product.id === "termo-mate" || product.id === "termo-mate-forge" || product.id === "termo-kids" || product.id === "hoppie-hydrate" || product.id === "copa-hydrate" || product.id === "vaso-espresso" || product.id === "taza-manija" || product.id === "mini-coffee" || product.id === "vaso-taza" || product.id === "coffee-cup" || product.id === "vaso-shaker" || product.id === "vaso-whisky" || product.id === "vaso-cafe" || product.id === "growler" || product.id === "ice-bucket" || product.id === "guampa" || product.id === "vaso-guarani" || product.id === "vaso-quencher" || product.id === "vaso-flip" || product.id === "vaso-protour" || product.id === "taza-manija-palmeiras" || product.id === "vaso-luqueno" || product.id === "vaso-olimpia" || product.id === "vaso-manija-cerro" || product.id === "vaso-manija-luqueno" || product.id === "vaso-taza-river" || product.id === "vaso-taza-palmeiras")
+      if (product.id === "hoppie" || product.id === "botella-ancha" || product.id === "chopera" || product.id === "vaso-manija" || product.id === "vaso-hydrate" || product.id === "vaso-sunbeam" || product.id === "termo-mate" || product.id === "termo-mate-forge" || product.id === "termo-kids" || product.id === "hoppie-hydrate" || product.id === "copa-hydrate" || product.id === "vaso-espresso" || product.id === "taza-manija" || product.id === "mini-coffee" || product.id === "vaso-taza" || product.id === "coffee-cup" || product.id === "vaso-shaker" || product.id === "vaso-whisky" || product.id === "vaso-cafe" || product.id === "growler" || product.id === "ice-bucket" || product.id === "guampa" || product.id === "vaso-guarani" || product.id === "vaso-quencher" || product.id === "vaso-flip" || product.id === "vaso-protour" || product.id === "taza-manija-palmeiras" || product.id === "vaso-luqueno" || product.id === "vaso-olimpia" || product.id === "vaso-manija-cerro" || product.id === "vaso-manija-luqueno" || product.id === "vaso-taza-river" || product.id === "vaso-taza-palmeiras" || product.id === "termo-hydrate-palmeiras")
         return { ...base, roughness: 0.6, metalness: 0.1, clearcoat: 0.06, clearcoatRoughness: 0.7 };
       return { ...base, roughness: 0.88, metalness: 0.0, clearcoat: 0.0, clearcoatRoughness: 0.8 };
     }
@@ -2041,8 +2041,9 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
     <Canvas
       // Cap the pixel ratio so high-DPI phones don't render 3–4× the pixels of a
       // transmission/glass scene (keeps it smooth and eases GPU memory pressure).
-      // Piso 1 (no 1.5): en gama baja el dpr nativo es la resolución justa.
-      dpr={[1, LOW_END ? 1 : LOW_PERF ? 1.5 : 2]}
+      // Gama baja: tope 1,5 (no 1). A 1× y sin antialiasing, en una pantalla de
+      // 2–3× el producto se veía pixelado (cada píxel del 3D ocupa 4–9 físicos).
+      dpr={[1, LOW_END || LOW_PERF ? 1.5 : 2]}
       // Solo se dibuja cuando algo cambia (giro, arrastre, diseño): quieto, el
       // visor no gasta batería ni CPU. ThermosMesh pide cuadros mientras anima.
       frameloop="demand"

@@ -2,14 +2,16 @@
 // website_creativa_studio (campo booleano product.template.cs_personalizable).
 // PROMPT-ODOO-TIENDA §5. IDEMPOTENTE.
 //
-// Personalizable = la plantilla tiene al menos una variante en el catálogo del
-// personalizador: marca de la tienda, con perfil 3D (modelo propio o forma
-// genérica del tipo) y con alguna técnica posible (todo el drinkware admite al
-// menos grabado láser). Es la MISMA función que arma /api/catalog
-// (fetchFromOdoo), corrida contra la base de destino. Se marcan las que
-// faltan y se desmarcan las que dejaron de serlo.
+// Personalizable = solo los MISMOS estilos que tiene el personalizador
+// (shopPersonalizable de @workspace/print-specs): la variante está en el
+// catálogo del personalizador (fetchFromOdoo, la misma función de
+// /api/catalog), su nombre en la tienda coincide con un modelo 3D exacto (nada
+// de formas genéricas ni ediciones de clubes sin modelo propio) y su código no
+// está en STYLE_EXCLUSIONS (mismo nombre, otro estilo según la foto). Se marcan
+// las que faltan y se desmarcan las que dejaron de serlo.
 //
-// Uso:  node scripts/odoo-personalizables.mjs [--aplicar] [--url … --db … --user … --key …]
+// Uso:  node scripts/odoo-personalizables.mjs [--aplicar] [--md <archivo>] [--url … --db … --user … --key …]
+//   --md: guarda el mapa completo (código, plantilla, modelo, sí/no y motivo) como tabla Markdown.
 //       (o ODOO_URL / ODOO_DB / ODOO_USER / ODOO_API_KEY)
 //   Sin --aplicar: informe (no escribe nada).
 //   En producción escribe solo con ODOO_ALLOW_PRODUCTION_WRITES=si (freno de odoo.ts).
@@ -29,6 +31,7 @@ for (const [flag, env] of [["url", "ODOO_URL"], ["db", "ODOO_DB"], ["user", "ODO
   if (v) process.env[env] = v;
 }
 const APPLY = args.includes("--aplicar");
+const MD = opt("md");
 
 // fetchFromOdoo y OdooClient son TypeScript del api-server: se compilan a un
 // archivo temporal dentro de scripts/ (así resuelven sus dependencias).
@@ -39,7 +42,7 @@ await mkdir(outDir, { recursive: true });
 const outfile = path.join(outDir, `personalizables-${process.pid}.mjs`);
 await build({
   stdin: {
-    contents: 'export { fetchFromOdoo } from "../src/lib/catalog"; export { OdooClient, odooConfig, isProductionConfig } from "../src/lib/odoo";',
+    contents: 'export { fetchFromOdoo } from "../src/lib/catalog"; export { OdooClient, odooConfig, isProductionConfig } from "../src/lib/odoo"; export { shopPersonalizable } from "@workspace/print-specs";',
     resolveDir: here, loader: "ts",
   },
   bundle: true, format: "esm", platform: "node", outfile, logLevel: "error",
@@ -51,7 +54,7 @@ try {
 } finally {
   await rm(outfile, { force: true });
 }
-const { fetchFromOdoo, OdooClient, odooConfig, isProductionConfig } = mod;
+const { fetchFromOdoo, OdooClient, odooConfig, isProductionConfig, shopPersonalizable } = mod;
 
 const cfg = odooConfig();
 if (!cfg) { console.error("Faltan --url/--db/--user/--key (o ODOO_URL / ODOO_DB / ODOO_USER / ODOO_API_KEY)."); process.exit(1); }
@@ -61,14 +64,41 @@ const client = new OdooClient(cfg);
 
 // 1. Catálogo del personalizador en esa base.
 const { products } = await fetchFromOdoo(client);
-const variantIds = products.flatMap(p => p.variants.map(v => v.id));
-console.log(`Catálogo: ${products.length} productos, ${variantIds.length} variantes con perfil 3D.`);
+const variants = products.flatMap(p => p.variants.map(v => ({ p, v })));
+console.log(`Catálogo: ${products.length} productos, ${variants.length} variantes con perfil 3D.`);
 
-// 2. Plantillas de esas variantes.
-const want = new Set();
-for (let i = 0; i < variantIds.length; i += 500) {
-  const rows = await client.call("product.product", "search_read", [[["id", "in", variantIds.slice(i, i + 500)]]], { fields: ["product_tmpl_id"], context: { active_test: false } });
-  for (const r of rows) if (r.product_tmpl_id) want.add(r.product_tmpl_id[0]);
+// 2. Cada variante contra los estilos del personalizador; la plantilla se
+//    marca si alguna de sus variantes es personalizable.
+const tmplOf = new Map();
+const ids = variants.map(x => x.v.id);
+for (let i = 0; i < ids.length; i += 500) {
+  const rows = await client.call("product.product", "search_read", [[["id", "in", ids.slice(i, i + 500)]]], { fields: ["product_tmpl_id", "default_code"], context: { active_test: false } });
+  for (const r of rows) if (r.product_tmpl_id) tmplOf.set(r.id, { tmpl: r.product_tmpl_id[0], tmplName: r.product_tmpl_id[1], code: r.default_code || "" });
+}
+const map = [];
+for (const { p, v } of variants) {
+  const t = tmplOf.get(v.id);
+  if (!t) continue;
+  const type = v.modelType ?? p.productType;
+  const shopName = v.club ? `${p.name} · ${v.club}` : p.name;
+  const verdict = shopPersonalizable(type, shopName, t.code || v.sku);
+  map.push({ code: t.code || v.sku || "", tmpl: t.tmpl, tmplName: t.tmplName, shopName, type, ok: verdict.ok, reason: verdict.reason });
+}
+map.sort((a, b) => Number(b.ok) - Number(a.ok) || a.shopName.localeCompare(b.shopName) || a.code.localeCompare(b.code));
+const want = new Set(map.filter(m => m.ok).map(m => m.tmpl));
+const notWanted = new Set(map.filter(m => !m.ok).map(m => m.tmpl).filter(id => !want.has(id)));
+console.log(`\nMapa (${map.length} variantes): ${want.size} plantillas personalizables, ${notWanted.size} no.`);
+for (const m of map) console.log(`  ${m.ok ? "✓" : "✗"} ${m.code.padEnd(8)} ${m.shopName.padEnd(34)} [${m.type}] ${m.tmplName}${m.ok ? "" : `  → ${m.reason}`}`);
+if (MD) {
+  const { writeFile } = await import("node:fs/promises");
+  const esc = x => String(x).replace(/\|/g, "\\|");
+  const lines = [
+    `| Código | Plantilla en Odoo | Producto en el personalizador | Modelo 3D | Personalizable | Motivo |`,
+    `|---|---|---|---|---|---|`,
+    ...map.map(m => `| ${esc(m.code)} | ${esc(m.tmplName)} | ${esc(m.shopName)} | \`${m.type}\` | ${m.ok ? "Sí" : "No"} | ${esc(m.reason)} |`),
+  ];
+  await writeFile(MD, lines.join("\n") + "\n");
+  console.log(`Mapa guardado en ${MD}`);
 }
 
 // 3. Lo marcado hoy (el campo lo agrega el módulo website_creativa_studio).

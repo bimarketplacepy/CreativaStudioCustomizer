@@ -124,6 +124,21 @@ export const PIECES: Record<string, PieceInfo> = {
       "hoppie-hydrate-1000"
     ]
   },
+  "termo-hydrate-palmeiras": {
+    "hasModel": true,
+    "exactFor": [
+      "Termo Hydrate · Palmeiras"
+    ],
+    "engraveFaces": [
+      "front",
+      "back"
+    ],
+    "uCenter": 0.5,
+    "logoBack": false,
+    "sizeIds": [
+      "termo-hydrate-palmeiras-1000"
+    ]
+  },
   "hoppie-kids": {
     "hasModel": true,
     "exactFor": [

@@ -1,7 +1,7 @@
 import type { FaceId } from "./placement";
 import type { KeepOutZone } from "./keep-out";
 
-export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids" | "termo-terere" | "vaso-guarani" | "guampa-terere" | "vaso-quencher" | "vaso-flip" | "vaso-protour" | "taza-manija-palmeiras" | "vaso-luqueno" | "vaso-olimpia" | "vaso-manija-cerro" | "vaso-manija-luqueno" | "vaso-taza-river" | "vaso-taza-palmeiras" | "taza-enlozada";
+export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids" | "termo-terere" | "vaso-guarani" | "guampa-terere" | "vaso-quencher" | "vaso-flip" | "vaso-protour" | "taza-manija-palmeiras" | "termo-hydrate-palmeiras" | "vaso-luqueno" | "vaso-olimpia" | "vaso-manija-cerro" | "vaso-manija-luqueno" | "vaso-taza-river" | "vaso-taza-palmeiras" | "taza-enlozada";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -360,6 +360,45 @@ export const PRODUCTS: ProductDef[] = [
       { id: "hoppie-hydrate-530",  name: "530ml", label: "Termito", scale: 1.00 },
       // "1L" es como Odoo nombra el Litro; mide 946 ml.
       { id: "hoppie-hydrate-1000", name: "1L",    label: "Litro",   scale: 1.21 },
+    ],
+  },
+  {
+    id: "termo-hydrate-palmeiras",
+    name: "Termos Hydrate Palmeiras",
+    singular: "Termo Hydrate Palmeiras",
+    // Hydrate "Termo Hydrate Litro" de la edición de Palmeiras (artifacts/3D/
+    // HYDRATE/CLUBES/botella-hydrate-palmeiras-h1.glb): cuerpo recto de 176 mm
+    // × Ø 73 mm, aro de acero, tapa negra con pico y correa (strap) que sube
+    // hasta 273 mm. En el .glb el logo Hydrate va adelante (+Z) y el escudo del
+    // club atrás (−Z); las franjas blancas dan toda la vuelta abajo (8–38 mm).
+    // Con yawDeg 90 el logo queda a la izquierda y el escudo a la derecha:
+    // adelante y atrás, las caras libres. La banda arranca arriba de las
+    // franjas. Perfil = radio del cuerpo medido sobre el .glb (m × 10, centrado
+    // en 0,1364 m: la correa lo hace más alto). El .glb tiene la proporción del
+    // termito; el Litro (946 ml) se escala como el Termo Hydrate liso: 1,21.
+    desc: "Botella térmica de 1 litro de la edición oficial de Palmeiras.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.347, -1.364], [0.364, -1.324], [0.365, -1.284], [0.365, 0.316],
+      [0.360, 0.356], [0.346, 0.396],
+    ],
+    band: [-0.914, 0.236],
+    frontFace: { uHalfWidth: 0.12 },
+    model: {
+      url: "/models/botella-hydrate-palmeiras-h1.glb?v=1",
+      exactFor: ["Termo Hydrate · Palmeiras"],
+      unitsPerMeter: 10,
+      centerYm: 0.1364,
+      heightM: 0.2728,
+      reachM: 0.0422,
+      yawDeg: 90,
+    },
+    // A los costados van el logo y el escudo: se graba adelante y atrás.
+    engraveFaces: ["front", "back"],
+    sizes: [
+      // "1L" es como Odoo nombra el Litro; mide 946 ml.
+      { id: "termo-hydrate-palmeiras-1000", name: "1L", label: "Litro", scale: 1.21 },
     ],
   },
   {
