@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { ARTIST_DESIGNS, ARTISTS, designPrice, getArtist, type ArtistDesign } from "@/lib/artist-designs";
+import { ARTIST_DESIGNS, ARTIST_DESIGNS_ENABLED, ARTISTS, designPrice, getArtist, type ArtistDesign } from "@/lib/artist-designs";
 import { getMaterial } from "@/lib/materials";
 import { formatGs } from "@/lib/odoo-catalog";
 import { requestDesignPreset } from "@/lib/design-preset";
@@ -23,7 +23,7 @@ export default function ArtistDesigns() {
     () => ARTIST_DESIGNS.filter(d => !artistId || d.artistId === artistId),
     [artistId],
   );
-  if (!ARTIST_DESIGNS.length) return null;
+  if (!ARTIST_DESIGNS_ENABLED || !ARTIST_DESIGNS.length) return null;
 
   const copy = (d: ArtistDesign) => {
     track("artist_design_copy", { design: d.id, artist: d.artistId });

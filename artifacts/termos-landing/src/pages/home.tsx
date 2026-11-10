@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useEffect } from "react";
 import DeferUntilVisible from "@/components/defer-until-visible";
 import { hasSharedDesign } from "@/lib/design-link";
 import { scrollToSection } from "@/lib/section-reveal";
+import { ARTIST_DESIGNS_ENABLED } from "@/lib/artist-designs";
 
 // Everything below the hero is loaded on demand. The hero is the only
 // above-the-fold section: it is pre-rendered into index.html and hydrated from
@@ -78,9 +79,11 @@ export default function Home() {
       <LazySection minH="90vh">
         <Print360 />
       </LazySection>
-      <LazySection minH="60vh">
-        <ArtistDesigns />
-      </LazySection>
+      {ARTIST_DESIGNS_ENABLED && (
+        <LazySection minH="60vh">
+          <ArtistDesigns />
+        </LazySection>
+      )}
       <DeferUntilVisible id="customizer" minHeight="90vh">
         <Suspense fallback={<SectionFallback minH="90vh" label="Cargando personalizador…" />}>
           <Customizer />

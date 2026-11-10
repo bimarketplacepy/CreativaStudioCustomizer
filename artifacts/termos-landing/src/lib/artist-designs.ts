@@ -16,6 +16,14 @@ import type { WrapMode } from "./wrap-design";
 
 /** Precio al cliente por copiar un diseño de artista (Gs.), sobre pieza e impresión. */
 export const ARTIST_DESIGN_PRICE = 12_500;
+
+/**
+ * Apagado hasta que el circuito esté completo (arte plano definitivo, archivo
+ * de producción para la eufyMake, medidas reales de la pieza). Con false no se
+ * muestra «Recomendados» ni se aplica un diseño de artista desde un link o un
+ * preset. Para volver a activarlo, poner true.
+ */
+export const ARTIST_DESIGNS_ENABLED = false;
 /** Lo que cobra el artista por cada copia vendida (Gs.). El resto queda para La Creativa. */
 export const ARTIST_DESIGN_FEE = 10_000;
 
@@ -87,7 +95,8 @@ export function getArtist(id: string): Artist | null {
 }
 
 export function getArtistDesign(id: string | null | undefined): ArtistDesign | null {
-  return id ? ARTIST_DESIGNS.find(d => d.id === id) ?? null : null;
+  if (!ARTIST_DESIGNS_ENABLED || !id) return null;
+  return ARTIST_DESIGNS.find(d => d.id === id) ?? null;
 }
 
 export const designPrice = (d: ArtistDesign) => d.price ?? ARTIST_DESIGN_PRICE;
