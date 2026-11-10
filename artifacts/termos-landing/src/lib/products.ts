@@ -1,7 +1,7 @@
 import type { FaceId } from "./placement";
 import type { KeepOutZone } from "./keep-out";
 
-export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids" | "termo-terere" | "vaso-guarani" | "guampa-terere" | "vaso-quencher" | "vaso-flip" | "vaso-protour" | "taza-manija-palmeiras" | "vaso-luqueno" | "taza-enlozada";
+export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids" | "termo-terere" | "vaso-guarani" | "guampa-terere" | "vaso-quencher" | "vaso-flip" | "vaso-protour" | "taza-manija-palmeiras" | "vaso-luqueno" | "vaso-olimpia" | "vaso-manija-cerro" | "vaso-manija-luqueno" | "vaso-taza-river" | "vaso-taza-palmeiras" | "taza-enlozada";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -1246,6 +1246,116 @@ export const PRODUCTS: ProductDef[] = [
     ],
   },
   {
+    id: "vaso-olimpia",
+    name: "Vasos Olimpia",
+    singular: "Vaso Olimpia",
+    // Hydrate Vaso de 900 ml de la edición de Olimpia (artifacts/3D/HYDRATE/
+    // CLUBES/vaso-hydrate-olimpia.glb): el mismo cuerpo del Vaso Hydrate de
+    // 900 ml (vaso-hydrate.glb: base angosta, escalón y tapa con deslizador)
+    // más pajita, con logo Hydrate, escudo de Olimpia y "logo_texto" al frente
+    // del .glb (+Z). Con yawDeg 180 quedan atrás: adelante y a los costados, la
+    // cara libre. Perfil = el del Vaso Hydrate, medido sobre el .glb (m × 12),
+    // corrido al centro de este modelo (0,1248 m: la pajita lo hace más alto).
+    desc: "Vaso térmico de 900 ml de la edición oficial de Olimpia.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.438, -1.274], [0.446, -1.151], [0.452, -1.028], [0.458, -0.905],
+      [0.466, -0.782], [0.473, -0.659], [0.481, -0.536], [0.532, -0.413],
+      [0.572, -0.290], [0.576, -0.167], [0.578, -0.044], [0.582,  0.079],
+      [0.586,  0.202], [0.588,  0.325], [0.590,  0.447], [0.594,  0.570],
+      [0.596,  0.693],
+    ],
+    band: [-1.20, 0.62],
+    frontFace: { uHalfWidth: 0.2, vCenter: 0.27, vHeightFrac: 0.46 },
+    model: {
+      url: "/models/vaso-hydrate-olimpia.glb?v=1",
+      exactFor: ["Vaso · Olimpia"],
+      unitsPerMeter: 12,
+      centerYm: 0.1248,
+      heightM: 0.2496,
+      reachM: 0.0582,
+      yawDeg: 180,
+    },
+    // Atrás van el escudo y el logo: se graba adelante y a los costados.
+    engraveFaces: ["front", "left", "right"],
+    sizes: [
+      { id: "vaso-olimpia-900", name: "900ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-manija-cerro",
+    name: "Vasos con manija Cerro Porteño",
+    singular: "Vaso con manija Cerro Porteño",
+    // Hydrate "Vaso con Pico y Agarre" 887 ml de la edición de Cerro Porteño
+    // (artifacts/3D/HYDRATE/CLUBES/vaso-manija-hydrate-cerro.glb): el mismo
+    // cuerpo y manija que forma-vaso-manija.glb más pajita, con logo Hydrate,
+    // escudo de Cerro y "logo_texto" atrás (−Z, como el liso: sin giro). Perfil
+    // = el del vaso con manija, corrido al centro de este modelo (0,1195 m: la
+    // pajita lo hace más alto).
+    desc: "Vaso térmico de 887 ml con manija, de la edición oficial de Cerro Porteño.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.438, -1.210], [0.446, -1.087], [0.452, -0.964], [0.458, -0.841],
+      [0.466, -0.718], [0.473, -0.595], [0.481, -0.472], [0.532, -0.349],
+      [0.572, -0.226], [0.576, -0.103], [0.578,  0.020], [0.582,  0.143],
+      [0.586,  0.266], [0.588,  0.389], [0.590,  0.511], [0.594,  0.634],
+      [0.596,  0.757],
+    ],
+    band: [-1.136, 0.684],
+    frontFace: { uHalfWidth: 0.16, vCenter: 0.27, vHeightFrac: 0.46 },
+    model: {
+      url: "/models/vaso-manija-hydrate-cerro.glb?v=1",
+      exactFor: ["Vaso con Pico y Agarre · Cerro Porteño"],
+      unitsPerMeter: 12,
+      centerYm: 0.1195,
+      heightM: 0.239,
+      reachM: 0.0842,
+    },
+    // Atrás van el escudo y el logo; la manija a la izquierda (u 0.75).
+    engraveFaces: ["front", "right"],
+    sizes: [
+      { id: "vaso-manija-cerro-887", name: "887ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-manija-luqueno",
+    name: "Vasos con manija Luqueño",
+    singular: "Vaso con manija Luqueño",
+    // Hydrate "Vaso con Pico y Agarre" 887 ml de la edición de Sportivo
+    // Luqueño (artifacts/3D/HYDRATE/CLUBES/vaso-manija-hydrate-luqueno.glb):
+    // el mismo cuerpo y manija que forma-vaso-manija.glb más pajita, con logo
+    // Hydrate, escudo y "logo_texto" atrás (−Z, como el liso: sin giro). Perfil
+    // = el del vaso con manija, corrido al centro de este modelo (0,1275 m: la
+    // pajita lo hace más alto).
+    desc: "Vaso térmico de 887 ml con manija, de la edición oficial de Sportivo Luqueño.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.438, -1.306], [0.446, -1.183], [0.452, -1.060], [0.458, -0.937],
+      [0.466, -0.814], [0.473, -0.691], [0.481, -0.568], [0.532, -0.445],
+      [0.572, -0.322], [0.576, -0.199], [0.578, -0.076], [0.582,  0.047],
+      [0.586,  0.170], [0.588,  0.293], [0.590,  0.415], [0.594,  0.538],
+      [0.596,  0.661],
+    ],
+    band: [-1.232, 0.588],
+    frontFace: { uHalfWidth: 0.16, vCenter: 0.27, vHeightFrac: 0.46 },
+    model: {
+      url: "/models/vaso-manija-hydrate-luqueno.glb?v=1",
+      exactFor: ["Vaso con Pico y Agarre · Sportivo Luqueño"],
+      unitsPerMeter: 12,
+      centerYm: 0.1275,
+      heightM: 0.255,
+      reachM: 0.0842,
+    },
+    // Atrás van el escudo y el logo; la manija a la izquierda (u 0.75).
+    engraveFaces: ["front", "right"],
+    sizes: [
+      { id: "vaso-manija-luqueno-887", name: "887ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
     id: "vaso-espresso",
     name: "Vasos Taza Espresso",
     singular: "Vaso Taza Espresso",
@@ -1422,6 +1532,74 @@ export const PRODUCTS: ProductDef[] = [
     logoBack: true,
     sizes: [
       { id: "vaso-taza-unico", name: "Único", label: "Clásico", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-taza-river",
+    name: "Vasos Taza River",
+    singular: "Vaso Taza River",
+    // Hydrate "Vaso Taza" de la edición de River Plate (artifacts/3D/HYDRATE/
+    // CLUBES/taza-hydrate-river-v2.glb): el mismo cuerpo, aro, tapa y manija que vaso-taza.glb,
+    // con el logo Hydrate atrás (−Z) y el escudo del club adelante (+Z) en el
+    // .glb. Con yawDeg 90 la manija (+X) queda atrás, el escudo a la izquierda
+    // y el logo a la derecha: adelante, la cara libre. Perfil = el del Vaso
+    // Taza (mismo .glb de base: m × 20, centrado en 0,0566 m).
+    desc: "Jarro térmico con manija y tapa, de la edición oficial de River Plate.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.742, -1.132], [0.787, -1.100], [0.806, -1.069], [0.831, -1.037],
+      [0.838, -1.005], [0.840, -0.973], [0.840,  0.772],
+    ],
+    band: [-0.95, 0.70],
+    frontFace: { uHalfWidth: 0.16 },
+    model: {
+      url: "/models/taza-hydrate-river-v2.glb?v=1",
+      exactFor: ["Vaso Taza · River Plate"],
+      unitsPerMeter: 20,
+      centerYm: 0.0566,
+      heightM: 0.1132,
+      reachM: 0.0725,
+      yawDeg: 90,
+    },
+    // Atrás la manija; a los costados el escudo y el logo: se graba adelante.
+    engraveFaces: ["front"],
+    sizes: [
+      { id: "vaso-taza-river-355", name: "355ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-taza-palmeiras",
+    name: "Vasos Taza Palmeiras",
+    singular: "Vaso Taza Palmeiras",
+    // Hydrate "Vaso Taza" de la edición de Palmeiras (artifacts/3D/HYDRATE/
+    // CLUBES/taza-hydrate-palmeiras-verde.glb): el mismo cuerpo, aro, tapa y manija que vaso-taza.glb,
+    // con el logo Hydrate atrás (−Z) y el escudo del club adelante (+Z) en el
+    // .glb. Con yawDeg 90 la manija (+X) queda atrás, el escudo a la izquierda
+    // y el logo a la derecha: adelante, la cara libre. Perfil = el del Vaso
+    // Taza (mismo .glb de base: m × 20, centrado en 0,0566 m).
+    desc: "Jarro térmico con manija y tapa, de la edición oficial de Palmeiras.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.742, -1.132], [0.787, -1.100], [0.806, -1.069], [0.831, -1.037],
+      [0.838, -1.005], [0.840, -0.973], [0.840,  0.772],
+    ],
+    band: [-0.95, 0.70],
+    frontFace: { uHalfWidth: 0.16 },
+    model: {
+      url: "/models/taza-hydrate-palmeiras-verde.glb?v=1",
+      exactFor: ["Vaso Taza · Palmeiras"],
+      unitsPerMeter: 20,
+      centerYm: 0.0566,
+      heightM: 0.1132,
+      reachM: 0.0725,
+      yawDeg: 90,
+    },
+    // Atrás la manija; a los costados el escudo y el logo: se graba adelante.
+    engraveFaces: ["front"],
+    sizes: [
+      { id: "vaso-taza-palmeiras-355", name: "355ml", label: "Único", scale: 1.00 },
     ],
   },
   {

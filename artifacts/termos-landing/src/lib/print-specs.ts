@@ -80,6 +80,8 @@ export const PRINT_SPECS: Record<ProductId, PrintSpecEntry> = {
   "taza-manija": steel({ dacen: false, consult: "handle" }),
   "mini-coffee": steel({ dacen: false, consult: "handle" }),
   "vaso-taza": steel({ dacen: false, consult: "handle" }),
+  "vaso-taza-river": steel({ dacen: false, consult: "handle" }),
+  "vaso-taza-palmeiras": steel({ dacen: false, consult: "handle" }),
   "coffee-cup": steel({ dacen: false, consult: "shape" }),
   "vaso-shaker": steel(),
   "vaso-whisky": steel(),
@@ -93,7 +95,10 @@ export const PRINT_SPECS: Record<ProductId, PrintSpecEntry> = {
   "vaso-guarani": steel({ dacen: false }),
   // Ediciones con escudo grabado de fábrica: sin impresión 360° (taparía el escudo).
   "vaso-luqueno": steel({ dacen: false }),
+  "vaso-olimpia": steel({ dacen: false }),
   "taza-manija-palmeiras": steel({ dacen: false, consult: "handle" }),
+  "vaso-manija-cerro": steel({ dacen: false, consult: "handle" }),
+  "vaso-manija-luqueno": steel({ dacen: false, consult: "handle" }),
   "chopera": steel({ dacen: false, consult: "handle" }),
   // Manija en el cuerpo: sin Dacen. Los diseños de artistas (artist-designs.ts)
   // van igual a color: los produce la eufyMake (UV DTF) por fuera de esta regla.
