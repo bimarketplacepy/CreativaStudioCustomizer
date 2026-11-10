@@ -338,8 +338,9 @@ function WizardNav({ step, total, onBack, onNext, nextLabel, design, inline, fin
         </button>
       ) : null}
       {price ? (
-        <div className="flex-1 min-w-0 grid leading-tight">
-          <span className="text-[17px] font-semibold text-foreground tabular-nums truncate">{price.value}</span>
+        // En el paso final el precio no se corta nunca («Gs. 220.…»): el botón toma el resto.
+        <div className={`${step >= total && final ? "shrink-0" : "flex-1 min-w-0"} grid leading-tight`}>
+          <span className={`text-[17px] font-semibold text-foreground tabular-nums ${step >= total && final ? "whitespace-nowrap" : "truncate"}`}>{price.value}</span>
           <span className="text-xs text-muted-foreground truncate">{price.label}</span>
         </div>
       ) : step === 1 ? null : <span className="flex-1" />}
@@ -365,7 +366,7 @@ function WizardNav({ step, total, onBack, onNext, nextLabel, design, inline, fin
           type="button"
           onClick={final.onClick}
           disabled={final.disabled}
-          className={`cs-btn cs-btn-primary ${price ? "" : "flex-1"} disabled:opacity-60`}
+          className="cs-btn cs-btn-primary flex-1 min-w-0 px-3 whitespace-normal leading-tight disabled:opacity-60"
         >
           {final.label}
         </button>
@@ -3254,7 +3255,8 @@ export default function Customizer() {
   const onDesignScreen = isMobile && isDrinkware && mobileStep === designStepIndex;
   const sheetOpen = !!sheet;
   React.useEffect(() => {
-    if (!onDesignScreen || viewerReady === 0 || sheetOpen || seen(TOUR_KEY)) return;
+    // Embebido en la ficha de la tienda: sin tour (el panel es una tarea corta).
+    if (isOdooEmbed || !onDesignScreen || viewerReady === 0 || sheetOpen || seen(TOUR_KEY)) return;
     markSeen(TOUR_KEY);
     setTourOpen(true);
   }, [onDesignScreen, viewerReady, sheetOpen]);
@@ -3912,6 +3914,12 @@ export default function Customizer() {
   const buyFlow = odooMode && !genericPick && !isOwnProduct && !!odooVariant && isDrinkware && !material.pens;
   const canBuy = buyFlow && buyVerdict.verdict !== "IMPOSIBLE";
   const buyMode: "pay" | "review" = buyVerdict.verdict === "OK" ? "pay" : "review";
+  // Desde la ficha de la tienda (iframe o respaldo ?odoo=): el paso final sigue
+  // el veredicto («Comprar y pagar» / «Enviar a revisión») y WhatsApp nunca es
+  // un paso de compra (queda solo como ayuda cuando el diseño no se puede hacer).
+  const shopBuy = storeVariantId !== null && buyFlow;
+  const buyLabel = buyMode === "pay" ? "Comprar y pagar" : "Enviar a revisión";
+  const openBuy = () => { track("checkout_open", { product: orderProductName, verdict: buyVerdict.verdict }); setBuyOpen(true); };
 
   /** Huella del diseño que se compra: si cambia, es otro pedido. */
   const buyFingerprint = () => JSON.stringify([
@@ -4597,19 +4605,19 @@ export default function Customizer() {
         </div>
       )}
       {/* «Comprar y pagar» / «Enviar a revisión» (Odoo) al lado de WhatsApp. */}
-      <div className={canBuy ? "grid grid-cols-1 sm:grid-cols-2 gap-2" : ""}>
+      <div className={canBuy && !shopBuy ? "grid grid-cols-1 sm:grid-cols-2 gap-2" : ""}>
         {canBuy && (
           <button
             type="button"
-            onClick={() => { track("checkout_open", { product: orderProductName, verdict: buyVerdict.verdict }); setBuyOpen(true); }}
+            onClick={openBuy}
             disabled={isOrdered || isPreparing}
             className="cs-btn cs-btn-primary w-full min-h-12 py-2.5 whitespace-normal disabled:opacity-60 disabled:cursor-not-allowed"
             data-testid="buy-button"
           >
-            <ShoppingBag className="w-4 h-4" /> {buyMode === "pay" ? "Comprar y pagar" : "Enviar a revisión"}
+            <ShoppingBag className="w-4 h-4" /> {buyLabel}
           </button>
         )}
-        <button
+        {!shopBuy && <button
           type="button"
           onClick={() => handleOrder()}
           disabled={isOrdered || isPreparing || isSoldOut}
@@ -4620,7 +4628,7 @@ export default function Customizer() {
           ) : isOrdered ? (
             lastOrderNumber ? `Pedido ${lastOrderNumber} creado ✓` : "Abriendo WhatsApp..."
           ) : isSoldOut ? "Agotado" : <><MessageCircle className="w-4 h-4" /> {ctaLabel}</>}
-        </button>
+        </button>}
       </div>
 
       {isSoldOut && (
@@ -4644,7 +4652,9 @@ export default function Customizer() {
       <ul className="space-y-1.5 text-xs text-muted-foreground">
         <li className="flex items-start gap-2">
           <MessageCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" />
-          Revisamos el diseño final con vos por WhatsApp antes de producir.
+          {!shopBuy ? "Revisamos el diseño final con vos por WhatsApp antes de producir."
+            : buyMode === "pay" ? "Firmás la prueba de tu diseño en la tienda al pagar: se produce exactamente eso."
+            : "El taller revisa tu diseño y te manda una prueba para aprobar antes de pagar."}
         </li>
         <li className="flex items-start gap-2">
           <HandCoins className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" />
@@ -4881,7 +4891,9 @@ export default function Customizer() {
             <img src={summaryThumb} alt="Vista del diseño final" className="max-h-64 w-auto object-contain" />
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            Vista de referencia. Antes de producir te enviamos el diseño final por WhatsApp para confirmarlo.
+            {!shopBuy ? "Vista de referencia. Antes de producir te enviamos el diseño final por WhatsApp para confirmarlo."
+              : buyMode === "pay" ? "Vista de referencia: es la prueba que firmás al pagar."
+              : "Vista de referencia: el taller te manda la prueba final para aprobar antes de pagar."}
           </p>
         </div>
       )}
@@ -5309,7 +5321,11 @@ export default function Customizer() {
       design={mobileStep === designStepIndex - 1}
       inline={inline}
       price={!inline && estimate.price ? { value: estimate.price, label: estimate.total ? "Total estimado" : isOwnProduct ? "Tu personalización" : "Precio estimado" } : null}
-      final={{
+      final={shopBuy ? {
+        label: isSoldOut ? "Agotado" : canBuy ? <><ShoppingBag className="w-4 h-4" /> {buyLabel}</> : "No se puede producir así",
+        onClick: openBuy,
+        disabled: !canBuy || isSoldOut,
+      } : {
         label: isPreparing
           ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando tu pedido...</>
           : isOrdered
@@ -5402,7 +5418,9 @@ export default function Customizer() {
           </div>
         ) : (
         <>
-        {isMobile && <WizardProgress step={mobileStep} labels={wizardLabels} />}
+        {isMobile && <WizardProgress step={mobileStep} labels={shopBuy && wizardLabels.length === 3
+          ? [wizardLabels[0], wizardLabels[1], !canBuy ? "Revisar" : buyMode === "pay" ? "Comprar" : "Revisión"]
+          : wizardLabels} />}
 
         {/* Pieza fija desde la tienda: una tarjeta en lugar de material y producto. */}
         {!isMobile && pieceLocked && <div className="mb-8 max-w-md">{renderLockedPiece()}</div>}
@@ -6302,7 +6320,10 @@ export default function Customizer() {
         {isMobile && isDrinkware && mobileStep === 3 && (
           <div key="wiz-4" className="cs-step-in space-y-4 pb-28">
             <p className="text-sm text-muted-foreground">
-              Revisá tu diseño y envialo por WhatsApp. Coordinamos los detalles al instante.
+              {!shopBuy ? "Revisá tu diseño y envialo por WhatsApp. Coordinamos los detalles al instante."
+                : !canBuy ? "Así no se puede producir: mirá los motivos abajo y ajustá el diseño."
+                : buyMode === "pay" ? "Revisá tu diseño. Al comprar firmás la prueba y pagás en la tienda."
+                : "Revisá tu diseño y envialo a revisión: te mandamos una prueba para aprobar antes de pagar."}
             </p>
             {renderDrinkSummary()}
           </div>
