@@ -1,7 +1,7 @@
 import type { FaceId } from "./placement";
 import type { KeepOutZone } from "./keep-out";
 
-export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids";
+export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids" | "termo-terere" | "vaso-guarani" | "guampa-terere" | "vaso-quencher" | "vaso-flip" | "vaso-protour" | "taza-manija-palmeiras" | "vaso-luqueno" | "vaso-olimpia" | "vaso-manija-cerro" | "vaso-manija-luqueno" | "vaso-taza-river" | "vaso-taza-palmeiras" | "taza-enlozada";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -88,6 +88,18 @@ export interface ProductModel {
    */
   exactFor?: string[];
   /**
+   * Marca del producto del .glb, que trae su logo (default "Hydrate"): sobre
+   * una pieza de otra marca el logo se oculta.
+   */
+  brand?: string;
+  /**
+   * Otro .glb según el color de la variante de Odoo (misma forma y medidas;
+   * cambian tapa, manija o logo, que no se pintan): `match` es una parte del
+   * nombre del color, sin mayúsculas ni tildes ("cherry blossom"). Sin
+   * coincidencia, `url`. Ver productForColor.
+   */
+  colorModels?: { match: string; url: string }[];
+  /**
    * Giro extra (grados, eje Y) para que el FRENTE del personalizador (donde se
    * graba) no caiga sobre el logo que el modelo trae en su +Z: con 180 el logo
    * queda atrás y la cara libre adelante.
@@ -99,6 +111,13 @@ export interface ProductModel {
   paintLight?: string[];
   /** Piezas pintadas con el color elegido, más oscuro (ranuras, huecos). */
   paintDark?: string[];
+  /**
+   * Estampado de fábrica del cuerpo (la textura del .glb exportada a PNG): va
+   * de base en lugar del color liso y el grabado se dibuja encima. Mapeo
+   * cilíndrico del .glb: ancho = vuelta entera (u 0 en −Z), alto = cuerpo
+   * entero de arriba a abajo (el perfil tiene que cubrir todo el "body").
+   */
+  bodyPrint?: string;
 }
 
 export const PRODUCTS: ProductDef[] = [
@@ -305,40 +324,42 @@ export const PRODUCTS: ProductDef[] = [
   },
   {
     id: "hoppie-hydrate",
-    name: "Hoppies",
-    singular: "Hoppie",
-    // Hydrate Hoppie (artifacts/3D/hoppie-hydrate-amarilla-landing.glb): mismo
-    // cuerpo recto y tapa negra con pico y asa que el Termo Kids, más alto.
-    // Perfil = radio del cuerpo medido sobre el .glb (m × 10, centrado en
-    // 0,1364 m). El .glb es el de 620 ml (volumen interior ≈ 0,62 L); los otros
-    // tamaños se escalan por volumen. Logo atrás (yawDeg 180); el asa va sobre
-    // la tapa. Solo el cuerpo lleva el color elegido: tapa y asa son negras.
-    desc: "Botella térmica con tapa de pico y asa.",
+    // En la tienda: "Termo Hydrate 530 Ml" (el termito) y "Termo Hydrate Litro"
+    // (946 ml). El id queda "hoppie-hydrate" para no romper links ni pedidos.
+    name: "Termos Hydrate",
+    singular: "Termo Hydrate",
+    // Hydrate Hoppie (artifacts/3D/hoppie.glb, 2026-11-04): cuerpo recto de
+    // 188 mm × Ø 74 mm, aro de acero y tapa negra con asa rebatible (lid_strap);
+    // 219 mm de alto con tapa. Perfil = radio del cuerpo medido sobre el .glb
+    // (m × 10, centrado en 0,1097 m). El .glb es el termito de 530 ml
+    // (escala 1); el Litro (946 ml) se escala por volumen: ∛(946/530) ≈ 1,21.
+    // Logo atrás (yawDeg 180). Solo el cuerpo lleva el color elegido: tapa y
+    // asa son las del .glb.
+    desc: "Botella térmica con tapa con asa.",
     cap: "none",
     handle: "none",
     profile: [
-      [0.347, -1.364], [0.365, -1.314], [0.365, 0.286],
-      [0.362, 0.336], [0.346, 0.396],
+      [0.355, -1.097], [0.370, -1.067], [0.370, 0.743],
+      [0.366, 0.763], [0.348, 0.783],
     ],
-    band: [-1.25, 0.24],
+    band: [-0.98, 0.62],
     frontFace: { uHalfWidth: 0.15 },
     model: {
-      url: "/models/hoppie-hydrate.glb?v=1",
-      exactFor: ["Hoppie"],
+      url: "/models/hoppie.glb?v=1",
+      exactFor: ["Termo Hydrate"],
       unitsPerMeter: 10,
-      centerYm: 0.1364,
-      heightM: 0.2728,
-      reachM: 0.0417,
+      centerYm: 0.1097,
+      heightM: 0.2194,
+      reachM: 0.0405,
       yawDeg: 180,
     },
     // Caras de grabado: las cuatro (el dorso es el lado del logo).
     engraveFaces: ["front", "left", "back", "right"],
     logoBack: true,
     sizes: [
-      { id: "hoppie-hydrate-530",  name: "530ml", label: "Chico",   scale: 0.95 },
-      { id: "hoppie-hydrate-620",  name: "620ml", label: "Mediano", scale: 1.00 },
-      { id: "hoppie-hydrate-710",  name: "710ml", label: "Clásico", scale: 1.05 },
-      { id: "hoppie-hydrate-1000", name: "1L",    label: "Grande",  scale: 1.17 },
+      { id: "hoppie-hydrate-530",  name: "530ml", label: "Termito", scale: 1.00 },
+      // "1L" es como Odoo nombra el Litro; mide 946 ml.
+      { id: "hoppie-hydrate-1000", name: "1L",    label: "Litro",   scale: 1.21 },
     ],
   },
   {
@@ -408,6 +429,39 @@ export const PRODUCTS: ProductDef[] = [
     sizes: [
       { id: "termo-sleek-620", name: "620ml", label: "Clásico", scale: 1.00 },
       { id: "termo-sleek-710", name: "710ml", label: "Grande",  scale: 1.05 },
+    ],
+  },
+  {
+    id: "termo-terere",
+    name: "Termos forrados",
+    singular: "Termo forrado",
+    // Termo de tereré forrado en cuero (artifacts/3D/termo-terere.glb): funda
+    // de cuero cosida con la costura atrás (−Z), bolsillo con tira en el
+    // costado (−X del .glb = u 0.25, «Costado der.»), tapa negra de jarra con
+    // pico al frente y asa que baja hasta 0,146 m a los costados. Perfil =
+    // radio de la funda medido sobre el .glb (m × 10, centrado en 0,1358 m).
+    // Se graba al frente y en el costado izquierdo: atrás está la costura y
+    // del otro lado el bolsillo. La banda corta en 0,14 m, debajo del asa.
+    desc: "Termo de tereré forrado en cuero, con bolsillo lateral y tapa con pico.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.645, -1.358], [0.650, -1.308], [0.650, 0.242],
+      [0.656, 0.342], [0.656, 0.482],
+    ],
+    band: [-1.13, 0.04],
+    model: {
+      url: "/models/termo-terere.glb?v=1",
+      unitsPerMeter: 10,
+      centerYm: 0.1358,
+      heightM: 0.2716,
+      reachM: 0.097,
+      // Piezas de la funda (mismo material «body» en el .glb): del color elegido.
+      paint: ["sleeve_seam", "pocket", "pocket_tie", "lid_grip"],
+    },
+    engraveFaces: ["front", "left"],
+    sizes: [
+      { id: "termo-terere-unico", name: "Único", label: "Único", scale: 1.00 },
     ],
   },
   {
@@ -624,6 +678,38 @@ export const PRODUCTS: ProductDef[] = [
     ],
   },
   {
+    id: "guampa-terere",
+    name: "Guampas forradas",
+    singular: "Guampa forrada",
+    // Guampa de tereré forrada en cuero (artifacts/3D/guampa-terere.glb):
+    // funda cónica (más angosta abajo) entre dos bandas de cuero, con la
+    // costura y el cordón atrás (−Z) y pespunte arriba y abajo. Perfil = radio
+    // de la funda medido sobre el .glb (m × 14, centrado en 0,057 m). Se graba
+    // al frente y a los costados: atrás va el cordón.
+    desc: "Guampa de tereré forrada en cuero, con cordón y pespunte.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.357, -0.525], [0.382, -0.378], [0.406, -0.238], [0.430, -0.098],
+      [0.454,  0.042], [0.477,  0.182], [0.501,  0.322], [0.528,  0.476],
+    ],
+    // Zona grabable: la funda (19,5–91 mm) menos ~4 mm de pespunte arriba y abajo.
+    band: [-0.47, 0.42],
+    model: {
+      url: "/models/guampa-terere.glb?v=1",
+      unitsPerMeter: 14,
+      centerYm: 0.057,
+      heightM: 0.114,
+      reachM: 0.0435,
+      // Bandas de cuero de arriba y abajo (material «body» en el .glb): del color elegido.
+      paint: ["band_top", "band_bottom"],
+    },
+    engraveFaces: ["front", "left", "right"],
+    sizes: [
+      { id: "guampa-terere-unico", name: "Único", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
     id: "copa-hydrate",
     name: "Copas Hydrate",
     singular: "Copa",
@@ -782,6 +868,189 @@ export const PRODUCTS: ProductDef[] = [
     ],
   },
   {
+    id: "vaso-quencher",
+    name: "Vasos Quencher",
+    singular: "Vaso Quencher",
+    // Stanley Quencher H2.0 FlowState 1183 ml (artifacts/3D/STANLEY/
+    // vaso-stanley-quencher-rosa-v3.glb; el de 591 y el de 887 ml tienen
+    // modelo propio, ver sizes): cuerpo cónico abajo (entra en el
+    // portavasos), parte superior recta con la manija, tapa giratoria y pajita.
+    // El logo Stanley viene al frente del .glb (+Z): yawDeg 180 lo deja atrás
+    // y la manija (+X del .glb) pasa a u 0.25. Cuerpo, manija y tapón de la
+    // tapa van del color elegido. Perfil medido sobre el .glb (m × 12,
+    // centrado en 0,156 m, la mitad del alto con pajita).
+    desc: "Vaso térmico Stanley de 1183 ml con manija, tapa giratoria y pajita.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.410, -1.836], [0.413, -1.770], [0.432, -1.326], [0.446, -1.008],
+      [0.451, -0.852], [0.473, -0.798], [0.502, -0.744], [0.534, -0.690],
+      [0.560, -0.642], [0.575, -0.588], [0.578, -0.558], [0.578, -0.200],
+      [0.578,  0.160], [0.578,  0.520], [0.578,  0.930],
+    ],
+    band: [-1.75, 0.88],
+    // Cara frontal a 90° de la manija, en la parte superior recta: el área no
+    // baja al cono del portavasos ni toca la manija.
+    frontFace: { uHalfWidth: 0.16, vCenter: 0.27, vHeightFrac: 0.46 },
+    model: {
+      url: "/models/vaso-stanley-quencher.glb?v=1",
+      exactFor: ["Quencher H2.0"],
+      brand: "Stanley",
+      unitsPerMeter: 12,
+      centerYm: 0.156,
+      heightM: 0.312,
+      reachM: 0.0933,
+      yawDeg: 180,
+      paint: ["handle", "lid_stopper"],
+    },
+    // Caras de grabado: manija a la derecha (u 0.25); el dorso es el lado del logo.
+    engraveFaces: ["front", "back", "left"],
+    logoBack: true,
+    sizes: [
+      {
+        id: "vaso-quencher-591", name: "591ml", label: "Chico", scale: 1.00,
+        // artifacts/3D/STANLEY/quancher591ml.glb: misma forma, más bajo y
+        // angosto. Perfil medido sobre el .glb (m × 12, centrado en 0,1138 m,
+        // la mitad del alto con pajita).
+        shape: {
+          profile: [
+            [0.428, -1.330], [0.438, -1.198], [0.448, -1.036], [0.460, -0.880],
+            [0.472, -0.700], [0.480, -0.544], [0.490, -0.484], [0.510, -0.442],
+            [0.529, -0.400], [0.539, -0.364], [0.540, -0.346], [0.540, -0.166],
+            [0.540,  0.074], [0.540,  0.314], [0.540,  0.518],
+          ],
+          band: [-1.25, 0.47],
+          frontFace: { uHalfWidth: 0.16, vCenter: 0.25, vHeightFrac: 0.42 },
+          model: {
+            url: "/models/vaso-stanley-quencher-591.glb?v=1",
+            exactFor: ["Quencher H2.0"],
+            brand: "Stanley",
+            unitsPerMeter: 12,
+            centerYm: 0.1138,
+            heightM: 0.2276,
+            reachM: 0.0888,
+            yawDeg: 180,
+            paint: ["handle", "lid_stopper"],
+          },
+        },
+      },
+      {
+        id: "vaso-quencher-887", name: "887ml", label: "Clásico", scale: 1.00,
+        // artifacts/3D/STANLEY/quancher887ml.glb: perfil medido sobre el .glb
+        // (m × 12, centrado en 0,14 m, la mitad del alto con pajita).
+        shape: {
+          profile: [
+            [0.412, -1.644], [0.426, -1.470], [0.443, -1.278], [0.458, -1.080],
+            [0.470, -0.888], [0.481, -0.864], [0.496, -0.834], [0.510, -0.810],
+            [0.523, -0.786], [0.532, -0.762], [0.538, -0.738], [0.540, -0.714],
+            [0.540, -0.360], [0.540,  0.000], [0.540,  0.360], [0.540,  0.786],
+          ],
+          band: [-1.56, 0.74],
+          frontFace: { uHalfWidth: 0.16, vCenter: 0.32, vHeightFrac: 0.54 },
+          model: {
+            url: "/models/vaso-stanley-quencher-887.glb?v=1",
+            exactFor: ["Quencher H2.0"],
+            brand: "Stanley",
+            unitsPerMeter: 12,
+            centerYm: 0.14,
+            heightM: 0.28,
+            reachM: 0.0924,
+            yawDeg: 180,
+            paint: ["handle", "lid_stopper"],
+          },
+        },
+      },
+      { id: "vaso-quencher-1183", name: "1183ml", label: "Grande",  scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-flip",
+    name: "Tumblers Flip",
+    singular: "Tumbler Flip",
+    // Stanley Tumbler Flip 887 ml: cuerpo cónico abajo, tapa con pajita
+    // rebatible y asa arriba. Un .glb por color (artifacts/3D/STANLEY/
+    // tumbler_flip_cherry.glb y tumbler_flip_plum.glb, misma forma): tapa,
+    // asa y logo traen el color de esa variante; el cuerpo se pinta con el
+    // color elegido. Logo Stanley al frente del .glb (+Z): yawDeg 180 lo deja
+    // atrás. Perfil medido sobre el .glb (m × 12, centrado en 0,14705 m, la
+    // mitad del alto con el asa).
+    desc: "Vaso térmico Stanley de 887 ml con tapa de pajita rebatible y asa.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.439, -1.729], [0.443, -1.699], [0.451, -1.465], [0.457, -1.255],
+      [0.462, -1.051], [0.470, -0.871], [0.481, -0.817], [0.497, -0.769],
+      [0.511, -0.715], [0.524, -0.667], [0.533, -0.613], [0.535, -0.325],
+      [0.538,  0.155], [0.540,  0.659],
+    ],
+    band: [-1.64, 0.62],
+    // Cara frontal en la parte superior recta, sin bajar al cono.
+    frontFace: { uHalfWidth: 0.2, vCenter: 0.28, vHeightFrac: 0.48 },
+    model: {
+      url: "/models/tumbler-flip-cherry.glb?v=1",
+      colorModels: [
+        { match: "cherry", url: "/models/tumbler-flip-cherry.glb?v=1" },
+        { match: "plum", url: "/models/tumbler-flip-plum.glb?v=1" },
+      ],
+      exactFor: ["Tumbler Flip"],
+      brand: "Stanley",
+      unitsPerMeter: 12,
+      centerYm: 0.14705,
+      heightM: 0.2941,
+      reachM: 0.0509,
+      yawDeg: 180,
+    },
+    // El asa va en la tapa: se graba en las cuatro caras; el dorso es el del logo.
+    logoBack: true,
+    sizes: [
+      { id: "vaso-flip-887", name: "887ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-protour",
+    name: "Vasos Quencher ProTour",
+    singular: "Quencher ProTour",
+    // Stanley Quencher ProTour 1,18 L, edición Messi Striker Blue
+    // (artifacts/3D/STANLEY/vaso_ messi.glb): aro dorado arriba, tapa
+    // transparente con tapita, manija en el cuerpo y dos franjas doradas de la
+    // edición: una ancha al frente del .glb (+Z, "logo") y una fina atrás
+    // ("logo_back"); las dos son zona sin grabado. La manija está en +X: con
+    // yawDeg 90 la cara opuesta a la manija (−X, libre) queda al frente, la
+    // manija atrás (u 0), la franja ancha a la izquierda (u 0.75) y la fina a
+    // la derecha (u 0.25). Cuerpo, manija y tapita van del color elegido.
+    // Perfil medido sobre el .glb (m × 12, centrado en 0,12895 m, la mitad
+    // del alto con la tapa).
+    desc: "Vaso térmico Stanley de 1,18 L con manija y tapa ProTour.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.430, -1.511], [0.438, -1.295], [0.448, -1.061], [0.455, -0.833],
+      [0.461, -0.695], [0.466, -0.647], [0.493, -0.599], [0.521, -0.557],
+      [0.551, -0.509], [0.576, -0.461], [0.586, -0.419], [0.587, -0.371],
+      [0.588,  0.373], [0.592,  1.153],
+    ],
+    band: [-1.43, 1.10],
+    // Cara frontal en la parte superior recta, entre las dos franjas doradas.
+    frontFace: { uHalfWidth: 0.16, vCenter: 0.29, vHeightFrac: 0.5 },
+    model: {
+      url: "/models/vaso-protour-messi.glb?v=1",
+      exactFor: ["Quencher ProTour"],
+      brand: "Stanley",
+      unitsPerMeter: 12,
+      centerYm: 0.12895,
+      heightM: 0.2579,
+      reachM: 0.0958,
+      yawDeg: 90,
+      paint: ["handle", "lid_cover"],
+    },
+    // Atrás va la manija y a la izquierda la franja ancha: se graba al frente
+    // y a la derecha (la franja fina se esquiva sola).
+    engraveFaces: ["front", "right"],
+    sizes: [
+      { id: "vaso-protour-1183", name: "1183ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
     id: "vaso-hydrate",
     name: "Vasos Hydrate",
     singular: "Vaso",
@@ -867,6 +1136,226 @@ export const PRODUCTS: ProductDef[] = [
     ],
   },
   {
+    id: "vaso-guarani",
+    name: "Vasos Guaraní",
+    singular: "Vaso Guaraní",
+    // Hydrate "VASO 473 ML EDICION 2 GUARANI" (artifacts/3D/vaso-guarani.glb):
+    // vaso cónico sin tapa, aro de acero arriba, con el estampado del club
+    // (franjas amarillas y negras, escudo al frente del .glb y "Licencia
+    // oficial" en la costura) y el logo Hydrate en blanco. El estampado va de
+    // base (bodyPrint) y el grabado encima. Escudo y logo quedan atrás
+    // (yawDeg 180): se graba adelante y a los costados, no sobre el escudo.
+    // Perfil medido sobre el .glb (m × 12, centrado en 0,0775 m).
+    desc: "Vaso térmico de la edición oficial del Club Guaraní.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.371, -0.930], [0.394, -0.690], [0.412, -0.450], [0.430, -0.210],
+      [0.452,  0.030], [0.470,  0.270], [0.488,  0.510], [0.510,  0.774],
+    ],
+    band: [-0.86, 0.71],
+    frontFace: { uHalfWidth: 0.2 },
+    // El escudo es parte del estampado, no una pieza del .glb: se marca a mano.
+    keepOut: [{ kind: "logo", u: 0, halfU: 0.075, v0: 0.48, v1: 0.80 }],
+    model: {
+      url: "/models/vaso-guarani.glb?v=1",
+      unitsPerMeter: 12,
+      centerYm: 0.0775,
+      heightM: 0.155,
+      reachM: 0.0435,
+      exactFor: ["Vaso · Guaraní"],
+      yawDeg: 180,
+      bodyPrint: "/models/vaso-guarani-print.png?v=1",
+    },
+    engraveFaces: ["front", "left", "right"],
+    sizes: [
+      { id: "vaso-guarani-473", name: "473ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
+    id: "taza-manija-palmeiras",
+    name: "Vasos Manija Palmeiras",
+    singular: "Vaso Manija Palmeiras",
+    // Hydrate "MANIJA 710 ML VERDE MILITAR EDICION 1 PALMEIRAS"
+    // (artifacts/3D/HYDRATE/CLUBES/taza-hydrate-palmeiras.glb): el mismo
+    // jarro que el Vaso Manija (mismo perfil y medidas), con la manija en −X
+    // del .glb y los grabados del club: logo Hydrate, escudo y "logo_texto" al
+    // frente del .glb (+Z), "texto_licencia" y "texto_club" abajo atrás. Con
+    // yawDeg 180 escudo y logo quedan atrás, la manija a la izquierda (u 0.75)
+    // y los textos chicos abajo al frente (zona sin grabado, como el escudo).
+    desc: "Jarro térmico de 710 ml de la edición oficial de Palmeiras.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.427, -1.140], [0.479, -1.116], [0.515, -1.074], [0.527, -1.038],
+      [0.528, -1.020], [0.528,  0.792],
+    ],
+    band: [-1.00, 0.77],
+    // Cara frontal a 90° de la manija: el área no toca la manija.
+    frontFace: { uHalfWidth: 0.16 },
+    model: {
+      url: "/models/taza-hydrate-palmeiras.glb?v=1",
+      exactFor: ["Vaso Manija · Palmeiras"],
+      unitsPerMeter: 12,
+      centerYm: 0.095,
+      heightM: 0.19,
+      reachM: 0.079,
+      yawDeg: 180,
+      paint: ["handle"],
+    },
+    // Atrás van el escudo y el logo (no se graba encima); la manija a la izquierda.
+    engraveFaces: ["front", "right"],
+    sizes: [
+      { id: "taza-manija-palmeiras-710", name: "710ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-luqueno",
+    name: "Vasos Luqueño",
+    singular: "Vaso Luqueño",
+    // Hydrate "VASO 600ML AMARILLO SOL LUQUE" (artifacts/3D/HYDRATE/CLUBES/
+    // vaso-hydrate-luqueno.glb): el Vaso de 600 ml (base de acero, aro y tapa
+    // con deslizador) con logo Hydrate, escudo de Sportivo Luqueño y
+    // "logo_texto" al frente del .glb (+Z). Con yawDeg 180 quedan atrás:
+    // adelante y a los costados, la cara libre. Perfil medido sobre el .glb
+    // (m × 12, centrado en 0,088 m).
+    desc: "Vaso térmico de 600 ml de la edición oficial de Sportivo Luqueño.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.422, -0.924], [0.440, -0.882], [0.456, -0.756], [0.470, -0.606],
+      [0.482, -0.456], [0.493, -0.306], [0.500, -0.156], [0.508, -0.006],
+      [0.512,  0.144], [0.517,  0.294], [0.521,  0.444], [0.524,  0.594],
+      [0.529,  0.750], [0.530,  0.822],
+    ],
+    band: [-0.86, 0.70],
+    frontFace: { uHalfWidth: 0.2 },
+    model: {
+      url: "/models/vaso-hydrate-luqueno.glb?v=1",
+      exactFor: ["Vaso · Sportivo Luqueño"],
+      unitsPerMeter: 12,
+      centerYm: 0.088,
+      heightM: 0.176,
+      reachM: 0.0442,
+      yawDeg: 180,
+    },
+    // Atrás van el escudo y el logo: se graba adelante y a los costados.
+    engraveFaces: ["front", "left", "right"],
+    sizes: [
+      { id: "vaso-luqueno-600", name: "600ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-olimpia",
+    name: "Vasos Olimpia",
+    singular: "Vaso Olimpia",
+    // Hydrate Vaso de 900 ml de la edición de Olimpia (artifacts/3D/HYDRATE/
+    // CLUBES/vaso-hydrate-olimpia.glb): el mismo cuerpo del Vaso Hydrate de
+    // 900 ml (vaso-hydrate.glb: base angosta, escalón y tapa con deslizador)
+    // más pajita, con logo Hydrate, escudo de Olimpia y "logo_texto" al frente
+    // del .glb (+Z). Con yawDeg 180 quedan atrás: adelante y a los costados, la
+    // cara libre. Perfil = el del Vaso Hydrate, medido sobre el .glb (m × 12),
+    // corrido al centro de este modelo (0,1248 m: la pajita lo hace más alto).
+    desc: "Vaso térmico de 900 ml de la edición oficial de Olimpia.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.438, -1.274], [0.446, -1.151], [0.452, -1.028], [0.458, -0.905],
+      [0.466, -0.782], [0.473, -0.659], [0.481, -0.536], [0.532, -0.413],
+      [0.572, -0.290], [0.576, -0.167], [0.578, -0.044], [0.582,  0.079],
+      [0.586,  0.202], [0.588,  0.325], [0.590,  0.447], [0.594,  0.570],
+      [0.596,  0.693],
+    ],
+    band: [-1.20, 0.62],
+    frontFace: { uHalfWidth: 0.2, vCenter: 0.27, vHeightFrac: 0.46 },
+    model: {
+      url: "/models/vaso-hydrate-olimpia.glb?v=1",
+      exactFor: ["Vaso · Olimpia"],
+      unitsPerMeter: 12,
+      centerYm: 0.1248,
+      heightM: 0.2496,
+      reachM: 0.0582,
+      yawDeg: 180,
+    },
+    // Atrás van el escudo y el logo: se graba adelante y a los costados.
+    engraveFaces: ["front", "left", "right"],
+    sizes: [
+      { id: "vaso-olimpia-900", name: "900ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-manija-cerro",
+    name: "Vasos con manija Cerro Porteño",
+    singular: "Vaso con manija Cerro Porteño",
+    // Hydrate "Vaso con Pico y Agarre" 887 ml de la edición de Cerro Porteño
+    // (artifacts/3D/HYDRATE/CLUBES/vaso-manija-hydrate-cerro.glb): el mismo
+    // cuerpo y manija que forma-vaso-manija.glb más pajita, con logo Hydrate,
+    // escudo de Cerro y "logo_texto" atrás (−Z, como el liso: sin giro). Perfil
+    // = el del vaso con manija, corrido al centro de este modelo (0,1195 m: la
+    // pajita lo hace más alto).
+    desc: "Vaso térmico de 887 ml con manija, de la edición oficial de Cerro Porteño.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.438, -1.210], [0.446, -1.087], [0.452, -0.964], [0.458, -0.841],
+      [0.466, -0.718], [0.473, -0.595], [0.481, -0.472], [0.532, -0.349],
+      [0.572, -0.226], [0.576, -0.103], [0.578,  0.020], [0.582,  0.143],
+      [0.586,  0.266], [0.588,  0.389], [0.590,  0.511], [0.594,  0.634],
+      [0.596,  0.757],
+    ],
+    band: [-1.136, 0.684],
+    frontFace: { uHalfWidth: 0.16, vCenter: 0.27, vHeightFrac: 0.46 },
+    model: {
+      url: "/models/vaso-manija-hydrate-cerro.glb?v=1",
+      exactFor: ["Vaso con Pico y Agarre · Cerro Porteño"],
+      unitsPerMeter: 12,
+      centerYm: 0.1195,
+      heightM: 0.239,
+      reachM: 0.0842,
+    },
+    // Atrás van el escudo y el logo; la manija a la izquierda (u 0.75).
+    engraveFaces: ["front", "right"],
+    sizes: [
+      { id: "vaso-manija-cerro-887", name: "887ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-manija-luqueno",
+    name: "Vasos con manija Luqueño",
+    singular: "Vaso con manija Luqueño",
+    // Hydrate "Vaso con Pico y Agarre" 887 ml de la edición de Sportivo
+    // Luqueño (artifacts/3D/HYDRATE/CLUBES/vaso-manija-hydrate-luqueno.glb):
+    // el mismo cuerpo y manija que forma-vaso-manija.glb más pajita, con logo
+    // Hydrate, escudo y "logo_texto" atrás (−Z, como el liso: sin giro). Perfil
+    // = el del vaso con manija, corrido al centro de este modelo (0,1275 m: la
+    // pajita lo hace más alto).
+    desc: "Vaso térmico de 887 ml con manija, de la edición oficial de Sportivo Luqueño.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.438, -1.306], [0.446, -1.183], [0.452, -1.060], [0.458, -0.937],
+      [0.466, -0.814], [0.473, -0.691], [0.481, -0.568], [0.532, -0.445],
+      [0.572, -0.322], [0.576, -0.199], [0.578, -0.076], [0.582,  0.047],
+      [0.586,  0.170], [0.588,  0.293], [0.590,  0.415], [0.594,  0.538],
+      [0.596,  0.661],
+    ],
+    band: [-1.232, 0.588],
+    frontFace: { uHalfWidth: 0.16, vCenter: 0.27, vHeightFrac: 0.46 },
+    model: {
+      url: "/models/vaso-manija-hydrate-luqueno.glb?v=1",
+      exactFor: ["Vaso con Pico y Agarre · Sportivo Luqueño"],
+      unitsPerMeter: 12,
+      centerYm: 0.1275,
+      heightM: 0.255,
+      reachM: 0.0842,
+    },
+    // Atrás van el escudo y el logo; la manija a la izquierda (u 0.75).
+    engraveFaces: ["front", "right"],
+    sizes: [
+      { id: "vaso-manija-luqueno-887", name: "887ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
     id: "vaso-espresso",
     name: "Vasos Taza Espresso",
     singular: "Vaso Taza Espresso",
@@ -940,6 +1429,39 @@ export const PRODUCTS: ProductDef[] = [
     ],
   },
   {
+    id: "taza-enlozada",
+    name: "Tazas enlozadas",
+    singular: "Taza enlozada",
+    // Taza enlozada blanca GENÉRICA (artifacts/3D/GENERICOS/taza-enlozada-
+    // blanca.glb): cuerpo casi recto Ø 85 mm × 77 mm, aro de acero y manija
+    // en +X del .glb. Con yawDeg 180 la manija queda en u 0.25: mirando el
+    // frente, a la izquierda, como en las fotos de producto. Sin logo. Perfil
+    // medido sobre el .glb (m × 20, centrado en 0,0392 m).
+    desc: "Taza enlozada blanca de 350 ml con aro de acero.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.710, -0.784], [0.782, -0.744], [0.812, -0.694], [0.822, -0.643],
+      [0.830, -0.304], [0.838,  0.176], [0.848,  0.616], [0.850,  0.752],
+    ],
+    band: [-0.62, 0.70],
+    // Cara frontal a 90° de la manija: el área no toca la manija.
+    frontFace: { uHalfWidth: 0.16 },
+    model: {
+      url: "/models/taza-enlozada-blanca.glb?v=1",
+      unitsPerMeter: 20,
+      centerYm: 0.0392,
+      heightM: 0.0784,
+      reachM: 0.0707,
+      yawDeg: 180,
+    },
+    // Manija en u 0.25 (cara "right").
+    engraveFaces: ["front", "back", "left"],
+    sizes: [
+      { id: "taza-enlozada-350", name: "350ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
     id: "mini-coffee",
     name: "Vasos Mini Coffee Mug",
     singular: "Vaso Mini Coffee Mug",
@@ -1010,6 +1532,74 @@ export const PRODUCTS: ProductDef[] = [
     logoBack: true,
     sizes: [
       { id: "vaso-taza-unico", name: "Único", label: "Clásico", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-taza-river",
+    name: "Vasos Taza River",
+    singular: "Vaso Taza River",
+    // Hydrate "Vaso Taza" de la edición de River Plate (artifacts/3D/HYDRATE/
+    // CLUBES/taza-hydrate-river-v2.glb): el mismo cuerpo, aro, tapa y manija que vaso-taza.glb,
+    // con el logo Hydrate atrás (−Z) y el escudo del club adelante (+Z) en el
+    // .glb. Con yawDeg 90 la manija (+X) queda atrás, el escudo a la izquierda
+    // y el logo a la derecha: adelante, la cara libre. Perfil = el del Vaso
+    // Taza (mismo .glb de base: m × 20, centrado en 0,0566 m).
+    desc: "Jarro térmico con manija y tapa, de la edición oficial de River Plate.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.742, -1.132], [0.787, -1.100], [0.806, -1.069], [0.831, -1.037],
+      [0.838, -1.005], [0.840, -0.973], [0.840,  0.772],
+    ],
+    band: [-0.95, 0.70],
+    frontFace: { uHalfWidth: 0.16 },
+    model: {
+      url: "/models/taza-hydrate-river-v2.glb?v=1",
+      exactFor: ["Vaso Taza · River Plate"],
+      unitsPerMeter: 20,
+      centerYm: 0.0566,
+      heightM: 0.1132,
+      reachM: 0.0725,
+      yawDeg: 90,
+    },
+    // Atrás la manija; a los costados el escudo y el logo: se graba adelante.
+    engraveFaces: ["front"],
+    sizes: [
+      { id: "vaso-taza-river-355", name: "355ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-taza-palmeiras",
+    name: "Vasos Taza Palmeiras",
+    singular: "Vaso Taza Palmeiras",
+    // Hydrate "Vaso Taza" de la edición de Palmeiras (artifacts/3D/HYDRATE/
+    // CLUBES/taza-hydrate-palmeiras-verde.glb): el mismo cuerpo, aro, tapa y manija que vaso-taza.glb,
+    // con el logo Hydrate atrás (−Z) y el escudo del club adelante (+Z) en el
+    // .glb. Con yawDeg 90 la manija (+X) queda atrás, el escudo a la izquierda
+    // y el logo a la derecha: adelante, la cara libre. Perfil = el del Vaso
+    // Taza (mismo .glb de base: m × 20, centrado en 0,0566 m).
+    desc: "Jarro térmico con manija y tapa, de la edición oficial de Palmeiras.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.742, -1.132], [0.787, -1.100], [0.806, -1.069], [0.831, -1.037],
+      [0.838, -1.005], [0.840, -0.973], [0.840,  0.772],
+    ],
+    band: [-0.95, 0.70],
+    frontFace: { uHalfWidth: 0.16 },
+    model: {
+      url: "/models/taza-hydrate-palmeiras-verde.glb?v=1",
+      exactFor: ["Vaso Taza · Palmeiras"],
+      unitsPerMeter: 20,
+      centerYm: 0.0566,
+      heightM: 0.1132,
+      reachM: 0.0725,
+      yawDeg: 90,
+    },
+    // Atrás la manija; a los costados el escudo y el logo: se graba adelante.
+    engraveFaces: ["front"],
+    sizes: [
+      { id: "vaso-taza-palmeiras-355", name: "355ml", label: "Único", scale: 1.00 },
     ],
   },
   {
@@ -1202,6 +1792,29 @@ const sizedCache = new WeakMap<ProductSize, ProductDef>();
  * (`shape`), su perfil, banda y .glb pisan los del producto. Sin `shape`, el
  * mismo producto. Siempre el mismo objeto por tamaño (sirve de clave de caché).
  */
+const colorCache = new WeakMap<ProductDef, Map<string, ProductDef>>();
+const foldColor = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+/**
+ * El producto con el .glb del color de la variante (model.colorModels), si
+ * tiene uno propio para ese color; si no, el mismo producto.
+ */
+export function productForColor(product: ProductDef, colorName: string | null | undefined): ProductDef {
+  const options = product.model?.colorModels;
+  if (!options?.length || !colorName) return product;
+  const c = foldColor(colorName);
+  const hit = options.find(o => c.includes(o.match));
+  if (!hit || hit.url === product.model!.url) return product;
+  let byUrl = colorCache.get(product);
+  if (!byUrl) { byUrl = new Map(); colorCache.set(product, byUrl); }
+  let out = byUrl.get(hit.url);
+  if (!out) {
+    out = { ...product, model: { ...product.model!, url: hit.url } };
+    byUrl.set(hit.url, out);
+  }
+  return out;
+}
+
 export function productForSize(product: ProductDef, sizeId: string): ProductDef {
   const size = getSize(product, sizeId);
   if (!size.shape) return product;

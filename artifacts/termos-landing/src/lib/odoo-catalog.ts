@@ -32,9 +32,44 @@ export function useCatalog(): Catalog | undefined {
   return ODOO_CATALOG_ENABLED ? data : undefined;
 }
 
-/** Productos de Odoo que corresponden al perfil 3D + material elegidos. */
+/**
+ * Productos de Odoo que corresponden al perfil 3D + material elegidos. Incluye
+ * los que tienen una edición con ese perfil propio (el Vaso, cuando se ve la
+ * edición Guaraní con vaso-guarani).
+ */
 export function matchingProducts(catalog: Catalog | undefined, productType: string, material: string): CatalogProduct[] {
-  return (catalog?.products ?? []).filter(p => p.productType === productType && p.material === material);
+  return (catalog?.products ?? []).filter(p => p.material === material
+    && (p.productType === productType || p.variants.some(v => v.modelType === productType)));
+}
+
+// ── Ediciones de clubes y selección ─────────────────────────────────────────
+/** Ediciones del producto: null (la línea lisa) primero si existe, después los clubes. */
+export function editionOptions(p: CatalogProduct): (string | null)[] {
+  const out: (string | null)[] = [];
+  if (p.variants.some(v => !v.club)) out.push(null);
+  for (const v of p.variants) if (v.club && !out.includes(v.club)) out.push(v.club);
+  return out;
+}
+
+/** Edición válida para el producto: la pedida si existe; si no, la lisa (o la primera). */
+export function effectiveEdition(p: CatalogProduct, edition: string | null): string | null {
+  const opts = editionOptions(p);
+  return opts.includes(edition) ? edition : opts[0] ?? null;
+}
+
+/**
+ * El producto visto en una edición: solo sus variantes y el club en el nombre
+ * ("Termo Mate · River Plate"), así resumen, pedido y WhatsApp la nombran.
+ */
+export function productForEdition(p: CatalogProduct, edition: string | null): CatalogProduct {
+  if (editionOptions(p).length < 2 && !edition) return p;
+  const variants = p.variants.filter(v => (v.club ?? null) === edition);
+  return { ...p, name: edition ? `${p.name} · ${edition}` : p.name, variants };
+}
+
+/** Perfil 3D de una edición: el suyo si tiene modelo propio (Guaraní), si no el del producto. */
+export function editionModelType(p: CatalogProduct, edition: string | null): string {
+  return p.variants.find(v => (v.club ?? null) === edition && v.modelType)?.modelType ?? p.productType;
 }
 
 /**
@@ -44,6 +79,10 @@ export function matchingProducts(catalog: Catalog | undefined, productType: stri
  */
 const NAMED: [RegExp, string][] = [
   [/negro y naranja/, "#1d1d1d"],
+  // Paleta Stanley (nombres en inglés): antes que las reglas genéricas.
+  [/cherry blossom/, "#f2b8c6"], [/plum/, "#6b3b5a"], [/guava/, "#ee6d74"], [/petrol/, "#1f4e5a"],
+  [/lake/, "#6f9fb5"], [/dried pine|pine/, "#5c6b4e"], [/hammertone/, "#9ea3a6"], [/azul noche/, "#1c2a48"],
+  [/striker blue/, "#2c5fa8"], [/paraguay/, "#c62828"],
   [/verde militar/, "#4b5320"], [/verde salvia|salvia/, "#9caf88"], [/verde menta|menta|mint/, "#98d7c2"],
   [/verde pastel/, "#b8e0b0"], [/verde oliva|oliva|olive/, "#6b7a3a"], [/jade/, "#4f8f7a"], [/lima|lime/, "#c5d94a"],
   [/amarillo pastel/, "#f6e3a1"], [/amarillo sol|amarill|yellow/, "#f2c230"],
@@ -141,8 +180,8 @@ export function engravingPrice(catalog: Catalog | undefined, plan: EngravingPlan
 const CATALOG_SECTIONS: { title: string; types: string[] }[] = [
   { title: "Termos", types: ["termo-mate", "termo-mate-forge", "termo"] },
   { title: "Botellas", types: ["hoppie-hydrate", "hoppie", "termo-kids", "hoppie-kids", "termo-sleek", "botella-ancha", "growler"] },
-  { title: "Vasos", types: ["vaso-hydrate", "vaso-sunbeam", "vaso-espresso", "taza-manija", "mini-coffee", "vaso-taza", "coffee-cup", "vaso-shaker", "vaso-whisky", "vaso-cafe", "vaso-manija", "vaso", "chopera"] },
-  { title: "Guampas y copas", types: ["guampa", "copa-hydrate"] },
+  { title: "Vasos", types: ["vaso-hydrate", "vaso-sunbeam", "vaso-espresso", "taza-manija", "taza-enlozada", "mini-coffee", "vaso-taza", "coffee-cup", "vaso-shaker", "vaso-whisky", "vaso-cafe", "vaso-guarani", "taza-manija-palmeiras", "vaso-luqueno", "vaso-olimpia", "vaso-manija-cerro", "vaso-manija-luqueno", "vaso-taza-river", "vaso-taza-palmeiras", "vaso-quencher", "vaso-protour", "vaso-flip", "vaso-manija", "vaso", "chopera"] },
+  { title: "Guampas y copas", types: ["guampa", "guampa-terere", "copa-hydrate"] },
   { title: "Comida y bar", types: ["food-flask", "ice-bucket"] },
 ];
 
@@ -164,7 +203,19 @@ export interface ShopItem {
   /** Colores con stock (null en los genéricos: usan la paleta propia). */
   colors: number | null;
   odooId: number | null;
+  /** Clubes y selección con edición de este producto (para buscarlos). */
+  clubs: string[];
+  /** Resultado de búsqueda por club: abre el producto con esa edición elegida. */
+  edition: string | null;
+  /** Precio "desde" y colores con stock de cada edición (para los resultados por club). */
+  editionInfo: Record<string, { from: number | null; colors: number }>;
 }
+
+/**
+ * Otros nombres con los que se busca un perfil: el Termo Hydrate era el
+ * "Hoppie" de la landing, y en la tienda es el termito y el Litro.
+ */
+const SEARCH_ALIASES: Record<string, string> = { "hoppie-hydrate": "hoppie termito litro" };
 
 export interface CatalogSection { title: string; items: ShopItem[] }
 
@@ -181,6 +232,12 @@ export function odooShopItems(catalog: Catalog | undefined, material: string, kn
       from: priceFrom(p),
       colors: new Set(p.variants.filter(v => v.inStock).map(v => v.colorName)).size,
       odooId: p.id,
+      clubs: editionOptions(p).filter((c): c is string => !!c),
+      edition: null,
+      editionInfo: Object.fromEntries(editionOptions(p).filter((c): c is string => !!c).map(c => {
+        const e = productForEdition(p, c);
+        return [c, { from: priceFrom(e), colors: new Set(e.variants.filter(v => v.inStock).map(v => v.colorName)).size }];
+      })),
     }));
 }
 
@@ -199,7 +256,19 @@ const fold = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u
  */
 export function shopSections(items: ShopItem[], opts: { brand?: string | null; section?: string | null; query?: string }): CatalogSection[] {
   const q = fold(opts.query?.trim() ?? "");
-  const list = items.filter(i => (q ? fold(i.name).includes(q) : !opts.brand || i.brand === opts.brand));
+  // Con texto: el producto si coincide su nombre, y una entrada por cada edición
+  // cuyo club coincide ("cerro" → "Termo Mate · Cerro Porteño"), que lo abre en
+  // esa edición.
+  const list = q
+    ? items.flatMap(i => [
+        ...(fold(`${i.name} ${SEARCH_ALIASES[i.type] ?? ""}`).includes(q) ? [i] : []),
+        ...i.clubs.filter(c => fold(c).includes(q))
+          .map(c => ({
+            ...i, key: `${i.key}:${c}`, name: `${i.name} · ${c}`, edition: c,
+            from: i.editionInfo[c]?.from ?? i.from, colors: i.editionInfo[c]?.colors ?? i.colors,
+          })),
+      ])
+    : items.filter(i => !opts.brand || i.brand === opts.brand);
   return CATALOG_SECTIONS
     .filter(s => !opts.section || s.title === opts.section)
     .map(s => ({ title: s.title, items: list.filter(i => s.types.includes(i.type)) }))

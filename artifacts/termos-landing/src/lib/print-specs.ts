@@ -4,8 +4,8 @@
  * El 3D usa perfiles aproximados; el archivo para la máquina tiene que salir
  * de las medidas REALES (calibre) de cada producto y tamaño. Mientras no estén
  * medidas, los valores quedan en `null` (AJUSTAR) y manda el flag `dacen`, que
- * hoy reproduce exactamente la regla de `allowsColorPrint()`: todo el
- * drinkware de acero admite impresión a color, salvo la guampa.
+ * hoy reproduce exactamente la regla de `allowsColorPrint()`: el drinkware
+ * de acero cilíndrico y SIN manija en el cuerpo admite impresión a color.
  *
  * Vive en la landing: el api-server todavía tiene sus propias medidas del
  * frente en `production-svg.ts` (PRODUCT_AREAS_MM). Cuando el archivo de la
@@ -59,9 +59,11 @@ const steel = (extra: Partial<PrintSpecEntry> = {}): PrintSpecEntry => ({ ...UNM
  * landing ofrece solo grabado láser + "consultá en el local" para el color.
  */
 export const PRINT_SPECS: Record<ProductId, PrintSpecEntry> = {
-  "termo": steel(),
-  "termo-mate": steel(),
-  "termo-mate-forge": steel(),
+  // Manija en el cuerpo: estorba al giro de la Dacen (360°) y tapa parte de la
+  // vuelta. Sin impresión UV de ningún tipo (ni 360° ni con relieve): solo láser.
+  "termo": steel({ dacen: false, consult: "handle" }),
+  "termo-mate": steel({ dacen: false, consult: "handle" }),
+  "termo-mate-forge": steel({ dacen: false, consult: "handle" }),
   "termo-kids": steel(),
   "hoppie": steel(),
   "hoppie-hydrate": steel(),
@@ -72,9 +74,14 @@ export const PRINT_SPECS: Record<ProductId, PrintSpecEntry> = {
   "vaso-sunbeam": steel({ dacen: false, consult: "handle" }),
   "vaso-espresso": steel({ dacen: false, consult: "shape" }),
   "vaso-manija": steel({ dacen: false, consult: "handle" }),
+  "vaso-quencher": steel({ dacen: false, consult: "handle" }),
+  "vaso-flip": steel(),
+  "vaso-protour": steel({ dacen: false, consult: "handle" }),
   "taza-manija": steel({ dacen: false, consult: "handle" }),
   "mini-coffee": steel({ dacen: false, consult: "handle" }),
   "vaso-taza": steel({ dacen: false, consult: "handle" }),
+  "vaso-taza-river": steel({ dacen: false, consult: "handle" }),
+  "vaso-taza-palmeiras": steel({ dacen: false, consult: "handle" }),
   "coffee-cup": steel({ dacen: false, consult: "shape" }),
   "vaso-shaker": steel(),
   "vaso-whisky": steel(),
@@ -82,7 +89,20 @@ export const PRINT_SPECS: Record<ProductId, PrintSpecEntry> = {
   "growler": steel(),
   "termo-sleek": steel(),
   "hoppie-kids": steel(),
+  "termo-terere": steel(),
+  "guampa-terere": steel(),
+  // Ya trae el estampado del club: solo grabado láser, sin impresión encima.
+  "vaso-guarani": steel({ dacen: false }),
+  // Ediciones con escudo grabado de fábrica: sin impresión 360° (taparía el escudo).
+  "vaso-luqueno": steel({ dacen: false }),
+  "vaso-olimpia": steel({ dacen: false }),
+  "taza-manija-palmeiras": steel({ dacen: false, consult: "handle" }),
+  "vaso-manija-cerro": steel({ dacen: false, consult: "handle" }),
+  "vaso-manija-luqueno": steel({ dacen: false, consult: "handle" }),
   "chopera": steel({ dacen: false, consult: "handle" }),
+  // Manija en el cuerpo: sin Dacen. Los diseños de artistas (artist-designs.ts)
+  // van igual a color: los produce la eufyMake (UV DTF) por fuera de esta regla.
+  "taza-enlozada": steel({ dacen: false, consult: "handle" }),
   "copa": steel({ dacen: false, consult: "shape" }),
   "copa-hydrate": steel({ dacen: false, consult: "shape" }),
   // Base redondeada y paredes que se abren.

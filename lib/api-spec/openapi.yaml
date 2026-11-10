@@ -243,6 +243,12 @@ components:
         inStock:
           type: boolean
           description: Whether this variant can be ordered right now
+        club:
+          type: [string, "null"]
+          description: Club or national team of a sports edition of the product (e.g. Cerro Porteño, Albirroja); null for the plain line
+        modelType:
+          type: [string, "null"]
+          description: Customizer 3D profile for this variant when it differs from the product's (an edition with its own model, e.g. vaso-guarani)
       required: [id, sku, colorName, colorHex, size, price, available, inStock]
     HealthStatus:
       type: object

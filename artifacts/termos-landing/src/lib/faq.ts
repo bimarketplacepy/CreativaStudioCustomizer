@@ -28,7 +28,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "¿Qué piezas se pueden imprimir en 360°?",
-    a: `Vasos, termos y botellas cilíndricas de acero pintado, de ${cm(LIMITS.minDiameterMm)} a ${cm(LIMITS.maxDiameterMm)} cm de diámetro y hasta ${cm(LIMITS.maxLengthMm)} cm de alto. Las piezas con manija o muy cónicas las vemos por WhatsApp.`,
+    a: `Vasos, termos y botellas cilíndricas de acero pintado, de ${cm(LIMITS.minDiameterMm)} a ${cm(LIMITS.maxDiameterMm)} cm de diámetro y hasta ${cm(LIMITS.maxLengthMm)} cm de alto. Las piezas con manija en el cuerpo no admiten impresión UV (ni 360° ni con relieve): la manija impide el giro y cubre parte de la superficie, así que se personalizan con grabado láser. Las piezas muy cónicas las vemos por WhatsApp.`,
   },
   {
     q: "¿Hacen stickers? ¿Desde cuántos?",

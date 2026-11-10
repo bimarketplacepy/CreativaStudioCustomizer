@@ -71,6 +71,18 @@ export const GetCatalogResponse = zod.object({
           inStock: zod
             .boolean()
             .describe("Whether this variant can be ordered right now"),
+          club: zod
+            .string()
+            .nullish()
+            .describe(
+              "Club or national team of a sports edition of the product (e.g. Cerro Porteño, Albirroja); null for the plain line",
+            ),
+          modelType: zod
+            .string()
+            .nullish()
+            .describe(
+              "Customizer 3D profile for this variant when it differs from the product's (an edition with its own model, e.g. vaso-guarani)",
+            ),
         }),
       ),
     }),

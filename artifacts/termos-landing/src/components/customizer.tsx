@@ -54,7 +54,7 @@ function UnwrappedDialog(props: React.ComponentProps<typeof UnwrappedDialogLazy>
 }
 import { ENGRAVING_PLANS, type EngravingPlanId } from "@/lib/engraving-plans";
 import type { ProcessedImage } from "@/lib/image-processing";
-import { DEFAULT_PRODUCT_ID, getProduct, getSize, productForSize, type ProductDef } from "@/lib/products";
+import { DEFAULT_PRODUCT_ID, getProduct, getSize, productForColor, productForSize, type ProductDef } from "@/lib/products";
 import { getObject } from "@/lib/objects";
 import {
   DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, LINE_HEIGHT_PRESETS, DEFAULT_LINE_HEIGHT,
@@ -76,6 +76,7 @@ import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
 import { ADDRESS, whatsappUrl } from "@/lib/contact";
 import { clearSharedDesign, designLink, readSharedDesign, type SharedDesign } from "@/lib/design-link";
 import { onDesignPreset } from "@/lib/design-preset";
+import { designArtistFee, designPrice, getArtist, getArtistDesign, type ArtistDesign } from "@/lib/artist-designs";
 import { CUSTOMIZER_MODE_EVENT, CUSTOMIZER_START_EVENT, takeCustomizerMode, takeStartIntent, type StartIntent } from "@/lib/section-reveal";
 import { machineFor, normalizeTechnique } from "@/lib/machines";
 import { fitsDacen, printSpecFor } from "@/lib/print-specs";
@@ -85,6 +86,7 @@ import { PRICING, quote } from "@/lib/pricing";
 import {
   colorOptions, defaultVariant, engravingPrice, findVariant, formatGs, GENERIC_BRAND,
   matchingProducts, odooShopItems, priceFrom, sectionTitles, shopBrands, shopSections, sizeOptions,
+  editionOptions, effectiveEdition, productForEdition, editionModelType,
   useCatalog, viewSizeId, type CatalogSection, type ShopItem,
 } from "@/lib/odoo-catalog";
 import { track } from "@/lib/analytics";
@@ -195,9 +197,11 @@ function shadeHex(hex: string, amount: number): string {
 }
 
 /** Spanish article for a drinkware product name: "del termo", "de la copa". */
-const FEMININE_PRODUCTS = new Set(["copa", "guampa", "botella", "chopera", "jarra", "hielera"]);
+const FEMININE_PRODUCTS = new Set(["copa", "guampa", "botella", "chopera", "jarra", "hielera", "taza"]);
+/** Por la primera palabra: "taza enlozada" es femenino como "taza". */
+const isFeminineProduct = (noun: string) => FEMININE_PRODUCTS.has(noun.trim().toLowerCase().split(/\s+/)[0] ?? "");
 function productArticle(singular: string): string {
-  return FEMININE_PRODUCTS.has(singular.toLowerCase()) ? "de la" : "del";
+  return isFeminineProduct(singular) ? "de la" : "del";
 }
 
 const FINISHES: { id: string; name: string; material?: MaterialId }[] = [
@@ -737,33 +741,44 @@ function IconPicker({ value, onChange }: { value: string | null; onChange: (id: 
 }
 
 /** Laser vs Eufy Make picker shown once the customer is personalizing. */
-function TechniqueSelector({ value, onChange, compact }: {
+function TechniqueSelector({ value, onChange, compact, colorDisabled }: {
   value: TechniqueId; onChange: (id: TechniqueId) => void;
   /** Celular: las dos opciones lado a lado. */
   compact?: boolean;
+  /** La pieza no admite impresión UV: la opción a color se ve, pero no se elige. */
+  colorDisabled?: boolean;
 }) {
   return (
     <div className={compact ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 sm:grid-cols-2 gap-3"}>
       {TECHNIQUES.map(t => {
         const active = value === t.id;
+        const disabled = t.color && !!colorDisabled;
         const Icon = t.color ? Sparkles : Zap;
         return (
           <button
             key={t.id}
             type="button"
+            disabled={disabled}
+            aria-disabled={disabled}
             onClick={() => onChange(t.id)}
-            className={`text-left p-3 border rounded-xl transition-all ${active ? activeCard : idleCard}`}
+            className={`text-left p-3 border rounded-xl transition-all ${
+              disabled ? "border-dashed border-border text-muted-foreground/60 bg-secondary/30 cursor-not-allowed" : active ? activeCard : idleCard
+            }`}
           >
             <span className="flex items-center gap-2">
               <Icon className="w-4 h-4" />
               <span className="font-semibold text-sm">{t.name}</span>
               {t.color && !compact && (
-                <span className="ml-auto text-[11px] font-medium uppercase tracking-wide rounded-full px-2.5 py-0.5 bg-[#1A1614] text-white/90">
-                  Todo color
+                <span className={`ml-auto text-[11px] font-medium uppercase tracking-wide rounded-full px-2.5 py-0.5 ${
+                  disabled ? "bg-secondary text-muted-foreground" : "bg-[#1A1614] text-white/90"
+                }`}>
+                  {disabled ? "No disponible" : "Todo color"}
                 </span>
               )}
             </span>
-            <span className="block text-xs text-muted-foreground mt-1">{t.desc}</span>
+            <span className="block text-xs text-muted-foreground mt-1">
+              {disabled ? "No disponible en piezas con manija." : t.desc}
+            </span>
           </button>
         );
       })}
@@ -1826,7 +1841,15 @@ export default function Customizer() {
   const [odooTemplateId, setOdooTemplateId] = useState<number | null>(null);
   const [odooColor, setOdooColor] = useState<string | null>(null);
   const [odooSize, setOdooSize] = useState<string | null>(null);
-  const odooProduct = odooProducts.find(p => p.id === odooTemplateId) ?? odooProducts[0] ?? null;
+  // Edición de club o selección (null = la línea lisa): filtra tamaños y colores.
+  const [odooEdition, setOdooEdition] = useState<string | null>(null);
+  const odooFullProduct = odooProducts.find(p => p.id === odooTemplateId) ?? odooProducts[0] ?? null;
+  const odooEditions = useMemo(() => (odooFullProduct ? editionOptions(odooFullProduct) : []), [odooFullProduct]);
+  const activeEdition = odooFullProduct ? effectiveEdition(odooFullProduct, odooEdition) : null;
+  const odooProduct = useMemo(
+    () => (odooFullProduct ? productForEdition(odooFullProduct, activeEdition) : null),
+    [odooFullProduct, activeEdition],
+  );
   const odooMode = !!odooProduct;
   // Solo los colores del tamaño elegido: elegir un color nunca cambia el tamaño.
   const odooColors = useMemo(() => (odooProduct ? colorOptions(odooProduct, odooSize) : []), [odooProduct, odooSize]);
@@ -1872,6 +1895,22 @@ export default function Customizer() {
     setOdooColor(v?.colorName ?? null);
     track("customizer_size_select", { product: productId, size: label, source: "odoo" });
   };
+  /** Elegir edición: tamaño y color vuelven a la primera variante de esa edición. */
+  const selectOdooEdition = (club: string | null) => {
+    setOdooEdition(club);
+    track("customizer_edition_select", { product: odooFullProduct?.name, edition: club ?? "lisa" });
+  };
+  // Una edición con modelo propio (Guaraní) cambia el perfil 3D; al volver a otra
+  // edición, vuelve el del producto. Sin resetear el producto elegido.
+  const editionType = odooFullProduct ? editionModelType(odooFullProduct, activeEdition) : null;
+  React.useEffect(() => {
+    if (!editionType || editionType === productId) return;
+    const mp = material.products.find(x => x.drinkwareProductId === editionType);
+    if (!mp) return;
+    setOdooTemplateId(odooFullProduct?.id ?? null);
+    setMaterialProductId(mp.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editionType]);
   // Catálogo del personalizador para el material elegido: los productos de la
   // tienda (Odoo, por marca) + las formas genéricas propias. Cuando hay
   // productos de la tienda, el cliente elige de acá en vez del tipo genérico.
@@ -1888,7 +1927,7 @@ export default function Customizer() {
         name: p.name,
         brand: GENERIC_BRAND,
         type: p.drinkwareProductId!,
-        thumb: null, from: null, colors: null, odooId: null,
+        thumb: null, from: null, colors: null, odooId: null, clubs: [], edition: null, editionInfo: {},
       }));
     return [...fromOdoo, ...generic];
   }, [catalog, materialId, material]);
@@ -1903,6 +1942,7 @@ export default function Customizer() {
     if (mp.id !== materialProductId) handleSelectMaterialProduct(mp.id);
     setGenericPick(it.odooId === null);
     setOdooTemplateId(it.odooId);
+    setOdooEdition(it.edition);
     track("customizer_catalog_select", { key: it.key, product: it.name, brand: it.brand, type: it.type });
   };
   /** Línea de detalle de la tarjeta "Tu producto": tamaño y precio de la variante. */
@@ -1913,15 +1953,23 @@ export default function Customizer() {
           .filter(Boolean).join(" · ")
       : "";
   /** Sin modelo 3D propio, la vista usa la forma genérica del tipo: avisarlo. */
-  const approxNote = shopMode && !genericPick && odooProduct && !baseProduct.model?.exactFor?.includes(odooProduct.name)
-    ? `La vista 3D de ${odooProduct.name} es aproximada; el diseño y el grabado son los reales.`
-    : null;
+  // Los .glb traen el logo de su marca (Hydrate, salvo model.brand): sobre una
+  // pieza de otra marca se oculta, para no mostrar un Stanley con el logo de Hydrate.
+  const modelBrand = (baseProduct.model?.brand ?? "Hydrate").toLowerCase();
+  const otherBrandPiece = shopMode && !genericPick && !!odooProduct && odooProduct.brand.trim().toLowerCase() !== modelBrand;
+  // Edición de club sin .glb propio: el 3D es el modelo liso, sin el estampado.
+  const approxNote = !(shopMode && !genericPick && odooProduct) || baseProduct.model?.exactFor?.includes(odooProduct.name)
+    ? null
+    : activeEdition
+      ? `La edición ${activeEdition} trae el estampado del club, que la vista 3D no muestra. Antes de grabar te confirmamos por WhatsApp dónde entra tu diseño.`
+      : `La vista 3D de ${odooProduct.name} es aproximada; el diseño y el grabado son los reales.`;
 
   // Tamaño que dibuja el 3D: el de Odoo mapeado al perfil, o el elegido a mano.
   const viewSize = odooMode ? viewSizeId(baseProduct, odooSizes, odooSize) : size;
   const activeSize = getSize(baseProduct, viewSize);
   // El producto en ese tamaño: perfil, banda y modelo del tamaño si tiene propio.
-  const product = productForSize(baseProduct, viewSize);
+  // …y con el .glb del color de la variante, si ese color tiene uno propio.
+  const product = productForColor(productForSize(baseProduct, viewSize), odooMode ? odooColor : null);
 
   const [color, setColor] = useState(COLORS.find(c => c.name.startsWith(START_COLOR_NAME))?.id ?? COLORS[0].id);
   const [customHex, setCustomHex] = useState<string | null>(null);
@@ -2011,8 +2059,15 @@ export default function Customizer() {
   const artSingleFace = !FREE_PLACEMENT;
 
   const [technique, setTechnique] = useState<TechniqueId>("laser");
+  // Diseño de artista copiado desde «Recomendados» (artist-designs.ts). Vale
+  // solo sobre la pieza para la que el taller lo probó: ahí habilita la
+  // impresión a color aunque la pieza no entre en la Dacen (va a la eufyMake).
+  const [artistDesignId, setArtistDesignId] = useState<string | null>(null);
+  const artistCandidate = getArtistDesign(artistDesignId);
+  const artistForPiece = artistCandidate && artistCandidate.materialId === materialId
+    && artistCandidate.materialProductId === activeMProduct?.id ? artistCandidate : null;
   // Eufy (colour) is drinkware-with-coating only; everything else is laser-only.
-  const canColor = allowsColorPrint(materialId, activeMProduct);
+  const canColor = allowsColorPrint(materialId, activeMProduct) || !!artistForPiece;
   /** Acero que la Dacen no toma (manija / no cilíndrico): se consulta en el local. */
   const colorConsult = !canColor && (materialId === "acero" || materialId === "inox") && activeMProduct?.drinkwareProductId
     ? printSpecFor(activeMProduct.drinkwareProductId)?.consult ?? null
@@ -2091,7 +2146,7 @@ export default function Customizer() {
   // ── "Diseñar uno igual" desde la galería ───────────────────────────────────
   // Arranca con el producto de la foto (material + producto + talla por
   // defecto); en celular salta al paso de Diseño, como un link compartido.
-  React.useEffect(() => onDesignPreset(({ materialId: mid, materialProductId: pid }) => {
+  React.useEffect(() => onDesignPreset(({ materialId: mid, materialProductId: pid, artistDesignId: aid }) => {
     const m = MATERIALS.find(x => x.id === mid);
     const mp = m?.products.find(p => p.id === pid);
     if (!m || !mp) return;
@@ -2102,7 +2157,11 @@ export default function Customizer() {
     if (mp.drinkwareProductId) {
       const dp = getProduct(mp.drinkwareProductId);
       setSize(dp.sizes[1]?.id ?? dp.sizes[0].id);
+      // Forma propia sin producto de la tienda: queda elegida como genérico.
+      setGenericPick(!dp.model?.exactFor?.length);
     }
+    const art = getArtistDesign(aid);
+    if (art && art.materialId === m.id && art.materialProductId === mp.id) applyArtistDesign(art);
     setMobileStep(2); // Diseño
     track("customizer_preset", { material: m.id, product: mp.id });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2140,6 +2199,7 @@ export default function Customizer() {
     // Variante de Odoo: si el link es viejo o el producto ya no existe, el
     // efecto de selección vuelve sola a la primera variante con stock.
     if (typeof d.odooTemplateId === "number") setOdooTemplateId(d.odooTemplateId);
+    setOdooEdition(typeof d.odooEdition === "string" ? d.odooEdition : null);
     if (typeof d.odooColor === "string") setOdooColor(d.odooColor);
     if (typeof d.odooSize === "string") setOdooSize(d.odooSize);
     if (d.textPlacement && typeof d.textPlacement === "object") setTextPlacement({ ...DEFAULT_TEXT_PLACEMENT, ...d.textPlacement });
@@ -2152,6 +2212,9 @@ export default function Customizer() {
     if (FONTS.some(f => f.id === d.text2FontId)) setText2Font(d.text2FontId!);
     if (d.text2Placement && typeof d.text2Placement === "object") setText2Placement({ ...TEXT2_DEFAULT_PLACEMENT, ...d.text2Placement });
     setDrinkTab("text");
+    // Diseño de artista: su arte es público, así que viaja en el link.
+    const art = getArtistDesign(d.artistDesignId);
+    if (art && art.materialId === d.materialId && art.materialProductId === d.materialProductId) applyArtistDesign(art);
     clearSharedDesign();
     track("design_link_open");
   }, []);
@@ -2250,8 +2313,32 @@ export default function Customizer() {
     setWrapDesignRaw(next);
   }, []);
   const wrapSpec = isDrinkware ? printSpecFor(productId, viewSize) : null;
-  const canWrap = isDrinkware && !isGlass && isColorPrint && !!wrapSpec && fitsDacen(wrapSpec);
+  /** El fondo es exactamente el arte del artista (no lo cambió ni lo movió). */
+  const artistApplied = !!artistForPiece && !!wrapDesign
+    && wrapDesign.url === artistForPiece.artwork.url && wrapDesign.mode === artistForPiece.artwork.mode;
+  const canWrap = isDrinkware && !isGlass && isColorPrint && ((!!wrapSpec && fitsDacen(wrapSpec)) || artistApplied);
   const activeWrap = canWrap ? wrapDesign : null;
+  /** El diseño de artista se ve, se cobra y viaja en el pedido. */
+  const activeArtist = artistApplied && activeWrap ? artistForPiece : null;
+  // Si el cliente cambia de pieza o reemplaza el fondo, el diseño de artista
+  // deja de aplicarse: se saca su arte (nunca queda sobre otra pieza sin cobrarse).
+  React.useEffect(() => {
+    if (!artistDesignId || artistApplied) return;
+    const d = getArtistDesign(artistDesignId);
+    if (d && wrapDesign?.url === d.artwork.url) setWrapDesign(null);
+    setArtistDesignId(null);
+  }, [artistDesignId, artistApplied, wrapDesign, setWrapDesign]);
+  /** Copiar un diseño de artista (la pieza ya tiene que estar elegida). */
+  const applyArtistDesign = (d: ArtistDesign) => {
+    setTechnique("color");
+    if (d.colorId) handleSelectColor(d.colorId);
+    if (d.finish) setFinish(d.finish);
+    setWrapDesign({
+      url: d.artwork.url, width: d.artwork.width, height: d.artwork.height, mode: d.artwork.mode,
+      scale: 1, offsetU: 0, offsetV: 0, logos: [],
+    });
+    setArtistDesignId(d.id);
+  };
   const wrapPrintSize = React.useMemo(
     () => (isDrinkware ? dacenPrintSize(productId, viewSize) : null),
     [isDrinkware, productId, viewSize],
@@ -3183,6 +3270,7 @@ export default function Customizer() {
   const handleSelectMaterial = (id: MaterialId) => {
     setMaterialId(id);
     setOdooTemplateId(null);
+    setOdooEdition(null);
     setGenericPick(false);
     track("customizer_material_select", { material: id });
     // La captura anterior pertenece a otro producto: nunca ofrecer descargarla.
@@ -3233,6 +3321,7 @@ export default function Customizer() {
   const handleSelectMaterialProduct = (id: string) => {
     setMaterialProductId(id);
     setOdooTemplateId(null);
+    setOdooEdition(null);
     startColorPending.current = false;
     track("customizer_product_select", { material: materialId, product: id });
     // Ídem: la captura del producto anterior deja de ser válida.
@@ -3288,6 +3377,7 @@ export default function Customizer() {
           }
           setGenericPick(item ? item.odooId === null : false);
           setOdooTemplateId(item?.odooId ?? null);
+          setOdooEdition(null);
         }
       }
       setTechnique("color");
@@ -3318,7 +3408,7 @@ export default function Customizer() {
   // la tienda tal cual figura en el e-commerce; sin producto de la tienda (forma
   // genérica), el de la forma en minúscula.
   const productNoun = isDrinkware && odooProduct ? odooProduct.name : orderProductName.toLowerCase();
-  const productTheNoun = `${FEMININE_PRODUCTS.has(productNoun.toLowerCase()) ? "la" : "el"} ${productNoun}`;
+  const productTheNoun = `${isFeminineProduct(productNoun) ? "la" : "el"} ${productNoun}`;
   const orderTechniqueName = isDrinkware
     ? activeTechnique.name
     : materialId === "plastico" ? "Plotter de corte" : "Grabado láser";
@@ -3374,8 +3464,23 @@ export default function Customizer() {
       const q = effectiveTechnique === "laser"
         ? quote({ technique: "laser", plan: activePlan.id, catalog, piecePrice: piece, pieceLabel: orderProductLabel, ownProduct: isOwnProduct, extraTexts: extraTextCount })
         : quote({ technique: "color", machine: productionMachine, piecePrice: piece, pieceLabel: orderProductLabel, coverage: activeWrap ? "wrap" : undefined });
+      // Diseño de artista: precio fijo que se suma a pieza e impresión.
+      const art = activeArtist ? designPrice(activeArtist) : 0;
+      const artNote = activeArtist ? `diseño de ${getArtist(activeArtist.artistId)?.name ?? "artista"} ${formatGs(art)}` : "";
       if (q.total !== null) {
-        return { price: formatGs(q.total), note: q.note, total: q.breakdown.length > 1 };
+        return {
+          price: formatGs(q.total + art),
+          note: artNote ? `${q.note} + ${artNote}` : q.note,
+          total: q.breakdown.length > 1 || !!art,
+        };
+      }
+      if (activeArtist) {
+        return {
+          price: piece !== null ? formatGs(piece + art) : formatGs(art),
+          note: piece !== null
+            ? `${orderProductLabel} ${formatGs(piece)} + ${artNote}. La impresión se cotiza aparte`
+            : `${artNote.charAt(0).toUpperCase()}${artNote.slice(1)}. La pieza y la impresión se cotizan aparte`,
+        };
       }
       // Sin precio de impresión: se muestra el de la pieza, si lo hay.
       return { price: piece !== null ? formatGs(piece) : null, note: q.note };
@@ -3408,7 +3513,8 @@ export default function Customizer() {
     if (selectedIcon) rows.push(["Ícono", selectedIcon.name]);
     else if (customImage) rows.push(["Logo/foto adjunta", "Sí"]);
     if (hasArt && isDrinkware && (FREE_PLACEMENT ? faceAtU(artPlacement.u) : artFace) !== "front") rows.push([selectedIcon ? "Ubicación del ícono" : "Ubicación de la imagen", where(artPlacement, artFace)]);
-    if (activeWrap) rows.push(["Diseño", `Todo el vaso (360°) · ${WRAP_MODES.find(m => m.id === activeWrap.mode)?.label ?? activeWrap.mode}`]);
+    if (activeArtist) rows.push(["Diseño de artista", `${activeArtist.title} · ${getArtist(activeArtist.artistId)?.name ?? activeArtist.artistId} (${formatGs(designPrice(activeArtist))})`]);
+    else if (activeWrap) rows.push(["Diseño", `Todo el vaso (360°) · ${WRAP_MODES.find(m => m.id === activeWrap.mode)?.label ?? activeWrap.mode}`]);
     if (activeWrap?.logos?.length) rows.push(["Logos sobre el fondo", String(activeWrap.logos.length)]);
     if (extraLidText !== null) rows.push(["Grabado en tapa", extraLidText || "Sí (texto a definir)"]);
     if (extraBaseText !== null) rows.push(["Grabado en base", extraBaseText || "Sí (texto a definir)"]);
@@ -3473,6 +3579,16 @@ export default function Customizer() {
         odooVariantId: isOwnProduct ? null : odooVariant?.id ?? null,
         sku: isOwnProduct ? null : odooVariant?.sku ?? null,
         piecePrice: isOwnProduct ? null : odooVariant?.price ?? null,
+        // Diseño de artista: qué se cobra y cuánto le corresponde al artista
+        // (liquidación mensual). provisional: el taller pide el archivo plano.
+        ...(activeArtist ? {
+          artistDesign: {
+            id: activeArtist.id, title: activeArtist.title, artistId: activeArtist.artistId,
+            artistName: getArtist(activeArtist.artistId)?.name ?? activeArtist.artistId,
+            price: designPrice(activeArtist), artistFee: designArtistFee(activeArtist),
+            provisional: !!activeArtist.provisional,
+          },
+        } : {}),
         // Todo el vaso (360°): el fondo ya va dibujado en el archivo de la Dacen;
         // acá quedan el modo y la resolución para el panel (sin la imagen).
         ...(activeWrap ? {
@@ -3836,7 +3952,32 @@ export default function Customizer() {
     </div>
   );
 
-  const renderDrinkSize = () => odooMode ? renderOdooSize() : product.sizes.length > 1 && (
+  /** Edición de club o selección: solo si el producto tiene alguna con stock. */
+  const renderOdooEdition = () => odooEditions.length > 1 && odooFullProduct && (
+    <div>
+      <Label className="text-sm font-medium text-foreground mb-3 block">Edición</Label>
+      <div className="flex flex-wrap gap-2">
+        {odooEditions.map(club => {
+          const active = activeEdition === club;
+          const sellable = odooFullProduct.variants.some(v => (v.club ?? null) === club && v.inStock);
+          return (
+            <button
+              key={club ?? "lisa"}
+              type="button"
+              onClick={() => selectOdooEdition(club)}
+              disabled={!sellable}
+              aria-pressed={active}
+              className={`min-h-11 px-3 py-2 border rounded-xl text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${active ? activeCard : idleCard}`}
+            >
+              {club ?? "Lisa"}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderDrinkSize = () => odooMode ? <>{renderOdooEdition()}{renderOdooSize()}</> : product.sizes.length > 1 && (
     <div>
       <Label className="text-sm font-medium text-foreground mb-3 block">
         Tamaño {productArticle(productNoun)} {productNoun}
@@ -4052,6 +4193,38 @@ export default function Customizer() {
     </>
   );
 
+  /** Diseño de artista copiado: qué es, cuánto suma y cómo sacarlo. */
+  const renderArtistBanner = () => {
+    const d = activeArtist ?? (artistApplied ? artistForPiece : null);
+    if (!d) return null;
+    const artistName = getArtist(d.artistId)?.name ?? "artista";
+    return (
+      <div role="note" className="mb-4 flex items-start gap-3 p-3 border rounded-xl border-primary/40 bg-primary/5">
+        <img src={d.imageSmall ?? d.image} alt="" width={56} height={56} className="w-14 h-14 rounded-lg object-cover shrink-0" />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">Diseño de {artistName} · {d.title}</p>
+          {activeArtist ? (
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              + {formatGs(designPrice(d))}. Lo producimos tal cual lo ves; podés sumarle tu nombre o un texto.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              El diseño va con impresión a color.{" "}
+              <button type="button" onClick={() => setTechnique("color")} className="text-primary font-medium underline">Volver al diseño</button>
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => { track("artist_design_remove", { design: d.id }); setWrapDesign(null); }}
+            className="mt-1.5 text-xs text-primary font-medium hover:underline"
+          >
+            Quitar diseño
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const renderDrinkTechnique = () => (
     <div>
       <Label className="text-sm font-medium mb-2 block">Técnica de grabado</Label>
@@ -4060,9 +4233,33 @@ export default function Customizer() {
           <TechniqueSelector value={effectiveTechnique} onChange={setTechnique} compact={isMobile} />
           {effectiveTechnique === "color" && (
             <p className="text-xs text-muted-foreground mt-2">
-              La impresión UV a todo color se cotiza por WhatsApp según el diseño.
+              {activeArtist
+                ? "Este diseño se imprime a color sobre la pieza; el costo de la impresión te lo pasamos por WhatsApp."
+                : "La impresión UV a todo color se cotiza por WhatsApp según el diseño."}
             </p>
           )}
+        </>
+      ) : colorConsult === "handle" ? (
+        <>
+          <TechniqueSelector value="laser" onChange={setTechnique} compact={isMobile} colorDisabled />
+          <div role="note" className="mt-3 flex items-start gap-2.5 p-3 border rounded-xl border-border bg-secondary/40">
+            <Info className="w-4 h-4 mt-0.5 text-primary shrink-0" />
+            <div>
+              <p className="text-sm font-semibold">¿Por qué este modelo no tiene impresión a color?</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Nuestra impresión UV (tanto la de 360° como la de relieve) se aplica
+                con la pieza girando sobre su eje. La manija impide ese giro y
+                cubre parte del cuerpo, por lo que no podemos garantizar un
+                resultado continuo y de calidad.
+              </p>
+              <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                Para este modelo trabajamos con <strong className="font-semibold text-foreground">grabado láser</strong>:
+                permanente, de alta definición y resistente al uso diario. Si
+                buscás un diseño a todo color, te recomendamos un modelo sin
+                manija en el cuerpo.
+              </p>
+            </div>
+          </div>
         </>
       ) : (
         <div className="flex items-start gap-2 p-3 border rounded-xl border-border bg-secondary/40">
@@ -4071,7 +4268,7 @@ export default function Customizer() {
             <p className="text-sm font-semibold">Grabado láser</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {colorConsult
-                ? <>La impresión UV a color se hace solo en piezas cilíndricas{colorConsult === "handle" ? " sin manija" : ""}. Para color en esta pieza, consultá en el local o por WhatsApp.</>
+                ? <>La impresión UV a color se hace solo en piezas cilíndricas. Para color en esta pieza, consultá en el local o por WhatsApp.</>
                 : <>Este producto solo admite grabado láser monocromático. La impresión UV a color
                   está reservada al drinkware de acero con pintura electrostática.</>}
             </p>
@@ -4084,11 +4281,12 @@ export default function Customizer() {
   /** Estado mínimo para el link del diseño (sin el logo subido: no entra en una URL). */
   const sharedDesignState = (): SharedDesign => ({
     v: 1, materialId, materialProductId, sizeId: size, colorId: color, customHex, finish,
-    odooTemplateId: odooProduct?.id ?? null, odooColor, odooSize,
+    odooTemplateId: odooProduct?.id ?? null, odooColor, odooSize, odooEdition: activeEdition,
     technique: effectiveTechnique, text, fontId: font, textColor, iconId, ownProduct,
     textPlacement, artPlacement,
     extraLid: extraEngraving ? extraLid : null, extraBase: extraEngraving ? extraBase : null,
     ...(hasText2 ? { text2, text2FontId: text2Font, text2Placement } : {}),
+    artistDesignId: activeArtist?.id ?? null,
   });
 
   const handleCopyLink = async () => {
@@ -4148,7 +4346,7 @@ export default function Customizer() {
               // Con Odoo, el precio real de la variante elegida.
               : odooVariant ? `Pieza ${formatGs(odooVariant.price)}` : "Te cotizamos la pieza",
           },
-          { own: true, title: material.pens ? "Traigo los míos" : "Traigo el mío", sub: "Solo el grabado" },
+          { own: true, title: material.pens ? "Traigo los míos" : isFeminineProduct(productNoun) ? "Traigo la mía" : "Traigo el mío", sub: "Solo el grabado" },
         ].map(o => {
           const active = ownProduct === o.own;
           return (
@@ -4333,6 +4531,7 @@ export default function Customizer() {
               fontStyle={activeFont.style}
               productId={productId}
               sizeId={viewSize}
+              modelColor={odooMode ? odooColor : null}
               customImageUrl={artUrl}
               imageSize={artImageSize}
               textPlacement={textPlacement}
@@ -4345,7 +4544,7 @@ export default function Customizer() {
               singleFace={singleFace}
               showGuides={false}
               frontFaceU={designFaceU}
-              hideLogo={designOnLogoSide || !!activeWrap}
+              hideLogo={designOnLogoSide || !!activeWrap || otherBrandPiece}
               glass={isGlass}
               onModelKeepOut={onModelKeepOut}
             />
@@ -4404,6 +4603,7 @@ export default function Customizer() {
       fontStyle={activeFont.style}
       productId={productId}
       sizeId={viewSize}
+      modelColor={odooMode ? odooColor : null}
       customImageUrl={artUrl}
       imageSize={artImageSize}
       textPlacement={textPlacement}
@@ -4418,7 +4618,7 @@ export default function Customizer() {
       showGuides={guidesActive}
       frontFaceU={designFaceU}
       guideFace={activeDesignKind === "art" ? artFace : activeDesignKind === "text2" ? text2Face : textFace}
-      hideLogo={designOnLogoSide || !!activeWrap}
+      hideLogo={designOnLogoSide || !!activeWrap || otherBrandPiece}
       glass={isGlass}
       designActive={designActive}
       onDesignMove={onDesignMoveUV}
@@ -4457,7 +4657,7 @@ export default function Customizer() {
         className="w-full min-h-12 flex items-center justify-between gap-3 rounded-xl border border-border px-4 py-2.5 text-left active:bg-secondary/50"
       >
         <span className="text-sm text-foreground leading-tight">
-          ¿Ya tenés tu {productNoun}? <span className="text-muted-foreground">Traelo y lo grabamos</span>
+          ¿Ya tenés tu {productNoun}? <span className="text-muted-foreground">{isFeminineProduct(productNoun) ? "Traela y la grabamos" : "Traelo y lo grabamos"}</span>
         </span>
         <span aria-hidden className={`shrink-0 w-10 h-6 rounded-full p-0.5 transition-colors ${ownProduct ? "bg-primary" : "bg-border"}`}>
           <span className={`block w-5 h-5 rounded-full bg-white shadow transition-transform ${ownProduct ? "translate-x-4" : ""}`} />
@@ -5371,6 +5571,8 @@ export default function Customizer() {
                 </div>
 
                 <div className="p-4 sm:p-5 min-h-[280px]">
+                  {/* Diseño de artista copiado: visible en todas las pestañas. */}
+                  {renderArtistBanner()}
                   {/* COLOR TAB (desktop editor; on mobile colour lives in Step 2 "Estilo") */}
                   {!isMobile && (
                   <TabsContent value="color" className="mt-0 space-y-5">

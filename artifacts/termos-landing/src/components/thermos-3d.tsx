@@ -3,7 +3,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, PerspectiveCamera, useGLTF } from "@react-three/drei";
 import { StudioLighting } from "./studio-lighting";
 import * as THREE from "three";
-import { getProduct, getSize, productForSize, resampledProfile, type ProductDef } from "@/lib/products";
+import { getProduct, getSize, productForColor, productForSize, resampledProfile, type ProductDef } from "@/lib/products";
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, bandRange, vForY, type FaceId, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
 import { makeBodyMaps, makeGlassEngraving, type EngraveStyle, type TextMark } from "@/lib/engraving-maps";
@@ -56,6 +56,8 @@ interface Thermos3DProps {
   fontStyle?: React.CSSProperties;
   productId: string;
   sizeId: string;
+  /** Color de la variante de Odoo: elige el .glb de ese color (model.colorModels). */
+  modelColor?: string | null;
   customImageUrl: string | null;
   imageSize: "none" | "small" | "large";
   textPlacement?: Placement;
@@ -260,6 +262,20 @@ const SETTLE_MS = 280;
 
 /** Velocidad del giro de "vidriera" al aparecer (rad/s). */
 const IDLE_SPIN_SPEED = 0.55;
+/**
+ * Inercia al soltar la pieza (rad/s, ver useFrame). La velocidad sale del
+ * promedio de los últimos VEL_WINDOW_MS de arrastre: con solo los dos últimos
+ * eventos, una ráfaga del celular (dos eventos a 1 ms) daba una velocidad
+ * enorme y la pieza saltaba ~120° en un cuadro ("se teletransportaba").
+ */
+const VEL_WINDOW_MS = 80;
+/** Quieto más que esto antes de soltar: sin inercia (la pieza queda donde está). */
+const VEL_STALE_MS = 60;
+/** Tope de giro por cuadro (rad, ≈ 20°) y de tiempo por cuadro (s). */
+const MAX_STEP_RAD = 0.35;
+const MAX_FRAME_S = 0.05;
+/** Frenado por segundo equivalente a ×0,90 por cuadro a 60 Hz. */
+const INERTIA_DECAY = Math.pow(0.9, 60);
 
 /** Celulares: menos píxeles y vidrio sin refracción real (ver lowPerf). */
 const LOW_PERF = (() => {
@@ -913,6 +929,19 @@ function ThermosMesh({
     return () => { cancelled = true; };
   }, [customImageUrl]);
 
+  // Estampado de fábrica del cuerpo (ej. el Vaso Guaraní): base de la textura.
+  const bodyPrintUrl = product.model?.bodyPrint ?? null;
+  const [bodyPrintEl, setBodyPrintEl] = useState<HTMLImageElement | null>(null);
+  useEffect(() => {
+    if (!bodyPrintUrl) { setBodyPrintEl(null); return; }
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => { if (!cancelled) setBodyPrintEl(img); };
+    img.onerror = () => { if (!cancelled) setBodyPrintEl(null); };
+    img.src = bodyPrintUrl;
+    return () => { cancelled = true; };
+  }, [bodyPrintUrl]);
+
   // Fondo 360°: la imagen se carga una vez; modo, zoom y corrimiento solo
   // rearman la textura.
   const wrapUrl = colorPrint ? wrap?.url ?? null : null;
@@ -963,7 +992,7 @@ function ThermosMesh({
     const base = { roughness: 0.35, metalness: 0.15, clearcoat: 0.8, clearcoatRoughness: 0.15 };
     if (finish === "matte") {
       // Hoppie, chopera y vaso con manija llevan powder-coat real: mate con cuerpo, no tiza.
-      if (product.id === "hoppie" || product.id === "botella-ancha" || product.id === "chopera" || product.id === "vaso-manija" || product.id === "vaso-hydrate" || product.id === "vaso-sunbeam" || product.id === "termo-mate" || product.id === "termo-mate-forge" || product.id === "termo-kids" || product.id === "hoppie-hydrate" || product.id === "copa-hydrate" || product.id === "vaso-espresso" || product.id === "taza-manija" || product.id === "mini-coffee" || product.id === "vaso-taza" || product.id === "coffee-cup" || product.id === "vaso-shaker" || product.id === "vaso-whisky" || product.id === "vaso-cafe" || product.id === "growler" || product.id === "ice-bucket" || product.id === "guampa")
+      if (product.id === "hoppie" || product.id === "botella-ancha" || product.id === "chopera" || product.id === "vaso-manija" || product.id === "vaso-hydrate" || product.id === "vaso-sunbeam" || product.id === "termo-mate" || product.id === "termo-mate-forge" || product.id === "termo-kids" || product.id === "hoppie-hydrate" || product.id === "copa-hydrate" || product.id === "vaso-espresso" || product.id === "taza-manija" || product.id === "mini-coffee" || product.id === "vaso-taza" || product.id === "coffee-cup" || product.id === "vaso-shaker" || product.id === "vaso-whisky" || product.id === "vaso-cafe" || product.id === "growler" || product.id === "ice-bucket" || product.id === "guampa" || product.id === "vaso-guarani" || product.id === "vaso-quencher" || product.id === "vaso-flip" || product.id === "vaso-protour" || product.id === "taza-manija-palmeiras" || product.id === "vaso-luqueno" || product.id === "vaso-olimpia" || product.id === "vaso-manija-cerro" || product.id === "vaso-manija-luqueno" || product.id === "vaso-taza-river" || product.id === "vaso-taza-palmeiras")
         return { ...base, roughness: 0.6, metalness: 0.1, clearcoat: 0.06, clearcoatRoughness: 0.7 };
       return { ...base, roughness: 0.88, metalness: 0.0, clearcoat: 0.0, clearcoatRoughness: 0.8 };
     }
@@ -1014,10 +1043,11 @@ function ThermosMesh({
       text: dText, textPlacement: dTextPlacement, fontFamily, extraTexts: dExtraTexts, artMask, imageSize, artPlacement: dArtPlacement,
       anisotropy: maxAnisotropy, colorPrint, textColor, artImage: customImageEl, engraveStyle, singleFace,
       quality: settled ? "full" : "draft", wrap: colorPrint ? wrapLayer : null,
+      bodyPrint: bodyPrintUrl ? bodyPrintEl : null,
     }),
     // fontReady triggers re-creation once the font is actually loaded
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [glass, product, colorHex, matProps, finish, dText, dTextPlacement, dExtraTexts, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, textColor, customImageEl, engraveStyle, singleFace, settled, wrapLayer]
+    [glass, product, colorHex, matProps, finish, dText, dTextPlacement, dExtraTexts, fontFamily, fontReady, artMask, imageSize, dArtPlacement, maxAnisotropy, colorPrint, textColor, customImageEl, engraveStyle, singleFace, settled, wrapLayer, bodyPrintUrl, bodyPrintEl]
   );
 
   // Four textures per rebuild, now coalesced to the settled input via useDeferredValue.
@@ -1091,6 +1121,7 @@ function ThermosMesh({
       velYaw.current = 0;
       spinLeft.current = 0;
       velPitch.current = 0;
+      samples.length = 0;
       lastX.current = e.clientX;
       lastY.current = e.clientY;
       lastTime.current = performance.now();
@@ -1102,6 +1133,19 @@ function ThermosMesh({
     };
     let rotGain = 0.008;
     let allowPitch = true;
+    /** Movimientos recientes del arrastre (para la velocidad al soltar). */
+    const samples: { t: number; dx: number; dy: number }[] = [];
+    /** Velocidad de giro (rad/s) de los últimos VEL_WINDOW_MS; 0 si estuvo quieto. */
+    const releaseVelocity = () => {
+      const now = performance.now();
+      const last = samples[samples.length - 1];
+      if (!last || now - last.t > VEL_STALE_MS) return { yaw: 0, pitch: 0 };
+      const recent = samples.filter(s => now - s.t <= VEL_WINDOW_MS);
+      const span = Math.max(16, now - recent[0].t + 16);
+      const sx = recent.reduce((a, s) => a + s.dx, 0);
+      const sy = recent.reduce((a, s) => a + s.dy, 0);
+      return { yaw: (sx / span) * 1000 * rotGain, pitch: allowPitch ? (sy / span) * 1000 * rotGain : 0 };
+    };
     /** El dedo se apoyó sobre el diseño en edición (lo mueve en vez de girar). */
     let touchOnDesign = false;
 
@@ -1159,7 +1203,6 @@ function ThermosMesh({
         return;
       }
       const now = performance.now();
-      const dt = Math.max(1, now - lastTime.current);
       const dx = e.clientX - lastX.current;
       const dy = e.clientY - lastY.current;
       lastX.current = e.clientX;
@@ -1181,8 +1224,8 @@ function ThermosMesh({
         if (!moveRaf) moveRaf = requestAnimationFrame(() => { moveRaf = 0; flushMove(); });
         return;
       }
-      velYaw.current   = dx / dt * 16;
-      velPitch.current = allowPitch ? dy / dt * 16 : 0;
+      samples.push({ t: now, dx, dy });
+      while (samples.length && now - samples[0].t > VEL_WINDOW_MS) samples.shift();
       if (groupRef.current) {
         groupRef.current.rotation.y += dx * rotGain;
         if (allowPitch) {
@@ -1215,6 +1258,12 @@ function ThermosMesh({
       const wasDesign = isDragging.current && dragMode.current === "design" && designMoving;
       flushMove();
       if (wasDesign) designRef.current.onDesignDragEnd?.();
+      if (isDragging.current && dragMode.current === "rotate") {
+        const v = releaseVelocity();
+        velYaw.current = v.yaw;
+        velPitch.current = v.pitch;
+      }
+      samples.length = 0;
       const tap = !pinched && !!down && e.type === "pointerup" && e.pointerId === down.id
         && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8
         && performance.now() - down.t < 500;
@@ -1447,15 +1496,24 @@ function ThermosMesh({
     // it calmly (still draggable). Single-face mode also freezes, keeping the
     // front face pointed at the camera.
     const hasContent = editSingleFace || !!text || (!!customImageUrl && imageSize !== "none") || !!wrapUrl;
-    const hasYawInertia   = Math.abs(velYaw.current) > 0.001;
-    const hasPitchInertia = Math.abs(velPitch.current) > 0.001;
+    // Inercia en rad/s, con tope de tiempo por cuadro: con frameloop="demand"
+    // el primer cuadro tras una pausa puede medir la pausa entera.
+    const dt = Math.min(delta, MAX_FRAME_S);
+    const decay = Math.pow(INERTIA_DECAY, dt);
+    const hasYawInertia   = Math.abs(velYaw.current) > 0.02;
+    const hasPitchInertia = Math.abs(velPitch.current) > 0.02;
 
     // Al aparecer la pieza (sin diseño todavía) se ve el frente de la marca,
     // aunque la edición en una cara la haya girado hacia la cara de grabado:
     // al seleccionar el diseño, el customizer la vuelve a girar hacia ella.
     if (spinFromLogo.current) {
       spinFromLogo.current = false;
-      if (!text && !(customImageUrl && imageSize !== "none")) {
+      // Con fondo 360° (ej. un diseño de artista copiado) se ve su frente.
+      if (wrapUrl) {
+        groupRef.current.rotation.y = -frontFaceU * Math.PI * 2;
+        groupRef.current.rotation.x = 0;
+        animating = true;
+      } else if (!text && !(customImageUrl && imageSize !== "none")) {
         groupRef.current.rotation.y = 0;
         groupRef.current.rotation.x = 0;
         animating = true;
@@ -1465,8 +1523,9 @@ function ThermosMesh({
     if (hasContent) spinLeft.current = 0;
 
     if (hasYawInertia) {
-      groupRef.current.rotation.y += velYaw.current * delta;
-      velYaw.current *= 0.90;
+      const step = velYaw.current * dt;
+      groupRef.current.rotation.y += Math.max(-MAX_STEP_RAD, Math.min(MAX_STEP_RAD, step));
+      velYaw.current *= decay;
       spinLeft.current = 0;
       animating = true;
     } else {
@@ -1480,9 +1539,10 @@ function ThermosMesh({
     }
 
     if (hasPitchInertia) {
-      const newPitch = groupRef.current.rotation.x + velPitch.current * delta;
+      const step = Math.max(-MAX_STEP_RAD, Math.min(MAX_STEP_RAD, velPitch.current * dt));
+      const newPitch = groupRef.current.rotation.x + step;
       groupRef.current.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, newPitch));
-      velPitch.current *= 0.90;
+      velPitch.current *= decay;
       animating = true;
     } else {
       velPitch.current = 0;
@@ -1963,6 +2023,11 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
   const { shadowY } = fitCamera(sil);
   const setShadowMovingRef = useRef<((moving: boolean) => void) | null>(null);
   const onMotionChange = useCallback((moving: boolean) => setShadowMovingRef.current?.(moving), []);
+  // Al desmontar (cambio de producto) R3F llama forceContextLoss() sobre el canvas
+  // viejo, que dispara "webglcontextlost" y nunca "restored": sin quitar los
+  // listeners, el aviso "Restaurando vista 3D…" quedaba fijo sobre el canvas nuevo.
+  const detachRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => detachRef.current?.(), []);
   return (
     <Canvas
       // Cap the pixel ratio so high-DPI phones don't render 3–4× the pixels of a
@@ -1982,8 +2047,14 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
       // placeholder while lost and force a re-render once the context is back.
       onCreated={({ gl, invalidate }) => {
         const canvas = gl.domElement;
-        canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); onContextLost?.(); }, false);
-        canvas.addEventListener("webglcontextrestored", () => { onContextRestored?.(); invalidate(); }, false);
+        const lost = (e: Event) => { e.preventDefault(); onContextLost?.(); };
+        const restored = () => { onContextRestored?.(); invalidate(); };
+        canvas.addEventListener("webglcontextlost", lost, false);
+        canvas.addEventListener("webglcontextrestored", restored, false);
+        detachRef.current = () => {
+          canvas.removeEventListener("webglcontextlost", lost, false);
+          canvas.removeEventListener("webglcontextrestored", restored, false);
+        };
       }}
       // none: todo gesto sobre el producto es del visor (girar en cualquier
       // dirección, inclinar para ver la base, mover el diseño). La página se
@@ -2068,7 +2139,7 @@ function ThreeCanvas({ product, sil, onContextLost, onContextRestored, ...props 
 }
 
 export default function Thermos3D(props: Thermos3DProps) {
-  const product = productForSize(getProduct(props.productId), props.sizeId);
+  const product = productForColor(productForSize(getProduct(props.productId), props.sizeId), props.modelColor);
   const sil = useMemo(
     () => buildSilhouette(product, getSize(product, props.sizeId).scale),
     [product, props.sizeId]
@@ -2090,6 +2161,16 @@ export default function Thermos3D(props: Thermos3DProps) {
 
   const [webgl] = useState(() => isWebGLAvailable());
   const [contextLost, setContextLost] = useState(false);
+  // Si el navegador no devuelve el contexto (GPU sin memoria, demasiados
+  // contextos), se monta un canvas nuevo en vez de dejar el aviso para siempre.
+  const [canvasGen, setCanvasGen] = useState(0);
+  const viewKey = product.model?.url ?? props.productId;
+  useEffect(() => setContextLost(false), [viewKey]);
+  useEffect(() => {
+    if (!contextLost) return;
+    const t = setTimeout(() => { setContextLost(false); setCanvasGen(g => g + 1); }, 3000);
+    return () => clearTimeout(t);
+  }, [contextLost]);
   if (!webgl) return fallback;
 
   return (
@@ -2102,6 +2183,7 @@ export default function Thermos3D(props: Thermos3DProps) {
     >
       <div className="relative w-full h-full">
         <ThreeCanvas
+          key={canvasGen}
           {...props}
           product={product}
           sil={sil}
