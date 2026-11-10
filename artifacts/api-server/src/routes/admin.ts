@@ -15,6 +15,7 @@ import { MACHINE_LABELS, isMachineId, orderMachine } from "@workspace/print-spec
 import { OdooClient, odooConfig } from "../lib/odoo";
 import { readOrder, readSignature, sendQuotation, cancelQuotation, stampApprovedVersion, attachProof, readServices } from "../lib/odoo-checkout";
 import { designHash } from "../lib/design-hash";
+import { linesFor } from "../lib/checkout-verdict";
 import { designArtistFee, getArtistDesignById, getArtist } from "@workspace/print-specs";
 import { applyOdooPayment, paymentStateOf } from "./odoo-webhook";
 
@@ -86,6 +87,8 @@ router.get("/api/admin/orders", async (req, res) => {
           // La versión actual coincide con la aprobada (si cambió, es una versión nueva sin aprobar).
           approvedCurrent: r.approvedHash ? r.approvedHash === designHash(designState) : null,
           artistDesign: (ds.artistDesign as Record<string, unknown> | undefined) ?? null,
+          // Servicios que el taller puede tener que cotizar al aprobar.
+          serviceCodes: (() => { const l = linesFor(ds); return [l.colorCode, l.artistCode].filter(Boolean); })(),
           size: str(ds.sizeLabel) ?? str(ds.sizeId),
           ownProduct: ds.ownProduct === true,
           estimate: str(ds.engravingEstimate),
@@ -433,6 +436,14 @@ const ADMIN_HTML = `<!DOCTYPE html>
   .tag.machine { background:#eef1f5; color:#33404f; }
   .tag.pago { background:#fff4e5; color:#8a4b00; }
   .tag.pago.pagado { background:#e6f4ea; color:#1e6b3a; }
+  .tag.pago.sinfirma, .tag.alerta { background:#fde8e8; color:#9b1c1c; }
+  .tag.revision { background:#fff4e5; color:#8a4b00; }
+  .review { margin-top:8px; padding:8px 10px; border:1px solid #f1d9b5; background:#fffaf2; border-radius:10px; font-size:13px; }
+  .review ul { margin:4px 0 0 18px; padding:0; }
+  .warn { margin-top:6px; font-size:13px; color:#9b1c1c; }
+  table.liq { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; font-size:14px; }
+  table.liq th, table.liq td { padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; }
+  table.liq td.n { text-align:right; font-variant-numeric:tabular-nums; }
   .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:6px; background:#f5eaec; color:var(--brand); margin-left:6px; }
   .meta { color:var(--muted); font-size:13px; margin-top:2px; }
   .text { font-size:13px; margin-top:4px; }
@@ -494,6 +505,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" id="tabOrders" aria-selected="true">Pedidos</button>
       <button class="tab" role="tab" id="tabProducts" aria-selected="false">Productos</button>
+      <button class="tab" role="tab" id="tabArtists" aria-selected="false">Liquidación de artistas</button>
     </div>
     <div id="ordersView">
       <div class="tools">
@@ -506,6 +518,14 @@ const ADMIN_HTML = `<!DOCTYPE html>
         <button class="chip" type="button" data-machine="eufy">eufyMake E1</button>
       </div>
       <div id="list"></div>
+    </div>
+    <div id="artistsView" style="display:none">
+      <p class="note">Pedidos <b>pagados</b> (con la prueba firmada) del mes con diseño de artista. Gs. 10.000 por copia, salvo que el diseño diga otro honorario.</p>
+      <div class="chips">
+        <input id="liqMonth" type="month" style="min-height:40px;padding:6px 10px;border:1px solid var(--line);border-radius:10px">
+        <a class="btn" id="liqCsv" href="#">Descargar CSV</a>
+      </div>
+      <div id="liqList"></div>
     </div>
     <div id="productsView" style="display:none">
       <p class="note">Los productos deshabilitados no aparecen en el personalizador de la tienda. El cambio puede tardar hasta 2 minutos en verse.</p>
@@ -567,7 +587,11 @@ const ADMIN_HTML = `<!DOCTYPE html>
 
   function render(filter) {
     var q = (filter || "").toLowerCase();
-    var rows = orders.filter(function (o) {
+    var rows = orders.slice().sort(function (a, b) {
+      // Arriba lo que espera al taller: en revisión y pagos sin firma.
+      var w = function (o) { return o.reviewState === "en_revision" || o.odooPaymentState === "pago_sin_firma" ? 0 : 1; };
+      return w(a) - w(b);
+    }).filter(function (o) {
       if (!q) return true;
       return [o.orderNumber, o.status, o.product, o.size, o.material, o.technique, o.customText, o.font, o.iconName]
         .join(" ").toLowerCase().indexOf(q) >= 0;
@@ -590,9 +614,11 @@ const ADMIN_HTML = `<!DOCTYPE html>
       if (o.iconName) extra.push("Ícono: " + esc(o.iconName));
       if (o.hasUploadedImage) extra.push("Logo/foto adjunta");
       if (o.estimate) extra.push("Precio estimado: " + esc(o.estimate));
+      var PAY = { pagado: ["pagado", "Pagado"], pago_sin_firma: ["sinfirma", "Pago sin aceptación: revisar"] };
+      var pay = PAY[o.odooPaymentState] || ["", "Pendiente de pago"];
       var odooTag = o.odooOrderName
-        ? '<span class="tag pago ' + (o.odooPaymentState === "pagado" ? "pagado" : "") + '">Odoo ' + esc(o.odooOrderName) +
-          " · " + (o.odooPaymentState === "pagado" ? "Pagado" : "Pendiente de pago") +
+        ? '<span class="tag pago ' + pay[0] + '">Odoo ' + esc(o.odooOrderName) +
+          " · " + pay[1] +
           (o.odooTotal ? " · Gs. " + Number(o.odooTotal).toLocaleString("es-PY") : "") + "</span>"
         : "";
       var refreshBtn = o.odooOrderName
@@ -617,16 +643,37 @@ const ADMIN_HTML = `<!DOCTYPE html>
         ? '<a class="btn" href="' + imgUrl + '" download="' +
           esc(o.orderNumber) + '-preview.jpg">Imagen preview</a>'
         : "";
+      var REVIEW = { en_revision: "En revisión", aprobado: "Aprobado", requiere_cambios: "Requiere cambios" };
+      var reviewTag = o.reviewState ? '<span class="tag revision">' + REVIEW[o.reviewState] + "</span>" : "";
+      var reasons = (o.verdictReasons || []).map(function (r) { return "<li>" + esc(r.message) + "</li>"; }).join("");
+      var review = "";
+      if (o.verdict) {
+        review = '<div class="review"><b>Veredicto: ' + esc(o.verdict) + "</b>" + (reasons ? "<ul>" + reasons + "</ul>" : "") +
+          (o.reviewNote ? '<div class="meta">Cambios pedidos: ' + esc(o.reviewNote) + "</div>" : "") +
+          (o.approvedHash ? '<div class="meta">Versión aprobada (' + esc(o.approvedBy || "") + (o.approvedAt ? ", " + fmtDate(o.approvedAt) : "") + "): " + esc(o.approvedHash.slice(0, 12)) + "…</div>" : "") +
+          "</div>";
+      }
+      if (o.approvedCurrent === false) review += '<div class="warn">El diseño cambió después de aprobarse: es una versión nueva sin aprobar. Producí la versión aprobada.</div>';
+      if (o.odooPaymentState === "pago_sin_firma") review += '<div class="warn">Pagó sin firmar la prueba: no producir hasta confirmar con el cliente.</div>';
+      var ad = o.artistDesign;
+      if (ad) {
+        review += '<div class="meta">Diseño de artista: ' + esc(ad.title || ad.id) + " · " + esc(ad.artistName || ad.artistId || "") + "</div>" +
+          (ad.provisional ? '<div class="warn">Falta el archivo plano del artista: no producir hasta tenerlo.</div>' : "");
+      }
+      var reviewBtns = o.reviewState === "en_revision"
+        ? '<button type="button" class="btn primary approve" data-order="' + esc(o.orderNumber) + '">Aprobar y enviar presupuesto</button>' +
+          '<button type="button" class="btn reject" data-order="' + esc(o.orderNumber) + '">Pedir cambios</button>'
+        : "";
       return '<div class="card">' + img +
         '<div><span class="num">' + esc(o.orderNumber) + '</span>' +
         '<span class="badge ' + esc(o.status) + '">' + esc(o.status).replace("_", " ") + "</span>" +
         '<span class="tag machine">' + esc(o.machineLabel || "") + "</span>" +
-        (o.ownProduct ? '<span class="tag">Trae su producto</span>' : "") + odooTag +
+        (o.ownProduct ? '<span class="tag">Trae su producto</span>' : "") + odooTag + reviewTag +
         '<div class="meta">' + esc(o.product) + " — " + detalles + "</div>" +
         '<div class="meta">' + fmtDate(o.createdAt) + "</div>" +
-        (extra.length ? '<div class="text">' + extra.join(" · ") + "</div>" : "") +
+        (extra.length ? '<div class="text">' + extra.join(" · ") + "</div>" : "") + review +
         "</div>" +
-        '<div class="actions">' + statusSelect(o) + svgBtn + imgBtn + refreshBtn + "</div>" +
+        '<div class="actions">' + reviewBtns + statusSelect(o) + svgBtn + imgBtn + refreshBtn + "</div>" +
         "</div>";
     }).join("");
   }
@@ -656,6 +703,45 @@ const ADMIN_HTML = `<!DOCTYPE html>
         btn.disabled = false; btn.textContent = "Actualizar pago";
         alert("No se pudo actualizar: " + err.message);
       });
+  });
+
+  // «Aprobar y enviar presupuesto» / «Pedir cambios» (revisión del taller).
+  function post(url, body) {
+    return fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-internal-key": key() }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.message || ("http " + r.status)); return j; }); });
+  }
+  list.addEventListener("click", function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest("button.approve, button.reject") : null;
+    if (!btn) return;
+    var num = btn.getAttribute("data-order");
+    var order = orders.filter(function (o) { return o.orderNumber === num; })[0];
+    if (!order) return;
+    var base = "/api/admin/orders/" + encodeURIComponent(num);
+    var done = function () { load().catch(function () {}); };
+    var fail = function (err) { btn.disabled = false; alert("No se pudo: " + err.message); };
+    if (btn.classList.contains("reject")) {
+      var reason = prompt("¿Qué tiene que cambiar el cliente? (se cancela el presupuesto)");
+      if (!reason) return;
+      btn.disabled = true;
+      post(base + "/reject", { reason: reason }).then(done, fail);
+      return;
+    }
+    var who = prompt("¿Quién aprueba? (queda registrado)");
+    if (!who) return;
+    var unpriced = (order.verdictReasons || []).some(function (r) { return r.code.indexOf("unpriced:") === 0; });
+    var prices = [];
+    if (unpriced) {
+      for (var i = 0; i < (order.serviceCodes || []).length; i++) {
+        var code = order.serviceCodes[i];
+        var v = prompt("Precio de " + code + " en Gs. (vacío si ya lo cargaste en Odoo)");
+        if (v === null) return;
+        var n = Number(String(v).replace(/[^0-9]/g, ""));
+        if (n > 0) prices.push({ code: code, price: n });
+      }
+    }
+    if (!confirm("Se envía el presupuesto al cliente para firmar y pagar. ¿Seguir?")) return;
+    btn.disabled = true; btn.textContent = "Enviando…";
+    post(base + "/approve", { approvedBy: who, servicePrices: prices }).then(done, fail);
   });
 
   // Cambio de estado: PATCH y, si falla, vuelve el select a su valor previo.
@@ -801,19 +887,46 @@ const ADMIN_HTML = `<!DOCTYPE html>
     });
   });
 
+  // ── Liquidación de artistas ────────────────────────────────────────────────
+  var liqMonth = document.getElementById("liqMonth");
+  liqMonth.value = new Date().toISOString().slice(0, 7);
+  function loadArtists() {
+    var m = liqMonth.value;
+    document.getElementById("liqCsv").href = "/api/admin/artists/settlement?format=csv&month=" + encodeURIComponent(m) + "&key=" + encodeURIComponent(key());
+    var box = document.getElementById("liqList");
+    box.innerHTML = '<div class="empty-state">Cargando…</div>';
+    fetch("/api/admin/artists/settlement?month=" + encodeURIComponent(m), { headers: { "x-internal-key": key() } })
+      .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+      .then(function (j) {
+        if (!j.artists.length) { box.innerHTML = '<div class="empty-state">Sin copias pagadas en ' + esc(j.month) + ".</div>"; return; }
+        var gs = function (n) { return "Gs. " + Number(n).toLocaleString("es-PY"); };
+        box.innerHTML = '<table class="liq"><thead><tr><th>Artista</th><th>Copias</th><th>Honorario</th><th>Pedidos</th></tr></thead><tbody>' +
+          j.artists.map(function (a) {
+            return "<tr><td>" + esc(a.artistName) + '</td><td class="n">' + a.copies + '</td><td class="n">' + gs(a.fee) + "</td><td>" + esc(a.orders.join(", ")) + "</td></tr>";
+          }).join("") +
+          '<tr><td><b>Total</b></td><td></td><td class="n"><b>' + gs(j.total) + "</b></td><td></td></tr></tbody></table>";
+      }).catch(function () { box.innerHTML = '<div class="empty-state">No se pudo cargar la liquidación.</div>'; });
+  }
+  liqMonth.addEventListener("change", loadArtists);
+
   function showView(v) {
     view = v;
+    var TITLES = { orders: "Pedidos", products: "Productos", artists: "Liquidación de artistas" };
     document.getElementById("tabOrders").setAttribute("aria-selected", String(v === "orders"));
     document.getElementById("tabProducts").setAttribute("aria-selected", String(v === "products"));
+    document.getElementById("tabArtists").setAttribute("aria-selected", String(v === "artists"));
     document.getElementById("ordersView").style.display = v === "orders" ? "block" : "none";
     document.getElementById("productsView").style.display = v === "products" ? "block" : "none";
-    document.getElementById("title").textContent = v === "orders" ? "Pedidos" : "Productos";
+    document.getElementById("artistsView").style.display = v === "artists" ? "block" : "none";
+    document.getElementById("title").textContent = TITLES[v];
     if (v === "orders") render(document.getElementById("search").value);
+    else if (v === "artists") loadArtists();
     else if (productsInfo) renderProducts(document.getElementById("productSearch").value);
     else loadProducts();
   }
   document.getElementById("tabOrders").addEventListener("click", function () { showView("orders"); });
   document.getElementById("tabProducts").addEventListener("click", function () { showView("products"); });
+  document.getElementById("tabArtists").addEventListener("click", function () { showView("artists"); });
   document.getElementById("productSearch").addEventListener("input", function (e) { renderProducts(e.target.value); });
 
   // Sesión previa en esta pestaña: entrar directo.
