@@ -76,7 +76,7 @@ import { ENGRAVING_ICONS, iconToDataUrl } from "@/lib/engraving-icons";
 import { ADDRESS, whatsappUrl } from "@/lib/contact";
 import { clearSharedDesign, designLink, readSharedDesign, type SharedDesign } from "@/lib/design-link";
 import { onDesignPreset } from "@/lib/design-preset";
-import { designArtistFee, designPrice, getArtist, getArtistDesign, type ArtistDesign } from "@workspace/print-specs";
+import { ARTIST_DESIGNS, ARTIST_DESIGNS_ENABLED, designArtistFee, designPrice, getArtist, getArtistDesign, type ArtistDesign } from "@workspace/print-specs";
 import { CUSTOMIZER_MODE_EVENT, CUSTOMIZER_START_EVENT, takeCustomizerMode, takeStartIntent, type StartIntent } from "@/lib/section-reveal";
 import { machineFor, normalizeTechnique } from "@workspace/print-specs";
 import { feasibility, fitsDacen, printSpecFor, type FeasibilityResult } from "@workspace/print-specs";
@@ -4319,6 +4319,37 @@ export default function Customizer() {
     );
   };
 
+  /**
+   * «Recomendados»: diseños de artistas aprobados para ESTA pieza (los demás
+   * no se ofrecen). «Copiar diseño» lo aplica como desde la sección de la home.
+   */
+  const recommended = ARTIST_DESIGNS_ENABLED && isDrinkware
+    ? ARTIST_DESIGNS.filter(d => d.materialId === materialId && d.materialProductId === materialProductId)
+    : [];
+  const renderRecommended = () => !recommended.length || activeArtist ? null : (
+    <div className="mt-5" data-testid="recommended">
+      <Label className="text-sm font-medium text-foreground mb-2 block">Recomendados</Label>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {recommended.map(d => (
+          <div key={d.id} className="flex items-center gap-3 p-3 border rounded-xl border-border bg-white">
+            <img src={d.imageSmall ?? d.image} alt="" width={56} height={56} loading="lazy" className="w-14 h-14 rounded-lg object-cover shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold leading-tight">{d.title}</p>
+              <p className="text-xs text-muted-foreground">{getArtist(d.artistId)?.name ?? d.artistId} · + {formatGs(designPrice(d))}</p>
+              <button
+                type="button"
+                onClick={() => { track("artist_design_copy", { design: d.id, artist: d.artistId, source: "customizer" }); applyArtistDesign(d); }}
+                className="mt-1 text-xs text-primary font-medium hover:underline"
+              >
+                Copiar diseño
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   const renderDrinkTechnique = () => (
     <div>
       <Label className="text-sm font-medium mb-2 block">Técnica de grabado</Label>
@@ -5491,6 +5522,7 @@ export default function Customizer() {
                   {/* El color se elige en Diseño, sobre la pieza grande. */}
                   {renderDrinkSize()}
                   {renderDrinkTechnique()}
+                  {renderRecommended()}
                   {renderOwnProductLine()}
                   {renderPieceSummaryLine()}
                 </>
@@ -5767,6 +5799,7 @@ export default function Customizer() {
                           el diseño queda monocromático. */}
                       {/* En el celular la técnica se elige en "Tu pieza". */}
                       {!isMobile && renderDrinkTechnique()}
+                      {!isMobile && renderRecommended()}
                       {isColorPrint && (
                         <TextColorPicker value={textColor} onChange={setTextColor} />
                       )}
