@@ -3,7 +3,7 @@ import DeferUntilVisible from "@/components/defer-until-visible";
 import { hasSharedDesign } from "@/lib/design-link";
 import { scrollToSection } from "@/lib/section-reveal";
 import { ARTIST_DESIGNS_ENABLED } from "@workspace/print-specs";
-import { isOdooEmbed } from "@/lib/embed";
+import { isOdooEmbed, storeVariantId } from "@/lib/embed";
 
 // Everything below the hero is loaded on demand. The hero is the only
 // above-the-fold section: it is pre-rendered into index.html and hydrated from
@@ -54,10 +54,11 @@ function LazySection({ minH, children }: { minH: string; children: React.ReactNo
 }
 
 export default function Home() {
-  // Link de diseño compartido (#diseno=…): bajar directo al personalizador. El
-  // scroll dispara la carga diferida y el Customizer aplica el diseño al montar.
+  // Link de diseño compartido (#diseno=…) o respaldo sin iframe de la tienda
+  // (?odoo=<variante>): bajar directo al personalizador. El scroll dispara la
+  // carga diferida y el Customizer aplica el diseño o fija la pieza al montar.
   useEffect(() => {
-    if (!hasSharedDesign()) return;
+    if (!hasSharedDesign() && !(storeVariantId && !isOdooEmbed)) return;
     const t = setTimeout(() => document.getElementById("customizer")?.scrollIntoView({ behavior: "smooth" }), 300);
     return () => clearTimeout(t);
   }, []);

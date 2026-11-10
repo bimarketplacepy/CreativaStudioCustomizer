@@ -57,12 +57,14 @@ function frameAncestors(embed, origins = SHOP_ORIGINS) {
 }
 
 /**
- * El HTML embebido lleva los orígenes de la tienda (para postMessage) y oculta
+ * El HTML que llega desde la tienda lleva los orígenes de la tienda: en el
+ * iframe (?embed=odoo) para postMessage, y en el respaldo sin iframe (?odoo=)
+ * para el «Volver a la tienda» (src/lib/embed.ts). Embebido, además oculta
  * desde el primer pintado la portada pre-renderizada (main.tsx la quita).
  */
-function injectShopOrigins(html) {
+function injectShopOrigins(html, hideHero) {
   const meta = `<meta name="cs-shop-origins" content="${SHOP_ORIGINS.join(" ")}">` +
-    "<style>#hero-root{display:none!important}</style>";
+    (hideHero ? "<style>#hero-root{display:none!important}</style>" : "");
   return html.replace("</head>", `${meta}</head>`);
 }
 
@@ -381,6 +383,8 @@ async function serve(req, res) {
 
   const isHtml = type.startsWith("text/html");
   const embed = isHtml && url.searchParams.get("embed") === "odoo";
+  // Respaldo sin iframe: la ficha manda ?odoo=<variante>&volver=<ficha>.
+  const fromShop = embed || (isHtml && /^\d{1,10}$/.test(url.searchParams.get("odoo") ?? ""));
   const baseHeaders = {
     "Content-Type": type,
     "Cache-Control": cacheControl,
@@ -389,13 +393,13 @@ async function serve(req, res) {
     ...(isHtml ? { "Content-Security-Policy": frameAncestors(embed) } : {}),
   };
 
-  // Modo embebido: el mismo index.html con los orígenes de la tienda adentro.
-  if (embed) {
+  // Desde la tienda (embebido o respaldo): el mismo index.html con los orígenes de la tienda adentro.
+  if (fromShop) {
     const encodingE = pickEncoding(req.headers["accept-encoding"]);
-    const key = `${filePath}|embed|${encodingE ?? "identity"}`;
+    const key = `${filePath}|${embed ? "embed" : "odoo"}|${encodingE ?? "identity"}`;
     let payload = compressedCache.get(key);
     if (!payload) {
-      const html = Buffer.from(injectShopOrigins(await readFile(filePath, "utf-8")), "utf-8");
+      const html = Buffer.from(injectShopOrigins(await readFile(filePath, "utf-8"), embed), "utf-8");
       payload = encodingE ? compress(html, encodingE) : html;
       compressedCache.set(key, payload);
     }

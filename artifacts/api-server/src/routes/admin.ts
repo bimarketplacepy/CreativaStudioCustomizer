@@ -25,6 +25,27 @@ function hasKey(req: Request): boolean {
   return checkInternalKey(req.headers["x-internal-key"] ?? req.query.key);
 }
 
+/**
+ * Diseño de artista del pedido para el panel: título, artista y «provisorio»
+ * salen del catálogo (por id), no de lo que mandó el navegador. Así el aviso
+ * «no producir hasta tener el archivo» no depende del cliente y se apaga solo
+ * cuando el artista entrega el archivo final. Un id desconocido se muestra tal cual.
+ */
+function artistDesignView(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const ref = raw as Record<string, unknown>;
+  const design = getArtistDesignById(typeof ref.id === "string" ? ref.id : null);
+  if (!design) return ref;
+  return {
+    ...ref,
+    id: design.id,
+    title: design.title,
+    artistId: design.artistId,
+    artistName: getArtist(design.artistId)?.name ?? design.artistId,
+    provisional: design.provisional === true,
+  };
+}
+
 // GET /api/admin/orders — listado para el panel (interno).
 // `?machine=laser|dacen|eufy` filtra la cola de trabajo de una máquina.
 router.get("/api/admin/orders", async (req, res) => {
@@ -86,7 +107,7 @@ router.get("/api/admin/orders", async (req, res) => {
           approvedAt: r.approvedAt ? r.approvedAt.toISOString() : null,
           // La versión actual coincide con la aprobada (si cambió, es una versión nueva sin aprobar).
           approvedCurrent: r.approvedHash ? r.approvedHash === designHash(designState) : null,
-          artistDesign: (ds.artistDesign as Record<string, unknown> | undefined) ?? null,
+          artistDesign: artistDesignView(ds.artistDesign),
           // Servicios que el taller puede tener que cotizar al aprobar.
           serviceCodes: (() => { const l = linesFor(ds); return [l.colorCode, l.artistCode].filter(Boolean); })(),
           size: str(ds.sizeLabel) ?? str(ds.sizeId),

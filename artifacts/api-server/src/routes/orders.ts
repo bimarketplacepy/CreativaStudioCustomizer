@@ -18,6 +18,7 @@ import { svgToDxf } from "../lib/production-dxf";
 import { orderMachine } from "@workspace/print-specs";
 import { checkInternalKey, checkOrderImageToken, orderImageToken } from "../lib/internal-key";
 import { logger } from "../lib/logger";
+import { withPgLock } from "../lib/pg-lock";
 
 const router: IRouter = Router();
 
@@ -184,10 +185,6 @@ export const responseFor = (req: Request, order: Order) => ({
     : imageUrlFor(req, order),
 });
 
-/** Pedidos en curso por requestId en esta instancia: un reintento que llega
- *  mientras el primero todavía guarda imágenes espera ese mismo resultado. */
-const inflight = new Map<string, Promise<Order | null>>();
-
 export type OrderBody = z.infer<typeof CreateOrderBody>;
 export type OrderCreateResult =
   | { ok: true; order: Order; reused: boolean }
@@ -197,19 +194,25 @@ export type OrderCreateResult =
  * Crea el pedido CS-XXXX de la landing o devuelve el ya creado con el mismo
  * `designState.requestId` (últimas 24 h). Lo usan POST /api/orders (WhatsApp)
  * y POST /api/checkout («Comprar»): un diseño reenviado nunca duplica pedido.
+ * Buscar y crear van bajo un candado de Postgres por requestId: sin él, un
+ * doble clic (o un reintento que llega a otra instancia) creaba dos pedidos.
  */
 export async function createOrReuseOrder(body: OrderBody): Promise<OrderCreateResult> {
   const rawRequestId = (body.designState as Record<string, unknown>)?.requestId;
   const requestId = typeof rawRequestId === "string" && REQUEST_ID_RE.test(rawRequestId) ? rawRequestId : null;
-  if (requestId) {
+  if (!requestId) return createOrder(body);
+  return withPgLock(`order:${requestId}`, async () => {
     try {
-      const existing = (await inflight.get(requestId)) ?? (await findByRequestId(requestId));
+      const existing = await findByRequestId(requestId);
       if (existing) return { ok: true, order: existing, reused: true };
     } catch (err) {
       logger.warn({ err }, "orders: requestId lookup failed");
     }
-  }
+    return createOrder(body);
+  });
+}
 
+async function createOrder(body: OrderBody): Promise<OrderCreateResult> {
   // Validate the image up front (before burning an order number on bad input).
   let image = null;
   if (body.previewImage) {
@@ -218,9 +221,6 @@ export async function createOrReuseOrder(body: OrderBody): Promise<OrderCreateRe
     if (!result) return { ok: false, status: 400, message: "previewImage inválida (se espera data URL PNG/JPEG)" };
     image = result;
   }
-
-  let settle: (order: Order | null) => void = () => {};
-  if (requestId) inflight.set(requestId, new Promise<Order | null>((r) => { settle = r; }));
 
   try {
     // `nextval()` es atómico: pedidos simultáneos nunca colisionan de número.
@@ -266,14 +266,10 @@ export async function createOrReuseOrder(body: OrderBody): Promise<OrderCreateRe
       order.productionFilePath = productionPath;
     }
 
-    settle(order);
     return { ok: true, order, reused: false };
   } catch (err) {
-    settle(null);
     logger.error({ err }, "orders: create failed");
     return { ok: false, status: 500, message: "No se pudo crear el pedido" };
-  } finally {
-    if (requestId) inflight.delete(requestId);
   }
 }
 

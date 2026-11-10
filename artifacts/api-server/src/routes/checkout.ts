@@ -20,6 +20,7 @@ import { designHash } from "../lib/design-hash";
 import { normalizeEmail, normalizePhonePy } from "../lib/phone-py";
 import { createOrReuseOrder, imageUrlFor, originFrom } from "./orders";
 import { logger } from "../lib/logger";
+import { withPgLock } from "../lib/pg-lock";
 
 const router: IRouter = Router();
 
@@ -106,11 +107,13 @@ router.post("/checkout", rateLimit({ max: 30, windowMs: 60 * 60 * 1000 }), async
       .filter(Boolean).join(" · ");
 
     // 3. Presupuesto en Odoo (firma + pago, 48 h, prueba adjunta).
-    const r = await odooCheckout(odooClient, {
+    // Con candado: `checkout` busca por client_order_ref y después crea, así
+    // que dos «Comprar» simultáneos del mismo pedido creaban dos presupuestos.
+    const r = await withPgLock(`checkout:${order.orderNumber}`, () => odooCheckout(odooClient, {
       ref: order.orderNumber, customer, plan, verdict,
       previewImageUrl, proof: proofFrom(body.previewImage, order.orderNumber), adminUrl, designSummary,
       verdictNote: verdictNote(result),
-    });
+    }));
 
     // OK: la versión que vio es la aprobada (automático). REVISION: la aprueba el taller.
     const hash = designHash(order.designState);
