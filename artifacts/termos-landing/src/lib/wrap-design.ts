@@ -220,22 +220,8 @@ export function wrapEffectiveDpi(
   return Math.round(25.4 / mmPerPx);
 }
 
-export type DpiVerdict = "ideal" | "ok" | "warn" | "bad";
-
-/** < 100 no recomendable · < 150 advertencia · ≥ 300 ideal (DACEN.md §12.5). */
-export function dpiVerdict(dpi: number): DpiVerdict {
-  if (dpi >= 300) return "ideal";
-  if (dpi >= 150) return "ok";
-  if (dpi >= 100) return "warn";
-  return "bad";
-}
-
-export const DPI_VERDICT_TEXT: Record<DpiVerdict, string> = {
-  ideal: "Resolución ideal",
-  ok: "Se ve bien",
-  warn: "Puede verse borroso de cerca",
-  bad: "Muy baja: se va a ver pixelado",
-};
+// Umbrales de dpi: compartidos con el veredicto del servidor.
+export { dpiVerdict, DPI_VERDICT_TEXT, type DpiVerdict } from "@workspace/print-specs";
 
 /**
  * "Arte completo": ¿la imagen tiene la proporción de la plantilla? Si se aleja

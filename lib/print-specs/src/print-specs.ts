@@ -1,5 +1,7 @@
 /**
  * Medidas físicas reales de cada pieza para producción (DACEN.md §4.2).
+ * Paquete compartido (`@workspace/print-specs`): lo usan la landing y el
+ * api-server, así el editor y el veredicto del servidor aplican la misma regla.
  *
  * El 3D usa perfiles aproximados; el archivo para la máquina tiene que salir
  * de las medidas REALES (calibre) de cada producto y tamaño. Mientras no estén
@@ -7,12 +9,9 @@
  * hoy reproduce exactamente la regla de `allowsColorPrint()`: el drinkware
  * de acero cilíndrico y SIN manija en el cuerpo admite impresión a color.
  *
- * Vive en la landing: el api-server todavía tiene sus propias medidas del
- * frente en `production-svg.ts` (PRODUCT_AREAS_MM). Cuando el archivo de la
- * Dacen (fase 2) las necesite en los dos lados, pasar esto a un paquete
- * compartido del monorepo (`lib/print-specs`).
+ * El api-server todavía tiene sus propias medidas del frente en
+ * `production-svg.ts` (PRODUCT_AREAS_MM).
  */
-import type { ProductId } from "./products";
 
 /** Medidas en mm. `null` = falta medir (AJUSTAR con calibre). */
 export interface PrintDims {
@@ -58,7 +57,8 @@ const steel = (extra: Partial<PrintSpecEntry> = {}): PrintSpecEntry => ({ ...UNM
  * manija, las cónicas y las copas quedan en `dacen: false` con `consult`, y la
  * landing ofrece solo grabado láser + "consultá en el local" para el color.
  */
-export const PRINT_SPECS: Record<ProductId, PrintSpecEntry> = {
+/** Claves = ids de producto de la landing (`ProductId`; la landing verifica que estén todos). */
+export const PRINT_SPECS: Record<string, PrintSpecEntry> = {
   // Manija en el cuerpo: estorba al giro de la Dacen (360°) y tapa parte de la
   // vuelta. Sin impresión UV de ningún tipo (ni 360° ni con relieve): solo láser.
   "termo": steel({ dacen: false, consult: "handle" }),
@@ -114,7 +114,7 @@ export const PRINT_SPECS: Record<ProductId, PrintSpecEntry> = {
 
 /** Medidas de un producto en un tamaño (la base, pisada por las del tamaño). */
 export function printSpecFor(productId: string, sizeId?: string | null): PrintSpec | null {
-  const entry = (PRINT_SPECS as Record<string, PrintSpecEntry | undefined>)[productId];
+  const entry: PrintSpecEntry | undefined = PRINT_SPECS[productId];
   if (!entry) return null;
   const { bySize, ...base } = entry;
   const size = sizeId ? bySize?.[sizeId] : undefined;

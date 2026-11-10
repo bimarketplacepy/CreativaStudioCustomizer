@@ -2,7 +2,7 @@ import React, { Suspense, lazy, useEffect } from "react";
 import DeferUntilVisible from "@/components/defer-until-visible";
 import { hasSharedDesign } from "@/lib/design-link";
 import { scrollToSection } from "@/lib/section-reveal";
-import { ARTIST_DESIGNS_ENABLED } from "@/lib/artist-designs";
+import { ARTIST_DESIGNS_ENABLED } from "@workspace/print-specs";
 
 // Everything below the hero is loaded on demand. The hero is the only
 // above-the-fold section: it is pre-rendered into index.html and hydrated from

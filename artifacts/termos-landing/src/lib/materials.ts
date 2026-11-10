@@ -1,6 +1,6 @@
 import type { ProductId } from "./products";
 import type { ObjectId } from "./objects";
-import { printSpecFor } from "./print-specs";
+import { printSpecFor } from "@workspace/print-specs";
 
 export type MaterialId = "acero" | "inox" | "cuero" | "madera" | "boligrafos" | "cristal" | "plastico";
 

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { ARTIST_DESIGNS, ARTIST_DESIGNS_ENABLED, ARTISTS, designPrice, getArtist, type ArtistDesign } from "@/lib/artist-designs";
+import { ARTIST_DESIGNS, ARTIST_DESIGNS_ENABLED, ARTISTS, designPrice, getArtist, type ArtistDesign } from "@workspace/print-specs";
 import { getMaterial } from "@/lib/materials";
 import { formatGs } from "@/lib/odoo-catalog";
 import { requestDesignPreset } from "@/lib/design-preset";

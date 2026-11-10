@@ -10,7 +10,7 @@ import { checkInternalKey, orderImageToken } from "../lib/internal-key";
 import { logger } from "../lib/logger";
 import { getCatalog } from "../lib/catalog";
 import { getDisabledProducts, setProductEnabled } from "../lib/product-settings";
-import { MACHINE_LABELS, isMachineId, orderMachine } from "../lib/machines";
+import { MACHINE_LABELS, isMachineId, orderMachine } from "@workspace/print-specs";
 import { OdooClient, odooConfig } from "../lib/odoo";
 import { readOrder } from "../lib/odoo-checkout";
 import { applyOdooPayment } from "./odoo-webhook";

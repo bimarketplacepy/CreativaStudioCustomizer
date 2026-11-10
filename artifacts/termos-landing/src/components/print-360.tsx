@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { whatsappUrl } from "@/lib/contact";
 import { startCustomizer } from "@/lib/section-reveal";
 import { track } from "@/lib/analytics";
-import { MACHINES } from "@/lib/machines";
+import { MACHINES } from "@workspace/print-specs";
 import { LOW_END } from "@/lib/device-tier";
 
 /**

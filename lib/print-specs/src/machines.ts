@@ -7,7 +7,7 @@
  * /admin. La sección «Impresión 360°» (print-360.tsx) sí nombra la Dacen F5 a
  * propósito, como diferencial del taller (pedido del dueño, 2026-10-27).
  */
-import { fitsDacen, type PrintSpec } from "./print-specs";
+import { fitsDacen, type PrintSpec } from "./print-specs.ts";
 
 export type MachineId = "laser" | "dacen" | "eufy";
 
@@ -61,4 +61,31 @@ export function machineFor(opts: {
   if (opts.kind === "drinkware" && opts.spec && fitsDacen(opts.spec)) return "dacen";
   // Plano a color, o pieza fuera de rango de la Dacen → sticker / cama plana.
   return "eufy";
+}
+
+export const MACHINE_IDS: readonly MachineId[] = ["laser", "dacen", "eufy"];
+
+/** Nombre interno de cada máquina (panel /admin). */
+export const MACHINE_LABELS: Record<MachineId, string> = {
+  laser: MACHINES.laser.name,
+  dacen: MACHINES.dacen.name,
+  eufy: MACHINES.eufy.name,
+};
+
+export function isMachineId(v: unknown): v is MachineId {
+  return typeof v === "string" && (MACHINE_IDS as readonly string[]).includes(v);
+}
+
+/**
+ * Máquina de un pedido ya guardado: la declarada en `designState.machine`, o
+ * la inferida para los pedidos viejos (sticker → eufyMake; impresión a color
+ * sobre la pieza, técnica "color" o "eufy" antes del renombre → Dacen; el
+ * resto → láser).
+ */
+export function orderMachine(designState: unknown): MachineId {
+  const ds = (designState ?? {}) as Record<string, unknown>;
+  if (isMachineId(ds.machine)) return ds.machine;
+  if (ds.kind === "sticker") return "eufy";
+  if (ds.technique === "color" || ds.technique === "eufy") return "dacen";
+  return "laser";
 }

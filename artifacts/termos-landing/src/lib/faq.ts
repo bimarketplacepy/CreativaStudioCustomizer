@@ -1,5 +1,5 @@
 import { ADDRESS } from "./contact";
-import { MACHINES } from "./machines";
+import { MACHINES } from "@workspace/print-specs";
 import { STICKER_MAX_CM, STICKER_MAX_QTY, STICKER_MIN_CM } from "./sticker-pricing";
 
 /**

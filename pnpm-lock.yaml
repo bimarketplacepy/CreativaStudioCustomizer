@@ -175,6 +175,9 @@ importers:
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
+      '@workspace/print-specs':
+        specifier: workspace:*
+        version: link:../../lib/print-specs
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
@@ -486,6 +489,9 @@ importers:
       '@workspace/api-client-react':
         specifier: workspace:*
         version: link:../../lib/api-client-react
+      '@workspace/print-specs':
+        specifier: workspace:*
+        version: link:../../lib/print-specs
       class-variance-authority:
         specifier: 'catalog:'
         version: 0.7.1
@@ -565,6 +571,8 @@ importers:
       drizzle-kit:
         specifier: ^0.31.9
         version: 0.31.9
+
+  lib/print-specs: {}
 
   scripts:
     devDependencies:

@@ -15,7 +15,7 @@ import { buildProductionSvg } from "../lib/production-svg";
 import { MAX_DACEN_PNG_BYTES, productionJpeg, productionPng, productionPngFileName } from "../lib/production-sticker";
 import { buildDacenSvg, parseVectorMarks } from "../lib/production-dacen-svg";
 import { svgToDxf } from "../lib/production-dxf";
-import { orderMachine } from "../lib/machines";
+import { orderMachine } from "@workspace/print-specs";
 import { checkInternalKey, checkOrderImageToken, orderImageToken } from "../lib/internal-key";
 import { logger } from "../lib/logger";
 

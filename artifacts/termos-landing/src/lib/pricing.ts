@@ -13,7 +13,7 @@
  */
 import { ENGRAVING_PLANS, type EngravingPlanId } from "./engraving-plans";
 import { engravingPrice, formatGs, type Catalog } from "./odoo-catalog";
-import type { MachineId } from "./machines";
+import type { MachineId } from "@workspace/print-specs";
 
 export type DacenCoverage = "small" | "front" | "wrap";
 export type StickerFinishId = "brillo" | "relieve";

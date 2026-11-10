@@ -19,7 +19,7 @@
  */
 import { drawColorLayer, bodyMetrics, TEXTURE_H, TEXTURE_W, type ColorLayerInput } from "./engraving-maps";
 import { getProduct, getSize, productForSize } from "./products";
-import { printSpecFor } from "./print-specs";
+import { printSpecFor } from "@workspace/print-specs";
 import { matrixToMm, type VectorMark } from "./vector-marks";
 
 export interface DacenPrintFile {

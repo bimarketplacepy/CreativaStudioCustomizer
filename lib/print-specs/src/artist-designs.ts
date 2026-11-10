@@ -12,7 +12,8 @@
  * Para sumar un artista o un diseño: una entrada en ARTISTS / ARTIST_DESIGNS,
  * la foto de muestra y el arte plano en /public/disenos.
  */
-import type { WrapMode } from "./wrap-design";
+/** Cómo llena el arte la vuelta (wrap-design.ts de la landing). */
+export type WrapMode = "cover" | "tile" | "mirror" | "artwork";
 
 /** Precio al cliente por copiar un diseño de artista (Gs.), sobre pieza e impresión. */
 export const ARTIST_DESIGN_PRICE = 12_500;
