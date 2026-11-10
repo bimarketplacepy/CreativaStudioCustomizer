@@ -3255,8 +3255,9 @@ export default function Customizer() {
   const onDesignScreen = isMobile && isDrinkware && mobileStep === designStepIndex;
   const sheetOpen = !!sheet;
   React.useEffect(() => {
-    // Embebido en la ficha de la tienda: sin tour (el panel es una tarea corta).
-    if (isOdooEmbed || !onDesignScreen || viewerReady === 0 || sheetOpen || seen(TOUR_KEY)) return;
+    // Desde la ficha de la tienda (embebido o ?odoo=): sin tour. La pieza y el
+    // color ya vienen fijos («Elegí el color» no aplica) y es una tarea corta.
+    if (storeVariantId !== null || !onDesignScreen || viewerReady === 0 || sheetOpen || seen(TOUR_KEY)) return;
     markSeen(TOUR_KEY);
     setTourOpen(true);
   }, [onDesignScreen, viewerReady, sheetOpen]);
@@ -5176,7 +5177,10 @@ export default function Customizer() {
     return (
       <MobileDesignScreen
         title={odooProduct?.name ?? activeMProduct?.name ?? product.singular}
-        subtitle={designElementCount
+        subtitle={pieceLocked
+          // Pieza fija desde la tienda: tamaño y color en el encabezado (sin acciones para cambiarla).
+          ? [sizeName, odooColor].filter(Boolean).join(" · ") || undefined
+          : designElementCount
           ? `${designElementCount} ${designElementCount === 1 ? "elemento" : "elementos"} · tocá para editar`
           : undefined}
         right={
@@ -5375,7 +5379,9 @@ export default function Customizer() {
             </button>
           </div>
           <p className={`hidden ${mode === "products" ? "md:block" : ""} text-[#5f574d] font-light text-lg max-w-xl leading-relaxed`}>
-            Elegí la pieza, diseñala y mirala en 3D. El diseño final lo revisamos con vos por WhatsApp.
+            {storeVariantId !== null
+              ? "Tu pieza ya viene elegida desde la tienda: diseñala y mirala en 3D."
+              : "Elegí la pieza, diseñala y mirala en 3D. El diseño final lo revisamos con vos por WhatsApp."}
           </p>
         </div>}
 
@@ -5564,7 +5570,8 @@ export default function Customizer() {
               (lg:self-stretch) y lo sticky va adentro: así el producto y la
               lista acompañan hasta el resumen y «Continuar por WhatsApp», en
               vez de terminarse a mitad de camino y dejar un hueco en blanco. */}
-          {shopMode && !isMobile && (
+          {/* Pieza fija desde la tienda: sin lista para cambiar de pieza (se vuelve a la tienda). */}
+          {shopMode && !isMobile && !pieceLocked && (
             <div className="w-full min-w-0 lg:col-span-3 lg:self-stretch">
               <ShopRail items={shopItems} value={shopKey} initialBrand={shopItem?.brand ?? shopBrands(shopItems)[0]} onPick={pickShopItem} />
             </div>
@@ -5758,7 +5765,7 @@ export default function Customizer() {
           {/* CONTROLS AREA */}
           <div className={isMobile
             ? "w-full flex-1 min-h-0 overflow-y-auto overscroll-contain bg-white"
-            : `w-full min-w-0 ${shopMode ? "lg:col-span-5" : "lg:col-span-8"} bg-white rounded-2xl border border-border`}>
+            : `w-full min-w-0 ${shopMode && !pieceLocked ? "lg:col-span-5" : "lg:col-span-8"} bg-white rounded-2xl border border-border`}>
             {isDrinkware ? (
               <Tabs value={drinkTab} onValueChange={setDrinkTab} className="w-full">
                 <div className={isMobile ? "sticky top-0 z-10 bg-white px-3 pt-2 pb-1" : "px-4 sm:px-6 pt-4 pb-1"}>
