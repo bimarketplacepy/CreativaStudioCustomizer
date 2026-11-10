@@ -39,6 +39,23 @@ await writeFile(
     .replace(MARKER, MARKER.replace("></div>", `>${heroHtml}</div>`))
     .replace("</head>", `    ${faqLd}\n  </head>`),
 );
+// HTML del personalizador embebido en la ficha de Odoo (?embed=odoo), que
+// server.mjs sirve en lugar de index.html: sin el hero pre-renderizado (sus
+// <img> bajaban aunque estuviera oculto) ni las precargas que son solo del
+// hero (las dos Cronos del <h1> y la foto LCP). Inter, el CSS y el JS de
+// entrada quedan igual. Va en dist/, fuera de lo que se publica tal cual.
+const HERO_ONLY_PRELOADS = [
+  /\s*<link rel="preload" as="font"[^>]*Cronos-Pro-[^>]*>/g,
+  /\s*<link\s+rel="preload"\s+as="image"[\s\S]*?>/g,
+];
+let embedHtml = html;
+for (const re of HERO_ONLY_PRELOADS) embedHtml = embedHtml.replace(re, "");
+if (embedHtml.includes("Cronos-Pro-") || /rel="preload"\s+as="image"/.test(embedHtml)) {
+  console.error("[prerender] el HTML embebido sigue con precargas del hero");
+  process.exit(1);
+}
+await writeFile(join(root, "dist", "embed.html"), embedHtml);
+
 // El bundle SSR solo sirve para generar el HTML; no se publica.
 await rm(ssrDir, { recursive: true, force: true });
 

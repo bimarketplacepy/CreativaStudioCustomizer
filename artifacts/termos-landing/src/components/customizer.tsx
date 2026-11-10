@@ -19,7 +19,7 @@ import {
   ChevronUp, ChevronsLeftRight, Crosshair, CirclePlay, Orbit, Link2, MessageCircle, MapPin, HandCoins,
   Undo2, Trash2, Search, ScanEye, Maximize2, Paintbrush, X, Heart, Repeat, ShoppingBag,
 } from "lucide-react";
-import Thermos3D, { type ScreenRect } from "./thermos-3d";
+import type { ScreenRect } from "./thermos-3d";
 import type { PinchPhase } from "@/lib/pinch";
 // El creador de stickers baja recién al elegir el modo "Stickers".
 const StickerCreator = React.lazy(() => import("./stickers"));
@@ -33,6 +33,23 @@ const Object3DLazy = React.lazy(() => import("./object-3d"));
 const ImageUploadLazy = React.lazy(() => import("./image-upload"));
 const WrapDesignPanelLazy = React.lazy(() => import("@/components/wrap-design-panel").then(m => ({ default: m.WrapDesignPanel })));
 const UnwrappedDialogLazy = React.lazy(() => import("@/components/wrap-design-panel").then(m => ({ default: m.UnwrappedDialog })));
+// El visor 3D (three + react-three-fiber, ~1,2 MB sin comprimir) también va en
+// su bloque: los controles y la pieza se pueden usar —y embebido se avisa
+// cs:ready a la tienda— sin esperar a que baje y arranque el 3D, que muestra
+// su propio indicador mientras tanto.
+const Thermos3DLazy = React.lazy(() => import("./thermos-3d"));
+function Thermos3D(props: React.ComponentProps<typeof Thermos3DLazy>) {
+  return (
+    <React.Suspense fallback={
+      <div role="status" className="w-full h-full flex flex-col items-center justify-center gap-2">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden />
+        <span className="text-xs text-muted-foreground">Cargando vista 3D…</span>
+      </div>
+    }>
+      <Thermos3DLazy {...props} />
+    </React.Suspense>
+  );
+}
 const PanelLoading = () => <div aria-hidden className="h-28 rounded-xl border border-dashed border-border bg-secondary/30 animate-pulse" />;
 function Object3D(props: React.ComponentProps<typeof Object3DLazy>) {
   return (

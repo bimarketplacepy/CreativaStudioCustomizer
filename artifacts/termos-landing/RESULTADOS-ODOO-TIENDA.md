@@ -182,3 +182,60 @@
 ```
 psql "$DATABASE_URL" -c 'drop database creativa_test'
 ```
+
+## 9. Rendimiento embebido (2026-11-10)
+
+**Cómo se midió:** build de producción servido con `server.mjs` (no el servidor de desarrollo), con la API embebida y el catálogo real. Una página «ficha» en otro origen (`http://localhost:4000`, agregado a `CS_SHOP_ORIGINS`) abre el iframe `?embed=odoo&product=<id>` de 390 × 844 y anota cuándo llega `cs:ready`. Chromium por DevTools Protocol (no hay Lighthouse en el workspace): caché deshabilitada, «Fast 4G» (9 Mbps, 1,5 Mbps de subida, 165 ms de latencia) y CPU sin freno (×1) o ×4 (perfil móvil de Lighthouse). Mediana de 3 corridas. Tiempos contados desde que se abre la ficha. El servidor local es HTTP/1.1; en producción el borde de Replit sirve HTTP/2, que reparte mejor las descargas en paralelo.
+
+| Termo Mate Verde Militar (`1048188`) | Antes | Después |
+|---|---|---|
+| `cs:ready`, CPU ×1 | 1678 ms | **1209 ms** |
+| `cs:ready`, CPU ×4 | 2526 ms | **1876 ms** |
+| `.glb` descargado, CPU ×4 | 3422 ms | **1187 ms** |
+| Red quieta (3D completo), CPU ×4 | 4011 ms | **2431 ms** |
+| Transferido | 722 KB (27 pedidos) | **592 KB** (26) |
+
+| Vaso Rosado Pastel (`976870`), CPU ×4 | Antes | Después |
+|---|---|---|
+| `cs:ready` | 2601 ms | **1689 ms** |
+| `.glb` descargado | 3616 ms | **1301 ms** |
+| Red quieta | 4156 ms | **2258 ms** |
+| Transferido | 748 KB | **622 KB** |
+
+**Primer pedido con el servidor recién arrancado** (con autoscale, cada instancia nueva): antes, `cs:ready` a **4767 ms** (CPU ×1), porque `server.mjs` comprimía three.js y el personalizador con brotli 11 *sincrónico* en ese pedido, con el servidor trabado unos 3 s. Después: **1935 ms** (CPU ×4), lo mismo que con el servidor ya caliente.
+
+**KB por tipo (Termo Mate, transferidos):**
+
+| | Antes | Después |
+|---|---|---|
+| JS | 400 | 404 |
+| CSS | 15 | 15 |
+| 3D (`.glb` + Draco) | 138 | 106 |
+| Fuentes | 130 | 61 |
+| Imágenes | 29 | 0 |
+| API (catálogo) | 4 | 4 |
+
+**Las 10 descargas más pesadas, antes:** customizer.js 159 KB · three.js 159 · termo-mate.glb 66 (sin comprimir) · draco_decoder.wasm 62 (gzip) · entrada JS 54 · inter-latin.woff2 47 · Cronos Display Italic 36 · Cronos Light 33 · tablamadera-700.webp 24 · CSS 15.
+**Después:** three.js 159 · customizer.js 83 · entrada JS 54 · draco_decoder.wasm 48 (br) · termo-mate.glb 48 (br) · inter-latin.woff2 47 · pinch.js (react-three-fiber) 47 · thermos-3d.js 30 · CSS 15 · abril-latin.woff2 13.
+
+El JS total es parecido: lo que cambió es el **orden**. Antes, `cs:ready` esperaba a three.js; ahora three baja después, mientras el editor ya se puede usar.
+
+### Qué se cambió
+
+1. **`cs:ready` sin esperar al 3D.** El chunk del personalizador importaba three y react-three-fiber de forma estática, por `import Thermos3D` y por `engraving-maps.ts` (`import * as THREE` para crear las texturas). Ahora `Thermos3D` va con `React.lazy`, con su propio indicador («Cargando vista 3D…»), y `engraving-maps` recibe three del visor (`provideThree`). El chunk del personalizador pasó de **621 KB a 337 KB** (191 → 101 KB gzip), y three (757 KB) baja aparte. `cs:ready` se sigue mandando en el mismo punto (pieza fija resuelta), así que el contrato no cambia.
+2. **HTML propio para el embebido** (`dist/embed.html`, lo genera `scripts/prerender.mjs`): sin el hero pre-renderizado (sus `<img>` bajaban aunque estuviera oculto), sin las precargas de las fuentes Cronos del `<h1>` ni la de la foto LCP. Los WhatsApp flotante, tutorial, tour y secciones ya iban en chunks aparte que el embebido no pide; «Recomendados» es parte del panel de diseño, los diseños de artistas están apagados (`ARTIST_DESIGNS_ENABLED`) y AR, stickers, subida de imagen, panel 360° y objetos planos ya eran `import()` diferidos.
+3. **Precargas desde el servidor** (`embedPreloads` en `server.mjs`): con `product=`, el servidor busca la variante en el catálogo (5 min en memoria, nunca demora el HTML más de 300 ms) y resuelve el `.glb` con las mismas funciones del personalizador (`src/embed-model.ts`, compilado con `--ssr` a `dist/server/`). Precarga la entrada JS, App y el personalizador (prioridad alta), `/api/catalog` (alta), y el `.glb` y el decoder Draco (baja). El JS de three **no** se precarga: medido, le quitaba ancho de banda al editor (`cs:ready` +200 ms) y el 3D no terminaba antes. No se precarga el `.glb` de una variante agotada.
+4. **Solo el `.glb` de la pieza:** ya era así (no hay `useGLTF.preload` de otros modelos); ahora además baja en paralelo con el JS en lugar de al final de la cascada.
+5. **Compresión en el build** (`scripts/precompress.mjs`): `.br` y `.gz` junto a cada JS, CSS, `.glb`, `.wasm` y `.onnx`; `server.mjs` los manda tal cual. Lo que no viene precomprimido se comprime de forma asíncrona, una sola vez. Los `.glb` ahora van con brotli (termo-mate 66 → 48 KB).
+6. **Caché:** `/assets/*` sigue `immutable` y `index.html` `no-cache`. Ahora también son `immutable` los `.glb` pedidos con `?v=N` (products.ts sube N cuando cambian) y el decoder Draco, que pasó a una carpeta versionada (`/draco/v1/`; si se cambian los archivos, van en `v2/` y se actualizan `DRACO_PATH` en `thermos-3d.tsx` y en `server.mjs`). `/.vite/manifest.json` no se sirve.
+7. **3D:** Draco ya se servía desde el mismo origen. No hay HDR: los reflejos son `RoomEnvironment`, generado en el navegador. Los `.glb` no traen texturas, salvo `vaso-guarani.glb` (PNG de 162 KB, solo edición Guaraní). No hay herramienta de WebP/KTX2 en el workspace, así que queda como pendiente.
+
+**Sin cambios:** `cs:ready`, `cs:close`, `cs:resize`, `cs:checkout`, `CS_SHOP_ORIGINS` y `?odoo=`. La landing propia (sin `embed`) sirve el mismo `index.html`; lo único que cambia ahí es que el visor 3D baja en su propio chunk. Verificado con Chromium: el canvas 3D pinta sin errores de consola en la landing y con `?odoo=`.
+
+**Pruebas:** typecheck de todo el monorepo ✅ · `lib/print-specs` 30/30 ✅ · `api-server` 32/32 ✅ · `check-prod --local` ✅ · `check-prod` contra `server.mjs` local ✅ (contra producción no aplica: no hubo deploy).
+
+**Para producción:** con `EMBEDDED_API=false`, `server.mjs` lee el catálogo de `https://$PUBLIC_HOST/api/catalog` (o de `CS_CATALOG_URL`, si está definida). Si no responde, el HTML sale igual, sin el `.glb` precargado. Después del deploy conviene repetir la medición contra el dominio real, porque HTTP/2 y el borde de Replit cambian los tiempos.
+
+**Pendientes:**
+- La textura de `vaso-guarani.glb` en WebP (`EXT_texture_webp`), cuando haya una herramienta para hacerlo.
+- Con CPU ×4, ~400 ms de `cs:ready` son de interpretar y ejecutar el JS (react-dom y el personalizador, 290 KB de `customizer.tsx` solo). Para bajar más habría que partir el propio `customizer.tsx`.

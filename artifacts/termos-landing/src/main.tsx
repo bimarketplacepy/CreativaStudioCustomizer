@@ -29,6 +29,10 @@ if (/^\/admin\/?$/.test(window.location.pathname)) {
     createRoot(heroRoot).render(<Hero />);
   }
 
+  // Embebido, lo único que se muestra es el personalizador: se pide ya, en
+  // paralelo con App, en vez de esperar a que App y Home lo pidan.
+  if (embedded) import("@/components/customizer");
+
   // Router, providers y secciones bajo el fold van en un chunk aparte: no
   // compiten con el primer render ni con la hidratación del hero.
   import("./App").then(({ default: App }) => {

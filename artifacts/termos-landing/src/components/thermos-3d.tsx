@@ -6,13 +6,17 @@ import * as THREE from "three";
 import { getProduct, getSize, productForColor, productForSize, resampledProfile, type ProductDef } from "@/lib/products";
 import { DEFAULT_ART_PLACEMENT, DEFAULT_TEXT_PLACEMENT, bandRange, vForY, type FaceId, type Placement } from "@/lib/placement";
 import { buildEngraveMask } from "@/lib/image-processing";
-import { makeBodyMaps, makeGlassEngraving, type EngraveStyle, type TextMark } from "@/lib/engraving-maps";
+import { makeBodyMaps, makeGlassEngraving, provideThree, type EngraveStyle, type TextMark } from "@/lib/engraving-maps";
 import type { WrapDesign } from "@/lib/wrap-design";
 import { FRONT_FACE, frontAreaBounds, nearU } from "@/lib/face-area";
 import { trackPinch, type PinchPhase } from "@/lib/pinch";
 import { keepOutKindOf, zoneFromVertices, type KeepOutZone } from "@/lib/keep-out";
 import { layoutText, fillLinesAligned, measureLinesWidth, LINE_HEIGHT } from "@/lib/engraving-text";
 import { LOW_END } from "@/lib/device-tier";
+
+// engraving-maps no importa three (así el personalizador no lo espera): se lo
+// pasa el visor, que es el único que arma texturas.
+provideThree(THREE);
 
 /**
  * Si falla el 3D (por ejemplo, se cortó la red al bajar el .glb) muestra la
@@ -402,8 +406,13 @@ function ChoperaTop({ sil }: { sil: Silhouette }) {
 /** Marca el cuerpo grabable: el toque sobre el visor se resuelve contra esta malla. */
 const ENGRAVE_BODY = { engraveBody: true };
 
-/** Decoder Draco servido localmente (public/draco), no desde el CDN de Google. */
-const DRACO_PATH = "/draco/";
+/**
+ * Decoder Draco servido localmente (public/draco/v1), no desde el CDN de Google.
+ * La carpeta versionada deja servirlo con caché de un año (immutable, server.mjs):
+ * si se cambian los archivos, van en draco/v2/ y se actualiza esta ruta (y
+ * DRACO_PATH en server.mjs, que la precarga en el embebido).
+ */
+const DRACO_PATH = "/draco/v1/";
 
 /**
  * Piezas de un modelo .glb (forma base de GUIA-MODELOS-3D.md), llevadas al

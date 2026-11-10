@@ -65,7 +65,14 @@ export default defineConfig({
     dedupe: ["react", "react-dom"],
   },
   root: path.resolve(import.meta.dirname),
+  // EMBED_MODEL_SSR=1: build de src/embed-model.ts para server.mjs, con todo
+  // adentro (sin dependencias que resolver en tiempo de ejecución).
+  ...(process.env.EMBED_MODEL_SSR === "1" ? { ssr: { noExternal: true }, publicDir: false } : {}),
   build: {
+    // dist/public/.vite/manifest.json: server.mjs lo lee para precargar los
+    // bloques del personalizador embebido (?embed=odoo). No se sirve (es un
+    // archivo con punto).
+    manifest: true,
     // CSS stays render-blocking on purpose (the old async-css media=print
     // trick is gone): the hero is pre-rendered into index.html
     // (scripts/prerender.mjs), so the stylesheet must be applied before that

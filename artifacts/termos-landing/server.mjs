@@ -9,6 +9,12 @@
 //     compressed bytes in memory so each asset is compressed at most once.
 //   - Sends `immutable`, 1-year cache for content-hashed assets (/assets/*,
 //     fonts, images) and `no-cache` for index.html so deploys are picked up.
+//   - Serves the .br/.gz files that scripts/precompress.mjs leaves next to
+//     each asset at build time; anything else compressible is compressed once,
+//     asynchronously (never with the server blocked), and cached in memory.
+//   - Embebido desde la tienda (?embed=odoo&product=<id>): sirve dist/embed.html
+//     (sin el hero) con <link rel=preload> de los bloques del personalizador,
+//     /api/catalog, el .glb de la pieza y el decoder Draco (embedPreloads).
 //   - SPA fallback: unknown non-file routes return index.html.
 //   - Serves robots.txt / sitemap.xml / llms.txt as plain text when present.
 //   - Framing (PROMPT-ODOO-TIENDA §6): the page can be embedded ONLY by the
@@ -24,13 +30,16 @@ import { readFile, stat } from "node:fs/promises";
 import { createReadStream, existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join, normalize, extname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { gzip, gzipSync, brotliCompressSync, constants as zlibConstants } from "node:zlib";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { gzip, brotliCompress, constants as zlibConstants } from "node:zlib";
 import { promisify } from "node:util";
 import { handleServeRequest } from "./upload-store.mjs";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = join(__dirname, "dist", "public");
+// HTML del embebido sin el hero (scripts/prerender.mjs); si falta, index.html.
+const EMBED_HTML = join(__dirname, "dist", "embed.html");
+const HAS_EMBED_HTML = existsSync(EMBED_HTML);
 const PORT = Number(process.env.PORT) || 3000;
 
 /**
@@ -62,10 +71,13 @@ function frameAncestors(embed, origins = SHOP_ORIGINS) {
  * para el «Volver a la tienda» (src/lib/embed.ts). Embebido, además oculta
  * desde el primer pintado la portada pre-renderizada (main.tsx la quita).
  */
-function injectShopOrigins(html, hideHero) {
+function injectShopOrigins(html, hideHero, preloads = "") {
   const meta = `<meta name="cs-shop-origins" content="${SHOP_ORIGINS.join(" ")}">` +
     (hideHero ? "<style>#hero-root{display:none!important}</style>" : "");
-  return html.replace("</head>", `${meta}</head>`);
+  // Las precargas van al principio del <head>: el navegador las pide antes de
+  // leer el resto (GTM, JSON-LD, CSS).
+  const withPreloads = preloads ? html.replace(/(<meta charset[^>]*>)/i, `$1${preloads}`) : html;
+  return withPreloads.replace("</head>", `${meta}</head>`);
 }
 
 // Dominio público. El viejo (creativastudiopy.com) sigue conectado en Replit
@@ -128,6 +140,133 @@ function proxyToApi(req, res) {
   req.pipe(upstream);
 }
 
+// ── Precargas del embebido (?embed=odoo&product=<id>) ───────────────────────
+// Sin esto el navegador descubre todo en cascada: JS de entrada → App →
+// personalizador → /api/catalog → visor 3D → .glb → decoder Draco. Con las
+// precargas pide todo junto apenas llega el HTML. El .glb y Draco van con
+// prioridad baja: el editor (y cs:ready) no los espera. El JS del visor (three,
+// ~160 KB brotli) no se precarga: medido, le robaba ancho de banda al editor
+// (cs:ready +200 ms) y el 3D no terminaba antes (RESULTADOS-ODOO-TIENDA §9).
+
+/** Debe coincidir con DRACO_PATH en src/components/thermos-3d.tsx. */
+const DRACO_PATH = "/draco/v1/";
+const MANIFEST = join(ROOT, ".vite", "manifest.json");
+const EMBED_MODEL = join(__dirname, "dist", "server", "embed-model.js");
+
+let manifestChunks = null;
+/** Bloques JS del personalizador (src del manifest de Vite → archivos), en orden de necesidad. */
+async function embedChunks() {
+  if (manifestChunks) return manifestChunks;
+  try {
+    const manifest = JSON.parse(await readFile(MANIFEST, "utf-8"));
+    const entry = Object.values(manifest).find(c => c.isEntry);
+    const seen = new Set(entry ? [entry.file] : []);
+    // Un bloque que además importa otro bloque (customizer, del que thermos-3d
+    // toma código compartido) queda con clave "_archivo.js" y sin src: se busca
+    // por el nombre del bloque dinámico.
+    const keyOf = (src) => manifest[src] ? src : Object.keys(manifest).find(k =>
+      manifest[k].isDynamicEntry && manifest[k].name === src.replace(/^.*\//, "").replace(/\.\w+$/, ""));
+    const collect = (src) => {
+      const key = keyOf(src);
+      const out = [];
+      const walk = (k) => {
+        const c = manifest[k];
+        if (!c || seen.has(c.file)) return;
+        seen.add(c.file);
+        for (const i of c.imports ?? []) walk(i);
+        out.push(`/${c.file}`);
+      };
+      walk(key);
+      return out;
+    };
+    manifestChunks = {
+      // La entrada ya está como <script type=module> en el HTML; la precarga
+      // con prioridad alta la pone primera (si no, compite con el resto).
+      entry: entry ? `/${entry.file}` : null,
+      editor: [...collect("src/App.tsx"), ...collect("src/components/customizer.tsx")],
+    };
+  } catch {
+    manifestChunks = { entry: null, editor: [] };
+  }
+  return manifestChunks;
+}
+
+// Catálogo de Odoo (para saber el .glb de la variante). Embebido en este
+// proceso, al api-server interno; en el deployment por artefactos (/api/* es
+// otro servicio), por la URL pública. Se guarda 5 min y nunca demora el HTML
+// más de CATALOG_WAIT_MS: si no llegó, la página sale sin el .glb precargado.
+const CATALOG_URL = process.env.CS_CATALOG_URL
+  || (EMBEDDED_API ? `http://127.0.0.1:${API_PORT}/api/catalog` : `https://${PUBLIC_HOST}/api/catalog`);
+const CATALOG_TTL_MS = 5 * 60_000;
+const CATALOG_WAIT_MS = 300;
+let catalogCache = { at: 0, data: null, job: null };
+function loadCatalog() {
+  if (!catalogCache.job) {
+    catalogCache.job = fetch(CATALOG_URL, { signal: AbortSignal.timeout(10_000) })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d && Array.isArray(d.products)) catalogCache = { ...catalogCache, at: Date.now(), data: d }; })
+      .catch(() => {})
+      .finally(() => { catalogCache.job = null; });
+  }
+  return catalogCache.job;
+}
+async function catalogForPreload() {
+  if (!catalogCache.data || Date.now() - catalogCache.at > CATALOG_TTL_MS) {
+    const job = loadCatalog();
+    if (!catalogCache.data) await Promise.race([job, new Promise(r => setTimeout(r, CATALOG_WAIT_MS))]);
+  }
+  return catalogCache.data;
+}
+
+let embedModelUrl = null;
+async function modelUrlFor(variantId) {
+  if (!/^\d{1,10}$/.test(variantId ?? "")) return null;
+  try {
+    embedModelUrl ??= (await import(pathToFileURL(EMBED_MODEL).href)).embedModelUrl;
+    const catalog = await catalogForPreload();
+    const url = catalog ? embedModelUrl(catalog, Number(variantId)) : null;
+    // Solo un archivo que existe en el build.
+    return url && url.startsWith("/models/") && (await resolveFile(url.split("?")[0])) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Si el .glb usa Draco (lee solo el JSON del encabezado; queda en memoria). */
+const dracoCache = new Map();
+async function usesDraco(modelUrl) {
+  if (dracoCache.has(modelUrl)) return dracoCache.get(modelUrl);
+  let draco = false;
+  try {
+    const buf = await readFile(join(ROOT, modelUrl.split("?")[0]));
+    const len = buf.readUInt32LE(12);
+    draco = buf.subarray(20, 20 + len).toString("utf-8").includes("KHR_draco_mesh_compression");
+  } catch { /* sin precarga */ }
+  dracoCache.set(modelUrl, draco);
+  return draco;
+}
+
+/** <link> de precarga para el HTML embebido de esa variante. */
+async function embedPreloads(variantId) {
+  const { entry, editor } = await embedChunks();
+  const model = await modelUrlFor(variantId);
+  const low = ' fetchpriority="low"';
+  const tags = [
+    ...(entry ? [`<link rel="modulepreload" href="${entry}" fetchpriority="high">`] : []),
+    ...editor.map(f => `<link rel="modulepreload" href="${f}" fetchpriority="high">`),
+    // Mismo modo que el fetch() de react-query (cors, credenciales same-origin).
+    `<link rel="preload" as="fetch" href="/api/catalog" crossorigin="anonymous" fetchpriority="high">`,
+    ...(model ? [`<link rel="preload" as="fetch" href="${model}" crossorigin="anonymous"${low}>`] : []),
+    ...(model && await usesDraco(model) ? [
+      `<link rel="preload" as="fetch" href="${DRACO_PATH}draco_wasm_wrapper.js" crossorigin="anonymous"${low}>`,
+      `<link rel="preload" as="fetch" href="${DRACO_PATH}draco_decoder.wasm" crossorigin="anonymous"${low}>`,
+    ] : []),
+  ];
+  return tags.join("");
+}
+// Arranque en frío (autoscale): el catálogo se pide ya, no con el primer embebido.
+if (SHOP_ORIGINS.length) setTimeout(loadCatalog, 1000);
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -155,6 +294,10 @@ const MIME = {
   ".otf": "font/otf",
 };
 
+// .glb: Draco ya comprime la geometría, pero el JSON y los buffers sueltos
+// achican algo; solo se sirven comprimidos si el build dejó el .gz/.br.
+const PRECOMPRESSED_ONLY = new Set(["model/gltf-binary"]);
+
 // Text-based types are worth compressing, and so are raw TTF/OTF fonts (they're
 // uncompressed containers — brotli shaves ~50%). WOFF2/images are already
 // compressed, so we leave them alone to avoid burning CPU for no gain.
@@ -176,17 +319,57 @@ const COMPRESSIBLE = new Set([
 // síncrono de arriba), una sola vez y cacheado en memoria (~34 MB en total).
 const ASYNC_GZIP_EXT = new Set([".wasm", ".onnx"]);
 const gzipAsync = promisify(gzip);
-const pendingGzip = new Map();
+const brotliAsync = promisify(brotliCompress);
+const pendingCompress = new Map();
 
 // In-memory cache of compressed payloads, keyed by `path|encoding`.
 const compressedCache = new Map();
 
+/**
+ * Comprime fuera del hilo principal (pool de libuv): un pedido que llega
+ * mientras tanto no espera. Calidad 11 solo para lo chico (HTML, docs);
+ * lo grande que no vino precomprimido usa 5, que es ~10× más rápido.
+ */
 function compress(buffer, encoding) {
   return encoding === "br"
-    ? brotliCompressSync(buffer, {
-        params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 11 },
+    ? brotliAsync(buffer, {
+        params: {
+          [zlibConstants.BROTLI_PARAM_QUALITY]: buffer.length < 64 * 1024 ? 11 : 5,
+          [zlibConstants.BROTLI_PARAM_SIZE_HINT]: buffer.length,
+        },
       })
-    : gzipSync(buffer, { level: 9 });
+    : gzipAsync(buffer, { level: buffer.length < 64 * 1024 ? 9 : 6 });
+}
+
+/** Comprime una vez por clave aunque lleguen pedidos simultáneos. */
+async function compressOnce(key, load, encoding) {
+  const hit = compressedCache.get(key);
+  if (hit) return hit;
+  let job = pendingCompress.get(key);
+  if (!job) {
+    job = load().then(buf => compress(buf, encoding));
+    pendingCompress.set(key, job);
+    job.then(p => compressedCache.set(key, p), () => {}).finally(() => pendingCompress.delete(key));
+  }
+  return job;
+}
+
+/** Versión precomprimida en el build (archivo.br / archivo.gz), si hay y el cliente la acepta. */
+const precompressedCache = new Map();
+async function precompressed(filePath, acceptEncoding = "") {
+  const tries = [];
+  if (acceptEncoding.includes("br")) tries.push(["br", ".br"]);
+  if (acceptEncoding.includes("gzip")) tries.push(["gzip", ".gz"]);
+  for (const [encoding, ext] of tries) {
+    const p = filePath + ext;
+    let size = precompressedCache.get(p);
+    if (size === undefined) {
+      try { size = (await stat(p)).size; } catch { size = null; }
+      precompressedCache.set(p, size);
+    }
+    if (size !== null) return { encoding, path: p, size };
+  }
+  return null;
 }
 
 function pickEncoding(acceptEncoding = "") {
@@ -197,12 +380,16 @@ function pickEncoding(acceptEncoding = "") {
 
 // Content-hashed assets (Vite emits `name-[hash].ext`) and immutable media can
 // be cached forever. index.html must always revalidate.
-function cacheControlFor(pathname) {
+function cacheControlFor(pathname, search = new URLSearchParams()) {
   if (pathname === "/index.html" || pathname === "/") {
     return "no-cache";
   }
   if (
     pathname.startsWith("/assets/") ||
+    // Decoder Draco: carpeta versionada (draco/v1/, ver thermos-3d.tsx).
+    /^\/draco\/v\d+\//.test(pathname) ||
+    // Modelos 3D: products.ts los pide con ?v=N y sube N cuando cambian.
+    (pathname.startsWith("/models/") && search.has("v")) ||
     pathname.startsWith("/fonts/") ||
     pathname.startsWith("/galeria/") ||
     // Videos: como la galería, se versionan cambiando el nombre del archivo.
@@ -282,6 +469,8 @@ async function resolveFile(pathname) {
     return null;
   }
   const clean = normalize(decoded).replace(/^(\.\.[/\\])+/, "");
+  // Archivos con punto (.vite/manifest.json) no se publican.
+  if (/(^|[/\\])\./.test(clean)) return null;
   let filePath = join(ROOT, clean);
   if (!filePath.startsWith(ROOT)) return null;
 
@@ -346,7 +535,7 @@ async function serve(req, res) {
       Vary: "Accept-Encoding",
     };
     if (encoding) {
-      const compressed = compress(payload, encoding);
+      const compressed = await compress(payload, encoding);
       res.writeHead(200, { ...headers, "Content-Encoding": encoding, "Content-Length": compressed.length });
       res.end(method === "HEAD" ? undefined : compressed);
     } else {
@@ -376,10 +565,8 @@ async function serve(req, res) {
   }
 
   const type = MIME[extname(filePath).toLowerCase()] || "application/octet-stream";
-  const cacheControl = cacheControlFor(pathname);
-  const asyncGzip = ASYNC_GZIP_EXT.has(extname(filePath).toLowerCase())
-    && (req.headers["accept-encoding"] || "").includes("gzip");
-  const encoding = asyncGzip ? "gzip" : COMPRESSIBLE.has(type) ? pickEncoding(req.headers["accept-encoding"]) : null;
+  const cacheControl = cacheControlFor(pathname, url.searchParams);
+  const acceptEncoding = req.headers["accept-encoding"] || "";
 
   const isHtml = type.startsWith("text/html");
   const embed = isHtml && url.searchParams.get("embed") === "odoo";
@@ -393,16 +580,17 @@ async function serve(req, res) {
     ...(isHtml ? { "Content-Security-Policy": frameAncestors(embed) } : {}),
   };
 
-  // Desde la tienda (embebido o respaldo): el mismo index.html con los orígenes de la tienda adentro.
+  // Desde la tienda: el HTML con los orígenes de la tienda adentro. Embebido,
+  // además sin el hero y con las precargas de la pieza (embedPreloads).
   if (fromShop) {
-    const encodingE = pickEncoding(req.headers["accept-encoding"]);
-    const key = `${filePath}|${embed ? "embed" : "odoo"}|${encodingE ?? "identity"}`;
-    let payload = compressedCache.get(key);
-    if (!payload) {
-      const html = Buffer.from(injectShopOrigins(await readFile(filePath, "utf-8"), embed), "utf-8");
-      payload = encodingE ? compress(html, encodingE) : html;
-      compressedCache.set(key, payload);
-    }
+    const encodingE = pickEncoding(acceptEncoding);
+    const shell = embed && HAS_EMBED_HTML ? EMBED_HTML : filePath;
+    const preloads = embed ? await embedPreloads(url.searchParams.get("product")) : "";
+    const html = async () => Buffer.from(injectShopOrigins(await readFile(shell, "utf-8"), embed && shell === filePath, preloads), "utf-8");
+    // La clave es el resultado (no el id que manda la URL): no crece con ids inventados.
+    const payload = encodingE
+      ? await compressOnce(`${shell}|${embed ? "embed" : "odoo"}|${preloads}|${encodingE}`, html, encodingE)
+      : await html();
     res.writeHead(status, {
       ...baseHeaders,
       ...(encodingE ? { "Content-Encoding": encodingE } : {}),
@@ -413,23 +601,21 @@ async function serve(req, res) {
   }
 
   try {
+    // Precomprimido en el build: se manda el archivo .br/.gz tal cual.
+    const pre = (COMPRESSIBLE.has(type) || PRECOMPRESSED_ONLY.has(type) || ASYNC_GZIP_EXT.has(extname(filePath).toLowerCase()))
+      && !isHtml ? await precompressed(filePath, acceptEncoding) : null;
+    if (pre) {
+      res.writeHead(status, { ...baseHeaders, "Content-Encoding": pre.encoding, "Content-Length": pre.size });
+      if (method === "HEAD") { res.end(); return; }
+      createReadStream(pre.path).on("error", () => res.destroy()).pipe(res);
+      return;
+    }
+
+    // Sin precomprimido: se comprime una vez, en segundo plano, y queda en memoria.
+    const asyncGzip = ASYNC_GZIP_EXT.has(extname(filePath).toLowerCase()) && acceptEncoding.includes("gzip");
+    const encoding = asyncGzip ? "gzip" : COMPRESSIBLE.has(type) ? pickEncoding(acceptEncoding) : null;
     if (encoding) {
-      const key = `${filePath}|${encoding}`;
-      let payload = compressedCache.get(key);
-      if (!payload && asyncGzip) {
-        // Pedidos simultáneos comparten la misma compresión.
-        let job = pendingGzip.get(key);
-        if (!job) {
-          job = readFile(filePath).then(buf => gzipAsync(buf, { level: 6 }));
-          pendingGzip.set(key, job);
-          job.finally(() => pendingGzip.delete(key)).catch(() => {});
-        }
-        payload = await job;
-        compressedCache.set(key, payload);
-      } else if (!payload) {
-        payload = compress(await readFile(filePath), encoding);
-        compressedCache.set(key, payload);
-      }
+      const payload = await compressOnce(`${filePath}|${encoding}`, () => readFile(filePath), encoding);
       res.writeHead(status, {
         ...baseHeaders,
         "Content-Encoding": encoding,

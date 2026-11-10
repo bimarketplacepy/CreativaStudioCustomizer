@@ -1,4 +1,4 @@
-import * as THREE from "three";
+import type * as ThreeNS from "three";
 import { resampledProfile, type ProductDef } from "./products";
 import {
   bandRange, DEFAULT_ART_PLACEMENT, DEFAULT_LINE_HEIGHT,
@@ -11,6 +11,19 @@ import { FACES, faceConfigFor, nearU, type MarkHalfExtents } from "./face-area";
 import { drawWrapLayer, type WrapLayer } from "./wrap-design";
 import { ctxMatrix, type VectorSink } from "./vector-marks";
 import { LOW_END } from "./device-tier";
+
+/**
+ * three llega inyectado por el visor 3D (thermos-3d.tsx llama a provideThree
+ * al cargarse): el personalizador usa las medidas y el diseño de este módulo
+ * sin depender del bloque de three (~200 KB), que baja aparte, después de que
+ * el editor ya se puede usar. Solo makeBodyMaps / makeGlassEngraving lo usan,
+ * y solo los llama el visor.
+ */
+type ThreeTextures = Pick<typeof ThreeNS, "CanvasTexture" | "SRGBColorSpace" | "RepeatWrapping">;
+let THREE = null as unknown as ThreeTextures;
+export function provideThree(three: ThreeTextures): void {
+  THREE = three;
+}
 
 /** Text wraps once a row passes this fraction of the wrap-around circumference. */
 const TEXT_WRAP_FRAC = 0.5;
@@ -235,11 +248,11 @@ function grooveHalo(mask: HTMLCanvasElement, area: Rect): HTMLCanvasElement {
 
 /** The maps that describe one engraved body. */
 export interface BodyMaps {
-  map: THREE.CanvasTexture;
-  roughnessMap: THREE.CanvasTexture;
-  metalnessMap: THREE.CanvasTexture;
+  map: ThreeNS.CanvasTexture;
+  roughnessMap: ThreeNS.CanvasTexture;
+  metalnessMap: ThreeNS.CanvasTexture;
   /** Doubles as the clearcoat mask: no lacquer survives inside the groove. */
-  grooveMap: THREE.CanvasTexture;
+  grooveMap: ThreeNS.CanvasTexture;
   dispose: () => void;
 }
 
@@ -302,7 +315,7 @@ const PRINT_INK = "#161616";
 
 /** The engraved name is always heavy; the family comes from the chosen font. */
 const FONT_WEIGHT = 900;
-function makeTextFont(fontPx: number, fontFamily: string): string {
+export function makeTextFont(fontPx: number, fontFamily: string): string {
   return `${FONT_WEIGHT} ${Math.round(fontPx)}px ${fontFamily}`;
 }
 
@@ -874,13 +887,13 @@ export interface GlassMaps {
    * the frost the edge contrast a real sandblasted engraving has — pure white
    * frost disappears against the light glass.
    */
-  frostMap: THREE.CanvasTexture;
+  frostMap: ThreeNS.CanvasTexture;
   /**
    * Coverage (luminance = alpha) of core + rim. Separate from the colour map:
    * with a single map the dark rim would also read as low alpha and erase
    * itself, so colour and opacity have to travel on different textures.
    */
-  alphaMap: THREE.CanvasTexture;
+  alphaMap: ThreeNS.CanvasTexture;
   dispose: () => void;
 }
 
