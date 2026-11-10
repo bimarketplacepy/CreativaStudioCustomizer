@@ -3,9 +3,11 @@
 //  - Secreto distinto o ausente: 404 (no revela que la ruta existe).
 //  - No se confía en el cuerpo: con el id recibido se vuelve a leer el
 //    pedido en Odoo. Se marca «pagado» solo si client_order_ref empieza con
-//    CS-, amount_paid cubre el total (o el pedido está confirmado) Y el
-//    cliente FIRMÓ la prueba (signed_on). Pagado sin firma → «pago_sin_firma»
-//    (revisar en /admin; no se produce). PROMPT-ODOO-TIENDA §3.
+//    CS-, las transacciones de pago en estado done cubren el total (pago
+//    real: ni amount_paid, que suma las autorizadas, ni state=sale) Y el
+//    cliente FIRMÓ la prueba (signed_on). Pagado sin firma → «pago_sin_firma»;
+//    confirmado sin pago real → «confirmado_sin_pago» (los dos: revisar en
+//    /admin, no se produce). PROMPT-ODOO-TIENDA §3; reglas en payment-state.ts.
 //  - Al pagar se congela la versión: si el pedido no tenía hash aprobado, se
 //    guarda el del designState actual.
 // Lo llama el módulo website_creativa_studio con { _model, _id } y reintenta
@@ -20,6 +22,7 @@ import { OdooClient, odooConfig } from "../lib/odoo";
 import { readOrder, readSignature, type OdooOrderInfo } from "../lib/odoo-checkout";
 import { designHash } from "../lib/design-hash";
 import { logger } from "../lib/logger";
+import { paymentStateOf } from "../lib/payment-state";
 
 const router: IRouter = Router();
 
@@ -34,13 +37,7 @@ function odoo(): OdooClient | null {
   return client;
 }
 
-export type PaymentState = "pendiente" | "pagado" | "pago_sin_firma";
-
-/** Estado de pago de la landing a partir de lo que dice Odoo. */
-export function paymentStateOf(info: Pick<OdooOrderInfo, "paid">, signed: boolean): PaymentState {
-  if (!info.paid) return "pendiente";
-  return signed ? "pagado" : "pago_sin_firma";
-}
+export { paymentStateOf, type PaymentState } from "../lib/payment-state";
 
 /**
  * Aplica en la base de la landing lo que dice Odoo. Devuelve si cambió algo.
@@ -100,6 +97,7 @@ router.post("/odoo/webhook", async (req, res) => {
     const signature = info.paid ? await readSignature(odooClient, id) : { signed: false };
     const result = await applyOdooPayment(info, signature.signed);
     if (result.state === "pago_sin_firma") logger.warn({ id, ...result }, "odoo webhook: pago sin firma (revisar)");
+    if (result.state === "confirmado_sin_pago") logger.warn({ id, ...result }, "odoo webhook: confirmado sin pago real (revisar)");
     logger.info({ id, ...result }, "odoo webhook");
     res.status(200).json({ ok: true, ...result });
   } catch (err) {

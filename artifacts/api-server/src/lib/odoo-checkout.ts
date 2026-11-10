@@ -5,7 +5,8 @@
  *
  * Verificado contra el fuente de Odoo 19.0:
  *  - sale.order.state: draft | sent | sale | cancel (sale/models/sale_order.py:26)
- *  - amount_paid = suma de transacciones authorized/done (sale_order.py:673)
+ *  - amount_paid = suma de transacciones authorized/done (sale_order.py:673):
+ *    NO se usa para «pagado»; se suman solo las transacciones done (payment-state.ts)
  *  - el pago confirma el pedido (sale/models/payment_transaction.py:108)
  *  - get_portal_url genera el access_token (portal/models/portal_mixin.py:116)
  *  - res.partner en 19 NO tiene `mobile`: solo `phone` (confirmado en staging)
@@ -13,6 +14,7 @@
 import { OdooClient, OdooError } from "./odoo";
 import { normalizeEmail, normalizePhonePy, phoneSearchPattern } from "./phone-py";
 import { logger } from "./logger";
+import { doneAmount, isPaid } from "./payment-state";
 
 export class OdooCheckoutError extends OdooError {}
 /** La variante se agotó entre el diseño y el clic en «Comprar». */
@@ -56,7 +58,9 @@ export interface OdooOrderInfo {
   state: "draft" | "sent" | "sale" | "cancel";
   clientOrderRef: string | null;
   amountTotal: number;
-  amountPaid: number;
+  /** Capturado: solo transacciones de pago en estado "done" (payment-state.ts). */
+  amountDone: number;
+  /** Pago real completo: done ≥ total y total > 0. Nunca por state=sale ni amount_paid. */
   paid: boolean;
 }
 
@@ -101,36 +105,39 @@ type M2O = [number, string] | false;
 
 const ctx = { allowed_company_ids: [COMPANY_ID], lang: "es_PY" };
 
-/** Pagado = cubrió el total con transacciones, o Odoo ya lo confirmó. */
-export function isPaid(o: { state: string; amountTotal: number; amountPaid: number }): boolean {
-  return o.state === "sale" || (o.amountTotal > 0 && o.amountPaid + 0.005 >= o.amountTotal);
-}
+type OrderRow = { id: number; name: string; state: OdooOrderInfo["state"]; client_order_ref: string | false; amount_total: number; transaction_ids: number[] };
 
-function toInfo(r: { id: number; name: string; state: OdooOrderInfo["state"]; client_order_ref: string | false; amount_total: number; amount_paid: number }): OdooOrderInfo {
-  const info = {
+/** Arma la info del pedido sumando solo lo capturado (transacciones done). Solo lectura. */
+async function toInfo(client: OdooClient, r: OrderRow): Promise<OdooOrderInfo> {
+  const txs = r.transaction_ids?.length
+    ? await client.call<Array<{ state: string; amount: number }>>(
+      "payment.transaction", "read", [r.transaction_ids, ["state", "amount"]], { context: ctx })
+    : [];
+  const amountDone = doneAmount(txs);
+  return {
     id: r.id, name: r.name, state: r.state,
     clientOrderRef: r.client_order_ref || null,
-    amountTotal: r.amount_total, amountPaid: r.amount_paid,
+    amountTotal: r.amount_total, amountDone,
+    paid: isPaid({ amountTotal: r.amount_total, amountDone }),
   };
-  return { ...info, paid: isPaid(info) };
 }
 
-const ORDER_FIELDS = ["name", "state", "client_order_ref", "amount_total", "amount_paid"];
+const ORDER_FIELDS = ["name", "state", "client_order_ref", "amount_total", "transaction_ids"];
 
 /** Lee el pedido de Odoo por id (null si no existe). Solo lectura. */
 export async function readOrder(client: OdooClient, id: number): Promise<OdooOrderInfo | null> {
-  const rows = await client.call<Array<Parameters<typeof toInfo>[0]>>(
+  const rows = await client.call<OrderRow[]>(
     "sale.order", "search_read", [[["id", "=", id]]], { fields: ORDER_FIELDS, limit: 1, context: ctx });
-  return rows[0] ? toInfo(rows[0]) : null;
+  return rows[0] ? toInfo(client, rows[0]) : null;
 }
 
 /** Pedido de un diseño (client_order_ref = CS-XXXX), el más reciente no cancelado. */
 export async function findOrderByRef(client: OdooClient, ref: string): Promise<OdooOrderInfo | null> {
-  const rows = await client.call<Array<Parameters<typeof toInfo>[0]>>(
+  const rows = await client.call<OrderRow[]>(
     "sale.order", "search_read",
     [[["client_order_ref", "=", ref], ["state", "!=", "cancel"]]],
     { fields: ORDER_FIELDS, limit: 1, order: "id desc", context: ctx });
-  return rows[0] ? toInfo(rows[0]) : null;
+  return rows[0] ? toInfo(client, rows[0]) : null;
 }
 
 /** Stock y precio actuales de la variante (PLAN-ODOO §4: se vuelve a consultar al comprar). */

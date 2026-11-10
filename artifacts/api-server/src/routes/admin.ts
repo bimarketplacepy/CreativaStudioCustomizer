@@ -610,7 +610,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
     var q = (filter || "").toLowerCase();
     var rows = orders.slice().sort(function (a, b) {
       // Arriba lo que espera al taller: en revisión y pagos sin firma.
-      var w = function (o) { return o.reviewState === "en_revision" || o.odooPaymentState === "pago_sin_firma" ? 0 : 1; };
+      var w = function (o) { return o.reviewState === "en_revision" || o.odooPaymentState === "pago_sin_firma" || o.odooPaymentState === "confirmado_sin_pago" ? 0 : 1; };
       return w(a) - w(b);
     }).filter(function (o) {
       if (!q) return true;
@@ -635,7 +635,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
       if (o.iconName) extra.push("Ícono: " + esc(o.iconName));
       if (o.hasUploadedImage) extra.push("Logo/foto adjunta");
       if (o.estimate) extra.push("Precio estimado: " + esc(o.estimate));
-      var PAY = { pagado: ["pagado", "Pagado"], pago_sin_firma: ["sinfirma", "Pago sin aceptación: revisar"] };
+      var PAY = { pagado: ["pagado", "Pagado"], pago_sin_firma: ["sinfirma", "Pago sin aceptación: revisar"], confirmado_sin_pago: ["sinfirma", "Confirmado sin pago: revisar"] };
       var pay = PAY[o.odooPaymentState] || ["", "Pendiente de pago"];
       var odooTag = o.odooOrderName
         ? '<span class="tag pago ' + pay[0] + '">Odoo ' + esc(o.odooOrderName) +
@@ -676,6 +676,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
       }
       if (o.approvedCurrent === false) review += '<div class="warn">El diseño cambió después de aprobarse: es una versión nueva sin aprobar. Producí la versión aprobada.</div>';
       if (o.odooPaymentState === "pago_sin_firma") review += '<div class="warn">Pagó sin firmar la prueba: no producir hasta confirmar con el cliente.</div>';
+      if (o.odooPaymentState === "confirmado_sin_pago") review += '<div class="warn">Odoo lo confirmó pero no hay un pago capturado que cubra el total: no producir hasta cobrarlo.</div>';
       var ad = o.artistDesign;
       if (ad) {
         review += '<div class="meta">Diseño de artista: ' + esc(ad.title || ad.id) + " · " + esc(ad.artistName || ad.artistId || "") + "</div>" +
