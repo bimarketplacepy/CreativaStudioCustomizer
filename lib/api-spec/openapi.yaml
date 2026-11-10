@@ -125,6 +125,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CheckoutErrorResponse"
+        "422":
+          description: Design cannot be produced (feasibility verdict IMPOSIBLE); nothing is created in Odoo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutErrorResponse"
         "502":
           description: Odoo unreachable; continue by WhatsApp
           content:
@@ -393,9 +399,33 @@ components:
         paid:
           type: boolean
       required: [orderId, orderName, total, paymentUrl, paid]
+    FeasibilityReason:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+          description: Customer-facing reason in Spanish, with how to fix it
+        verdict:
+          type: string
+          enum: [REVISION, IMPOSIBLE]
+      required: [code, message, verdict]
     CheckoutResult:
       type: object
       properties:
+        verdict:
+          type: string
+          enum: [OK, REVISION]
+          description: OK = ready to sign and pay; REVISION = the workshop reviews it and sends a proof before payment
+        reasons:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeasibilityReason"
+        portalUrl:
+          type: string
+          nullable: true
+          description: Relative Odoo portal path (/my/orders/<id>?access_token=...), only with verdict OK
         orderNumber:
           type: string
         previewImageUrl:
@@ -406,7 +436,7 @@ components:
           description: Present when the order was already paid
         odoo:
           $ref: "#/components/schemas/CheckoutOdoo"
-      required: [orderNumber, previewImageUrl, odoo]
+      required: [verdict, reasons, portalUrl, orderNumber, previewImageUrl, odoo]
     CheckoutErrorResponse:
       type: object
       properties:
@@ -422,6 +452,13 @@ components:
           description: True when the customer should continue by WhatsApp
         orderNumber:
           type: string
+        verdict:
+          type: string
+          enum: [IMPOSIBLE]
+        reasons:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeasibilityReason"
       required: [message]
     Order:
       type: object

@@ -65,10 +65,24 @@ export const ordersTable = pgTable("orders", {
   odooOrderName: varchar("odoo_order_name", { length: 40 }),
   /** Total calculado por Odoo (Gs.), tal como se mostró al cliente. */
   odooTotal: numeric("odoo_total", { precision: 14, scale: 2 }),
-  /** Estado de pago que conoce la landing: pendiente / pagado. */
+  /** Estado de pago que conoce la landing: pendiente / pagado / pago_sin_firma (pagó sin aceptar la prueba: revisar). */
   odooPaymentState: varchar("odoo_payment_state", { length: 20 }),
   /** Cuándo se recibió/consultó por última vez el estado de pago. */
   odooPaymentAt: timestamp("odoo_payment_at"),
+  // ── Veredicto y aprobación (PROMPT-ODOO-TIENDA §1.2–1.3) ──
+  /** Veredicto de factibilidad del servidor al comprar: OK / REVISION. */
+  verdict: varchar("verdict", { length: 12 }),
+  /** Motivos del veredicto ({ code, message, verdict }[]). */
+  verdictReasons: jsonb("verdict_reasons"),
+  /** Revisión del taller: en_revision / aprobado / requiere_cambios. Null = no pasa por revisión. */
+  reviewState: varchar("review_state", { length: 20 }),
+  /** Motivo del rechazo («Pedir cambios»). */
+  reviewNote: text("review_note"),
+  /** SHA-256 del designState aprobado: el taller produce ESA versión. */
+  approvedHash: varchar("approved_hash", { length: 64 }),
+  approvedAt: timestamp("approved_at"),
+  /** Quién aprobó (taller) o «automático» (veredicto OK). */
+  approvedBy: varchar("approved_by", { length: 120 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

@@ -197,13 +197,51 @@ export interface CheckoutOdoo {
   paid: boolean;
 }
 
+export type FeasibilityReasonVerdict =
+  (typeof FeasibilityReasonVerdict)[keyof typeof FeasibilityReasonVerdict];
+
+export const FeasibilityReasonVerdict = {
+  REVISION: "REVISION",
+  IMPOSIBLE: "IMPOSIBLE",
+} as const;
+
+export interface FeasibilityReason {
+  code: string;
+  /** Customer-facing reason in Spanish, with how to fix it */
+  message: string;
+  verdict: FeasibilityReasonVerdict;
+}
+
+/**
+ * OK = ready to sign and pay; REVISION = the workshop reviews it and sends a proof before payment
+ */
+export type CheckoutResultVerdict =
+  (typeof CheckoutResultVerdict)[keyof typeof CheckoutResultVerdict];
+
+export const CheckoutResultVerdict = {
+  OK: "OK",
+  REVISION: "REVISION",
+} as const;
+
 export interface CheckoutResult {
+  /** OK = ready to sign and pay; REVISION = the workshop reviews it and sends a proof before payment */
+  verdict: CheckoutResultVerdict;
+  reasons: FeasibilityReason[];
+  /** Relative Odoo portal path (/my/orders/<id>?access_token=...), only with verdict OK */
+  portalUrl: string | null;
   orderNumber: string;
   previewImageUrl: string | null;
   /** Present when the order was already paid */
   message?: string;
   odoo: CheckoutOdoo;
 }
+
+export type CheckoutErrorResponseVerdict =
+  (typeof CheckoutErrorResponseVerdict)[keyof typeof CheckoutErrorResponseVerdict];
+
+export const CheckoutErrorResponseVerdict = {
+  IMPOSIBLE: "IMPOSIBLE",
+} as const;
 
 export interface CheckoutErrorResponse {
   message: string;
@@ -213,6 +251,8 @@ export interface CheckoutErrorResponse {
   /** True when the customer should continue by WhatsApp */
   whatsapp?: boolean;
   orderNumber?: string;
+  verdict?: CheckoutErrorResponseVerdict;
+  reasons?: FeasibilityReason[];
 }
 
 export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];

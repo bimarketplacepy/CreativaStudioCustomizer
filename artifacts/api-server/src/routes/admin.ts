@@ -4,7 +4,8 @@
 // tipea el operario queda en sessionStorage y viaja por header en cada fetch.
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { desc, eq } from "drizzle-orm";
+import { z } from "zod";
+import { and, desc, eq, gte, lt } from "drizzle-orm";
 import { db, ordersTable } from "@workspace/db";
 import { checkInternalKey, orderImageToken } from "../lib/internal-key";
 import { logger } from "../lib/logger";
@@ -12,8 +13,10 @@ import { getCatalog } from "../lib/catalog";
 import { getDisabledProducts, setProductEnabled } from "../lib/product-settings";
 import { MACHINE_LABELS, isMachineId, orderMachine } from "@workspace/print-specs";
 import { OdooClient, odooConfig } from "../lib/odoo";
-import { readOrder } from "../lib/odoo-checkout";
-import { applyOdooPayment } from "./odoo-webhook";
+import { readOrder, readSignature, sendQuotation, cancelQuotation, stampApprovedVersion, attachProof, readServices } from "../lib/odoo-checkout";
+import { designHash } from "../lib/design-hash";
+import { designArtistFee, getArtistDesignById, getArtist } from "@workspace/print-specs";
+import { applyOdooPayment, paymentStateOf } from "./odoo-webhook";
 
 const router: IRouter = Router();
 
@@ -55,6 +58,13 @@ router.get("/api/admin/orders", async (req, res) => {
         odooTotal: true,
         odooPaymentState: true,
         odooPaymentAt: true,
+        verdict: true,
+        verdictReasons: true,
+        reviewState: true,
+        reviewNote: true,
+        approvedHash: true,
+        approvedAt: true,
+        approvedBy: true,
       },
     });
     const list = rows
@@ -72,6 +82,10 @@ router.get("/api/admin/orders", async (req, res) => {
           machineLabel: MACHINE_LABELS[machine],
           createdAt: r.createdAt.toISOString(),
           odooPaymentAt: r.odooPaymentAt ? r.odooPaymentAt.toISOString() : null,
+          approvedAt: r.approvedAt ? r.approvedAt.toISOString() : null,
+          // La versión actual coincide con la aprobada (si cambió, es una versión nueva sin aprobar).
+          approvedCurrent: r.approvedHash ? r.approvedHash === designHash(designState) : null,
+          artistDesign: (ds.artistDesign as Record<string, unknown> | undefined) ?? null,
           size: str(ds.sizeLabel) ?? str(ds.sizeId),
           ownProduct: ds.ownProduct === true,
           estimate: str(ds.engravingEstimate),
@@ -155,11 +169,152 @@ router.post("/api/admin/orders/:orderNumber/odoo-refresh", async (req, res) => {
       res.status(404).json({ message: "El pedido ya no existe en Odoo" });
       return;
     }
-    const result = await applyOdooPayment(info);
-    res.json({ orderNumber: req.params.orderNumber, odooOrderName: info.name, odooTotal: info.amountTotal, odooPaymentState: info.paid ? "pagado" : "pendiente", changed: result.changed });
+    const client = new OdooClient(cfg);
+    const signed = info.paid ? (await readSignature(client, info.id)).signed : false;
+    const result = await applyOdooPayment(info, signed);
+    res.json({ orderNumber: req.params.orderNumber, odooOrderName: info.name, odooTotal: info.amountTotal, odooPaymentState: paymentStateOf(info, signed), changed: result.changed });
   } catch (err) {
     logger.error({ err }, "admin: odoo refresh failed");
     res.status(502).json({ message: "No se pudo consultar Odoo" });
+  }
+});
+
+// ── Revisión del taller (PROMPT-ODOO-TIENDA §3) ─────────────────────────────
+
+/** Servicios cuyo precio puede completar el taller al aprobar (nunca la pieza). */
+const SERVICE_CODE_RE = /^(GRAB-[A-Z]+|IMP-COLOR-[A-Z0-9]+|DISENO-ARTISTA-[A-Z0-9-]+)$/;
+
+const ApproveBody = z.object({
+  /** Quién aprueba (queda registrado). */
+  approvedBy: z.string().trim().min(2).max(120),
+  /** Precios faltantes, solo de servicios: [{ code: "IMP-COLOR-360", price: 45000 }]. */
+  servicePrices: z.array(z.object({ code: z.string().regex(SERVICE_CODE_RE), price: z.number().positive().max(100_000_000) })).max(10).optional(),
+  /** Prueba que armó el taller (data URL JPEG/PNG); sin ella queda la automática. */
+  proofImage: z.string().max(8_000_000).optional(),
+});
+
+async function reviewTarget(orderNumber: string) {
+  return db.query.ordersTable.findFirst({
+    where: eq(ordersTable.orderNumber, orderNumber),
+    columns: { id: true, orderNumber: true, odooOrderId: true, reviewState: true, odooPaymentState: true, designState: true },
+  });
+}
+
+// POST /api/admin/orders/:cs/approve — «Aprobar y enviar presupuesto».
+router.post("/api/admin/orders/:orderNumber/approve", async (req, res) => {
+  if (!hasKey(req)) { res.status(401).json({ message: "No autorizado" }); return; }
+  const parsed = ApproveBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ message: "Datos inválidos: falta quién aprueba o un precio no es de un servicio" }); return; }
+  const cfg = odooConfig();
+  if (!cfg) { res.status(503).json({ message: "Odoo no está configurado" }); return; }
+  try {
+    const row = await reviewTarget(req.params.orderNumber);
+    if (!row) { res.status(404).json({ message: "Pedido no encontrado" }); return; }
+    if (!row.odooOrderId) { res.status(409).json({ message: "Este pedido no tiene presupuesto en Odoo" }); return; }
+    if (row.reviewState !== "en_revision") { res.status(409).json({ message: `El pedido no está en revisión (${row.reviewState ?? "sin revisión"})` }); return; }
+    const client = new OdooClient(cfg);
+    const info = await readOrder(client, row.odooOrderId);
+    if (!info || info.state === "cancel") { res.status(409).json({ message: "El presupuesto ya no está activo en Odoo" }); return; }
+
+    // Precios faltantes: se agregan como líneas del servicio con su precio y
+    // se borra la nota «a cotizar» de ese concepto.
+    const prices = parsed.data.servicePrices ?? [];
+    if (prices.length) {
+      const services = await readServices(client, prices.map(p => p.code));
+      const missing = prices.filter(p => !services[p.code]).map(p => p.code);
+      if (missing.length) { res.status(409).json({ message: `Faltan en Odoo los servicios ${missing.join(", ")} (correr scripts/odoo-setup.mjs)` }); return; }
+      for (const p of prices) {
+        await client.call("sale.order.line", "create", [{ order_id: info.id, product_id: services[p.code].id, product_uom_qty: 1, price_unit: p.price }]);
+      }
+      const notes = await client.call<Array<{ id: number; name: string }>>("sale.order.line", "search_read",
+        [[["order_id", "=", info.id], ["display_type", "=", "line_note"], ["name", "ilike", "a cotizar"]]], { fields: ["name"] });
+      if (notes.length) await client.call("sale.order.line", "unlink", [notes.map(n => n.id)]);
+    }
+    const unpriced = await client.call<number>("sale.order.line", "search_count",
+      [[["order_id", "=", info.id], ["display_type", "=", "line_note"], ["name", "ilike", "a cotizar"]]]);
+    if (unpriced > 0) { res.status(409).json({ message: "Quedan líneas «a cotizar»: completá su precio antes de aprobar" }); return; }
+
+    if (parsed.data.proofImage) {
+      const m = /^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/=]+)$/.exec(parsed.data.proofImage);
+      if (!m) { res.status(400).json({ message: "La prueba tiene que ser una imagen JPEG o PNG" }); return; }
+      await attachProof(client, info.id, { name: `Prueba aprobada ${row.orderNumber}.${m[1] === "image/png" ? "png" : "jpg"}`, mimetype: m[1], base64: m[2] });
+    }
+
+    const hash = designHash(row.designState);
+    await stampApprovedVersion(client, info.id, hash, parsed.data.approvedBy);
+    await sendQuotation(client, info.id);
+    const fresh = await readOrder(client, info.id);
+    await db.update(ordersTable).set({
+      reviewState: "aprobado", approvedHash: hash, approvedAt: new Date(), approvedBy: parsed.data.approvedBy,
+      ...(fresh ? { odooTotal: String(fresh.amountTotal) } : {}),
+    }).where(eq(ordersTable.id, row.id));
+    logger.info({ orderNumber: row.orderNumber, odoo: info.name, by: parsed.data.approvedBy }, "admin: diseño aprobado y presupuesto enviado");
+    res.json({ orderNumber: row.orderNumber, reviewState: "aprobado", approvedHash: hash, odooTotal: fresh?.amountTotal ?? info.amountTotal });
+  } catch (err) {
+    logger.error({ err }, "admin: approve failed");
+    res.status(502).json({ message: err instanceof Error ? err.message : "No se pudo aprobar en Odoo" });
+  }
+});
+
+// POST /api/admin/orders/:cs/reject — «Pedir cambios»: cancela el presupuesto con el motivo.
+router.post("/api/admin/orders/:orderNumber/reject", async (req, res) => {
+  if (!hasKey(req)) { res.status(401).json({ message: "No autorizado" }); return; }
+  const reason = z.object({ reason: z.string().trim().min(3).max(1000) }).safeParse(req.body);
+  if (!reason.success) { res.status(400).json({ message: "Escribí el motivo (qué tiene que cambiar el cliente)" }); return; }
+  const cfg = odooConfig();
+  if (!cfg) { res.status(503).json({ message: "Odoo no está configurado" }); return; }
+  try {
+    const row = await reviewTarget(req.params.orderNumber);
+    if (!row) { res.status(404).json({ message: "Pedido no encontrado" }); return; }
+    if (row.odooPaymentState === "pagado") { res.status(409).json({ message: "El pedido ya está pagado: no se puede rechazar desde acá" }); return; }
+    if (row.odooOrderId) await cancelQuotation(new OdooClient(cfg), row.odooOrderId, reason.data.reason);
+    await db.update(ordersTable).set({ reviewState: "requiere_cambios", reviewNote: reason.data.reason }).where(eq(ordersTable.id, row.id));
+    res.json({ orderNumber: row.orderNumber, reviewState: "requiere_cambios" });
+  } catch (err) {
+    logger.error({ err }, "admin: reject failed");
+    res.status(502).json({ message: err instanceof Error ? err.message : "No se pudo cancelar en Odoo" });
+  }
+});
+
+// GET /api/admin/artists/settlement?month=YYYY-MM[&format=csv] — «Liquidación
+// de artistas»: pedidos PAGADOS (con firma) del mes con diseño de artista,
+// agrupados por artista. El honorario sale del catálogo (no del navegador).
+router.get("/api/admin/artists/settlement", async (req, res) => {
+  if (!hasKey(req)) { res.status(401).json({ message: "No autorizado" }); return; }
+  const month = typeof req.query.month === "string" && /^\d{4}-\d{2}$/.test(req.query.month)
+    ? req.query.month : new Date().toISOString().slice(0, 7);
+  const [y, m] = month.split("-").map(Number);
+  const from = new Date(Date.UTC(y, m - 1, 1));
+  const to = new Date(Date.UTC(y, m, 1));
+  try {
+    const rows = await db.query.ordersTable.findMany({
+      where: and(eq(ordersTable.odooPaymentState, "pagado"), gte(ordersTable.odooPaymentAt, from), lt(ordersTable.odooPaymentAt, to)),
+      columns: { orderNumber: true, designState: true, odooPaymentAt: true, odooOrderName: true },
+    });
+    const byArtist = new Map<string, { artistId: string; artistName: string; copies: number; fee: number; orders: string[] }>();
+    for (const r of rows) {
+      const ref = (r.designState as Record<string, unknown> | null)?.artistDesign as Record<string, unknown> | undefined;
+      if (!ref || typeof ref.id !== "string") continue;
+      const design = getArtistDesignById(ref.id);
+      const artistId = design?.artistId ?? (typeof ref.artistId === "string" ? ref.artistId : "desconocido");
+      const fee = design ? designArtistFee(design) : typeof ref.artistFee === "number" ? ref.artistFee : 0;
+      const e = byArtist.get(artistId) ?? { artistId, artistName: getArtist(artistId)?.name ?? artistId, copies: 0, fee: 0, orders: [] };
+      e.copies += 1; e.fee += fee; e.orders.push(r.orderNumber);
+      byArtist.set(artistId, e);
+    }
+    const list = [...byArtist.values()].sort((a, b) => b.fee - a.fee);
+    if (req.query.format === "csv") {
+      const q = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+      const csv = ["mes,artista,copias,honorario_gs,pedidos", ...list.map(e => [month, e.artistName, e.copies, e.fee, e.orders.join(" ")].map(q).join(","))].join("\n");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="liquidacion-artistas-${month}.csv"`);
+      res.send(`\ufeff${csv}\n`);
+      return;
+    }
+    res.json({ month, artists: list, total: list.reduce((t, e) => t + e.fee, 0) });
+  } catch (err) {
+    logger.error({ err }, "admin: settlement failed");
+    res.status(500).json({ message: "No se pudo armar la liquidación" });
   }
 });
 

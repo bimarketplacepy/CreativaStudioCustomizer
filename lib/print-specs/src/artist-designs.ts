@@ -102,3 +102,11 @@ export function getArtistDesign(id: string | null | undefined): ArtistDesign | n
 
 export const designPrice = (d: ArtistDesign) => d.price ?? ARTIST_DESIGN_PRICE;
 export const designArtistFee = (d: ArtistDesign) => d.artistFee ?? ARTIST_DESIGN_FEE;
+
+/**
+ * El diseño por id, esté o no encendido el circuito (para el servidor: arma la
+ * línea; el veredicto decide si se puede vender).
+ */
+export function getArtistDesignById(id: string | null | undefined): ArtistDesign | null {
+  return id ? ARTIST_DESIGNS.find(d => d.id === id.toLowerCase()) ?? null : null;
+}

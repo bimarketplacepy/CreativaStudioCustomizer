@@ -6,8 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CheckoutOdoo } from "./checkoutOdoo";
+import type { CheckoutResultVerdict } from "./checkoutResultVerdict";
+import type { FeasibilityReason } from "./feasibilityReason";
 
 export interface CheckoutResult {
+  /** OK = ready to sign and pay; REVISION = the workshop reviews it and sends a proof before payment */
+  verdict: CheckoutResultVerdict;
+  reasons: FeasibilityReason[];
+  /** Relative Odoo portal path (/my/orders/<id>?access_token=...), only with verdict OK */
+  portalUrl: string | null;
   orderNumber: string;
   previewImageUrl: string | null;
   /** Present when the order was already paid */

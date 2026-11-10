@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CheckoutErrorResponseVerdict } from "./checkoutErrorResponseVerdict";
+import type { FeasibilityReason } from "./feasibilityReason";
 
 export interface CheckoutErrorResponse {
   message: string;
@@ -14,4 +16,6 @@ export interface CheckoutErrorResponse {
   /** True when the customer should continue by WhatsApp */
   whatsapp?: boolean;
   orderNumber?: string;
+  verdict?: CheckoutErrorResponseVerdict;
+  reasons?: FeasibilityReason[];
 }

@@ -1,9 +1,11 @@
-// POST /api/checkout — «Comprar»: crea o reutiliza el pedido CS-XXXX de la
-// landing y su pedido de venta en Odoo, y devuelve el link de pago del portal
-// (PROMPT-ODOO-PRUEBAS §4). Orden de pasos y respuestas:
+// POST /api/checkout — «Comprar» (PROMPT-ODOO-TIENDA §3): veredicto de
+// factibilidad en el servidor, presupuesto en Odoo con firma y pago, y el
+// link del portal solo si el diseño se puede cobrar ya. Respuestas:
 //   400 datos inválidos (teléfono o email) — sin llamar a Odoo
-//   409 variante agotada — sin crear nada en Odoo
-//   200 { ..., odoo: { paid: true } } — «ya pagaste este pedido» con el link
+//   422 { verdict: "IMPOSIBLE", reasons } — nada se crea (ni en Odoo ni acá)
+//   200 { verdict: "OK", portalUrl } — firmar y pagar en el portal
+//   200 { verdict: "REVISION" } — presupuesto sin enviar; el taller lo aprueba
+//   200 { ..., odoo: { paid: true } } — «ya pagaste este pedido»
 //   502 Odoo no responde o no está configurado — el cliente sigue por WhatsApp
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
@@ -12,7 +14,9 @@ import { db, ordersTable } from "@workspace/db";
 import { CreateOrderBody } from "@workspace/api-zod";
 import { rateLimit } from "../middlewares/rate-limit";
 import { OdooClient, OdooError, OdooProductionWriteBlocked, odooConfig } from "../lib/odoo";
-import { OdooAlreadyPaid, OdooCheckoutError, OdooSoldOut, checkout as odooCheckout, portalUrl } from "../lib/odoo-checkout";
+import { OdooAlreadyPaid, OdooCheckoutError, absolutePortal, checkout as odooCheckout, portalPath, stampApprovedVersion } from "../lib/odoo-checkout";
+import { extraLabels, serverVerdict, verdictNote } from "../lib/checkout-verdict";
+import { designHash } from "../lib/design-hash";
 import { normalizeEmail, normalizePhonePy } from "../lib/phone-py";
 import { createOrReuseOrder, imageUrlFor, originFrom } from "./orders";
 import { logger } from "../lib/logger";
@@ -39,19 +43,11 @@ function odoo(): OdooClient | null {
   return client;
 }
 
-/** Datos del diseño que Odoo necesita para armar las líneas. */
-function linesFrom(designState: Record<string, unknown>) {
-  const variantId = typeof designState.odooVariantId === "number" ? designState.odooVariantId : null;
-  const plan = typeof designState.plan === "string" ? designState.plan : "names";
-  const extra = (designState.extraEngraving ?? null) as { lid?: unknown; base?: unknown } | null;
-  // Cada escritura extra se cobra (GRAB-EXTRA) y se nombra en el resumen que
-  // ve el cliente, para que la línea del pedido se entienda.
-  const extraLabels = [
-    typeof designState.text2 === "string" && designState.text2.trim() ? `texto 2 «${designState.text2.trim()}»` : null,
-    extra && typeof extra.lid === "string" ? `tapa «${extra.lid}»` : null,
-    extra && typeof extra.base === "string" ? `base «${extra.base}»` : null,
-  ].filter((l): l is string => !!l);
-  return { variantId, plan, extraTexts: extraLabels.length, extraLabels, technique: designState.technique, ownProduct: designState.ownProduct === true };
+/** La captura del 3D como adjunto de Odoo (prueba automática). */
+function proofFrom(dataUrl: string | null | undefined, ref: string) {
+  const m = dataUrl ? /^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl) : null;
+  if (!m) return null;
+  return { name: `Prueba ${ref}.${m[1] === "image/png" ? "png" : "jpg"}`, mimetype: m[1], base64: m[2] };
 }
 
 router.post("/checkout", rateLimit({ max: 30, windowMs: 60 * 60 * 1000 }), async (req, res) => {
@@ -74,12 +70,7 @@ router.post("/checkout", rateLimit({ max: 30, windowMs: 60 * 60 * 1000 }), async
     return;
   }
   const customer = { name: body.cliente.nombre, email, phone };
-
-  const lines = linesFrom(body.designState as Record<string, unknown>);
-  if (lines.ownProduct || lines.variantId === null || lines.technique !== "laser") {
-    res.status(400).json({ message: "Por ahora solo se compra online el grabado láser sobre piezas de la tienda. El resto, por WhatsApp." });
-    return;
-  }
+  const ds = body.designState as Record<string, unknown>;
 
   const odooClient = odoo();
   if (!odooClient) {
@@ -87,56 +78,83 @@ router.post("/checkout", rateLimit({ max: 30, windowMs: 60 * 60 * 1000 }), async
     return;
   }
 
-  // 1. Pedido CS-XXXX de la landing (mismo requestId → mismo pedido).
-  const created = await createOrReuseOrder(body);
-  if (!created.ok) {
-    res.status(created.status).json({ message: created.message });
-    return;
-  }
-  const order = created.order;
-  const origin = originFrom(req);
-  const previewImageUrl = imageUrlFor(req, order);
-  const adminUrl = `${origin}/admin?pedido=${order.orderNumber}`;
-  const designSummary = [order.product, order.color, order.technique, order.customText ? `«${order.customText}»` : null, order.iconName ? `ícono ${order.iconName}` : null, ...lines.extraLabels]
-    .filter(Boolean).join(" · ");
-
-  // 2–5. Odoo: stock, contacto, pedido, link de pago.
   try {
-    const result = await odooCheckout(odooClient, {
-      ref: order.orderNumber, customer,
-      lines: { variantId: lines.variantId, plan: lines.plan, extraTexts: lines.extraTexts },
-      previewImageUrl, adminUrl, designSummary,
-    });
-    await db.update(ordersTable).set({
-      odooOrderId: result.order.id,
-      odooOrderName: result.order.name,
-      odooTotal: String(result.order.amountTotal),
-      odooPaymentState: result.order.paid ? "pagado" : "pendiente",
-      odooPaymentAt: new Date(),
-    }).where(eq(ordersTable.id, order.id));
-    logger.info({ orderNumber: order.orderNumber, odoo: result.order.name, partner: result.partnerId, partnerCreated: result.partnerCreated, reused: created.reused }, "checkout: ok");
-    res.status(200).json({
-      orderNumber: order.orderNumber,
-      previewImageUrl,
-      odoo: { orderId: result.order.id, orderName: result.order.name, total: result.order.amountTotal, paymentUrl: result.paymentUrl, paid: false },
-    });
-  } catch (err) {
-    if (err instanceof OdooAlreadyPaid) {
-      await db.update(ordersTable).set({
-        odooOrderId: err.order.id, odooOrderName: err.order.name, odooTotal: String(err.order.amountTotal),
-        odooPaymentState: "pagado", odooPaymentAt: new Date(),
-      }).where(eq(ordersTable.id, order.id));
-      let viewUrl: string | null = null;
-      try { viewUrl = await portalUrl(odooClient, err.order.id); } catch { viewUrl = null; }
-      res.status(200).json({
-        orderNumber: order.orderNumber, previewImageUrl,
-        message: "Ya pagaste este pedido. Podés verlo en el link.",
-        odoo: { orderId: err.order.id, orderName: err.order.name, total: err.order.amountTotal, paymentUrl: viewUrl, paid: true },
+    // 1. Veredicto en el servidor, con precios y stock leídos de Odoo (solo lectura).
+    const { result, plan } = await serverVerdict(odooClient, ds);
+    if (result.verdict === "IMPOSIBLE") {
+      logger.info({ reasons: result.reasons.map(r => r.code) }, "checkout: diseño imposible");
+      res.status(422).json({
+        message: result.reasons[0]?.message ?? "Este diseño no se puede producir.",
+        verdict: "IMPOSIBLE", reasons: result.reasons,
+        soldOut: result.reasons.some(r => r.code === "out_of_stock" || r.code === "variant_missing") || undefined,
       });
       return;
     }
-    if (err instanceof OdooSoldOut) {
-      res.status(409).json({ message: `${err.message}. Elegí otro color o tamaño.`, soldOut: true, orderNumber: order.orderNumber });
+    const verdict = result.verdict;
+
+    // 2. Pedido CS-XXXX de la landing (mismo requestId → mismo pedido).
+    const created = await createOrReuseOrder(body);
+    if (!created.ok) {
+      res.status(created.status).json({ message: created.message });
+      return;
+    }
+    const order = created.order;
+    const origin = originFrom(req);
+    const previewImageUrl = imageUrlFor(req, order);
+    const adminUrl = `${origin}/admin?pedido=${order.orderNumber}`;
+    const designSummary = [order.product, order.color, order.technique, order.customText ? `«${order.customText}»` : null, order.iconName ? `ícono ${order.iconName}` : null, ...extraLabels(ds)]
+      .filter(Boolean).join(" · ");
+
+    // 3. Presupuesto en Odoo (firma + pago, 48 h, prueba adjunta).
+    const r = await odooCheckout(odooClient, {
+      ref: order.orderNumber, customer, plan, verdict,
+      previewImageUrl, proof: proofFrom(body.previewImage, order.orderNumber), adminUrl, designSummary,
+      verdictNote: verdictNote(result),
+    });
+
+    // OK: la versión que vio es la aprobada (automático). REVISION: la aprueba el taller.
+    const hash = designHash(order.designState);
+    const autoApproved = verdict === "OK";
+    if (autoApproved && r.created) {
+      await stampApprovedVersion(odooClient, r.order.id, hash, "automático").catch(err =>
+        logger.warn({ err: String(err), orderNumber: order.orderNumber }, "checkout: no se pudo dejar la huella en el presupuesto"));
+    }
+    const [row] = await db.update(ordersTable).set({
+      odooOrderId: r.order.id,
+      odooOrderName: r.order.name,
+      odooTotal: String(r.order.amountTotal),
+      odooPaymentState: r.order.paid ? "pagado" : "pendiente",
+      odooPaymentAt: new Date(),
+      verdict,
+      verdictReasons: result.reasons,
+      ...(created.reused ? {} : autoApproved
+        ? { reviewState: null, approvedHash: hash, approvedAt: new Date(), approvedBy: "automático" }
+        : { reviewState: "en_revision" }),
+    }).where(eq(ordersTable.id, order.id)).returning({ reviewState: ordersTable.reviewState, approvedHash: ordersTable.approvedHash });
+
+    // Un pedido reutilizado conserva su estado: si el taller ya lo aprobó, va al portal.
+    const payable = verdict === "OK" || (row?.reviewState === "aprobado" && !!row.approvedHash);
+    const portalUrl = payable ? r.portalPath ?? await portalPath(odooClient, r.order.id) : null;
+
+    logger.info({ orderNumber: order.orderNumber, odoo: r.order.name, verdict, partner: r.partnerId, partnerCreated: r.partnerCreated, reused: created.reused }, "checkout: ok");
+    res.status(200).json({
+      verdict: payable ? "OK" : "REVISION",
+      reasons: result.reasons,
+      portalUrl,
+      orderNumber: order.orderNumber,
+      previewImageUrl,
+      odoo: { orderId: r.order.id, orderName: r.order.name, total: r.order.amountTotal, paymentUrl: portalUrl && absolutePortal(odooClient, portalUrl), paid: false },
+    });
+  } catch (err) {
+    if (err instanceof OdooAlreadyPaid) {
+      let viewUrl: string | null = null;
+      try { viewUrl = await portalPath(odooClient, err.order.id); } catch { viewUrl = null; }
+      res.status(200).json({
+        verdict: "OK", reasons: [], portalUrl: viewUrl,
+        orderNumber: err.order.clientOrderRef ?? "", previewImageUrl: null,
+        message: "Ya pagaste este pedido. Podés verlo en el link.",
+        odoo: { orderId: err.order.id, orderName: err.order.name, total: err.order.amountTotal, paymentUrl: viewUrl && absolutePortal(odooClient, viewUrl), paid: true },
+      });
       return;
     }
     if (err instanceof OdooProductionWriteBlocked) {
@@ -145,8 +163,8 @@ router.post("/checkout", rateLimit({ max: 30, windowMs: 60 * 60 * 1000 }), async
       return;
     }
     const known = err instanceof OdooCheckoutError || err instanceof OdooError;
-    logger.error({ err, orderNumber: order.orderNumber }, known ? "checkout: odoo error" : "checkout: unexpected error");
-    res.status(502).json({ message: WHATSAPP_HINT, whatsapp: true, orderNumber: order.orderNumber });
+    logger.error({ err }, known ? "checkout: odoo error" : "checkout: unexpected error");
+    res.status(502).json({ message: WHATSAPP_HINT, whatsapp: true });
   }
 });
 

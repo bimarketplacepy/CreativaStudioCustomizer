@@ -289,6 +289,26 @@ export const CheckoutBody = zod
   );
 
 export const CheckoutResponse = zod.object({
+  verdict: zod
+    .enum(["OK", "REVISION"])
+    .describe(
+      "OK = ready to sign and pay; REVISION = the workshop reviews it and sends a proof before payment",
+    ),
+  reasons: zod.array(
+    zod.object({
+      code: zod.string(),
+      message: zod
+        .string()
+        .describe("Customer-facing reason in Spanish, with how to fix it"),
+      verdict: zod.enum(["REVISION", "IMPOSIBLE"]),
+    }),
+  ),
+  portalUrl: zod
+    .string()
+    .nullable()
+    .describe(
+      "Relative Odoo portal path (\/my\/orders\/<id>?access_token=...), only with verdict OK",
+    ),
   orderNumber: zod.string(),
   previewImageUrl: zod.string().nullable(),
   message: zod
