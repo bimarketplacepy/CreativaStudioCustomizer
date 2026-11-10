@@ -13,7 +13,8 @@ import { getCatalog } from "../lib/catalog";
 import { getDisabledProducts, setProductEnabled } from "../lib/product-settings";
 import { MACHINE_LABELS, isMachineId, orderMachine } from "@workspace/print-specs";
 import { OdooClient, odooConfig } from "../lib/odoo";
-import { readOrder, readSignature, sendQuotation, cancelQuotation, stampApprovedVersion, attachProof, readServices } from "../lib/odoo-checkout";
+import { readOrder, readSignature, sendQuotation, cancelQuotation, stampApprovedVersion, attachProof, readServices, readQuoteLines } from "../lib/odoo-checkout";
+import { MISSING_PIECE_MESSAGE, hasPricedPiece } from "../lib/quote-rules";
 import { designHash } from "../lib/design-hash";
 import { linesFor } from "../lib/checkout-verdict";
 import { designArtistFee, getArtistDesignById, getArtist } from "@workspace/print-specs";
@@ -239,6 +240,12 @@ router.post("/api/admin/orders/:orderNumber/approve", async (req, res) => {
     const client = new OdooClient(cfg);
     const info = await readOrder(client, row.odooOrderId);
     if (!info || info.state === "cancel") { res.status(409).json({ message: "El presupuesto ya no está activo en Odoo" }); return; }
+
+    // La pieza con su precio tiene que estar en el presupuesto (la taza genérica
+    // de AOPY la agrega el taller a mano). Se chequea antes de escribir nada.
+    if (!hasPricedPiece(await readQuoteLines(client, info.id))) {
+      res.status(409).json({ message: MISSING_PIECE_MESSAGE, code: "missing_piece" }); return;
+    }
 
     // Precios faltantes: se agregan como líneas del servicio con su precio y
     // se borra la nota «a cotizar» de ese concepto.
@@ -674,6 +681,8 @@ const ADMIN_HTML = `<!DOCTYPE html>
           (o.approvedHash ? '<div class="meta">Versión aprobada (' + esc(o.approvedBy || "") + (o.approvedAt ? ", " + fmtDate(o.approvedAt) : "") + "): " + esc(o.approvedHash.slice(0, 12)) + "…</div>" : "") +
           "</div>";
       }
+      if (o.reviewState === "en_revision" && (o.verdictReasons || []).some(function (r) { return r.code === "generic_piece"; }))
+        review += '<div class="warn">Pieza genérica: agregá en Odoo la pieza con su precio antes de aprobar (sin ella no se puede aprobar).</div>';
       if (o.approvedCurrent === false) review += '<div class="warn">El diseño cambió después de aprobarse: es una versión nueva sin aprobar. Producí la versión aprobada.</div>';
       if (o.odooPaymentState === "pago_sin_firma") review += '<div class="warn">Pagó sin firmar la prueba: no producir hasta confirmar con el cliente.</div>';
       if (o.odooPaymentState === "confirmado_sin_pago") review += '<div class="warn">Odoo lo confirmó pero no hay un pago capturado que cubra el total: no producir hasta cobrarlo.</div>';

@@ -15,6 +15,7 @@ import { OdooClient, OdooError } from "./odoo";
 import { normalizeEmail, normalizePhonePy, phoneSearchPattern } from "./phone-py";
 import { logger } from "./logger";
 import { doneAmount, isPaid } from "./payment-state";
+import type { QuoteLine } from "./quote-rules";
 
 export class OdooCheckoutError extends OdooError {}
 /** La variante se agotó entre el diseño y el clic en «Comprar». */
@@ -409,6 +410,25 @@ export function absolutePortal(client: OdooClient, path: string): string {
 /** URL absoluta del portal del pedido (genera el access_token si no existe). */
 export async function portalUrl(client: OdooClient, orderId: number): Promise<string> {
   return absolutePortal(client, await portalPath(client, orderId));
+}
+
+/** Líneas del presupuesto con el tipo de producto (para quote-rules.ts). Solo lectura. */
+export async function readQuoteLines(client: OdooClient, orderId: number): Promise<QuoteLine[]> {
+  const lines = await client.call<Array<{ display_type: string | false; product_id: M2O; price_unit: number; product_uom_qty: number }>>(
+    "sale.order.line", "search_read", [[["order_id", "=", orderId]]],
+    { fields: ["display_type", "product_id", "price_unit", "product_uom_qty"], context: ctx });
+  const ids = [...new Set(lines.map(l => (l.product_id ? l.product_id[0] : null)).filter((x): x is number => x !== null))];
+  const types = new Map<number, string>();
+  if (ids.length) {
+    const prods = await client.call<Array<{ id: number; type: string }>>("product.product", "read", [ids, ["type"]], { context: ctx });
+    for (const pr of prods) types.set(pr.id, pr.type);
+  }
+  return lines.map(l => ({
+    displayType: l.display_type || false,
+    productType: l.product_id ? types.get(l.product_id[0]) ?? null : null,
+    priceUnit: l.price_unit,
+    qty: l.product_uom_qty,
+  }));
 }
 
 /** Firma del cliente en el portal (signed_on / signed_by). Solo lectura. */
