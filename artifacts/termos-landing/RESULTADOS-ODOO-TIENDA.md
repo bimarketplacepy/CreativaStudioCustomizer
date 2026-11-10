@@ -2,7 +2,7 @@
 
 **Fecha:** 2026-11-10 · **Rama:** `odoo-tienda`, creada desde `odoo-checkout` con `mejoras` mergeada adentro (clubes, diseños de artistas, `PROMPT-ODOO-TIENDA.md`) · **Base de pruebas prevista:** `staging_261109` de Odoo.sh.
 
-> **Estado (actualizado 2026-11-10, tarde):** pruebas **1 a 10 y las del módulo corridas contra `staging_261109`** (`marketplace-staging-261109-41612773`, Odoo 19.0+e), con el motor local mapeado a staging y la base `creativa_test`. Todas pasan **después de 4 arreglos** (§7). Los `ODOO_*` de producción no se usaron en ningún momento. Detalle y hallazgos abiertos en §7.
+> **Estado (actualizado 2026-11-10, noche):** pruebas **1 a 11 y las del módulo corridas contra `staging_261109`** (`marketplace-staging-261109-41612773`, Odoo 19.0+e), con el motor local mapeado a staging y la base `creativa_test`. Todas pasan, después de 4 arreglos en la primera tanda (§7.1) y de los 6 pedidos de la revisión en la segunda (§7.2: pago real, pieza obligatoria para aprobar, textos según el veredicto, imagen, solo esa pieza). `check-prod` en verde. Los `ODOO_*` de producción no se usaron en ningún momento. Abierto: `engine_url` de staging (lo cambia el negocio) y detalles menores del módulo (§7.3).
 
 ## 1. Qué se hizo
 
@@ -121,19 +121,64 @@
 - **«Volver a la tienda» ausente (prueba 9).** Dependía de `CS_SHOP_ORIGINS` en el **build**. `server.mjs` ahora inyecta `<meta name="cs-shop-origins">` también con `?odoo=<id>` (el CSP sigue en `'none'`; el hero no se oculta).
 - **Aviso «Falta el archivo plano del artista» dependía del navegador.** `/admin` tomaba `provisional`, título y artista de `designState.artistDesign` (lo que mandó el cliente). Ahora salen del catálogo por id (`artistDesignView` en `admin.ts`).
 
-### 7.2 Hallazgos abiertos (a decidir)
+### 7.2 Segunda tanda (2026-11-10, noche): pedidos de la revisión
 
-1. **`engine_url` del módulo en staging apunta a producción** (`https://creativastudio.marketplace.com.py`). Los avisos de pago de staging van al motor de producción con ids de staging; hoy no hacen nada solo porque el secreto de staging es distinto (404). Conviene apuntarlo a una URL de prueba o dejar el módulo sin `engine_url` en staging. Se cambió para las pruebas y **se restauró** al valor original.
-2. **Taza genérica de AOPY sin línea ni nota en el presupuesto.** Con `generic_piece` no se agrega «Pieza: a cotizar», así que el taller puede aprobar y cobrar solo el diseño y el color (Gs. 57.500, sin la taza). `/admin` no permite cargar el precio de la pieza (a propósito); hoy hay que agregarla a mano en Odoo y nada lo recuerda.
-3. **Tour del editor en el celular embebido.** El modo embebido oculta la sección «tutorial», pero el *tour* de primera visita («Agregá tu diseño · 1 de 3») sí aparece y tapa el «+». Puede ser deseable; el documento decía «sin tutorial».
-4. **Texto pensado para WhatsApp en el paso «Enviar» del celular** («Revisá tu diseño y envialo por WhatsApp…», barra fija con «Enviar por WhatsApp» y el precio cortado «Gs. 2…») mientras la tienda empuja «Comprar y pagar».
-5. **Lista de productos visible en el modo embebido (escritorio).** La pieza no cambia al tocar otro producto, pero la lista de 19 productos sigue a la vista y no responde.
-6. **El respaldo tarda 8 s** con el panel vacío antes de navegar (`READY_TIMEOUT` del módulo).
-7. **AR en el iframe:** «Permissions policy violation: xr-spatial-tracking»; el `<iframe>` del módulo solo permite `clipboard-write`.
-8. **El secreto del webhook lleva caracteres especiales:** quien lo pruebe a mano con `curl` tiene que codificarlo (`encodeURIComponent`); el módulo lo manda bien.
-9. **El build de la landing incluyó cambios en curso de otra persona** (Termo Hydrate · Palmeiras: `catalog.ts`, `products.ts`, `thermos-3d.tsx`, `pieces.generated.ts`…). No se tocaron.
+| # | Pedido | Estado | Commit |
+|---|---|---|---|
+| 1 | **«Pagado» exige pago real.** Antes `isPaid` aceptaba `state = sale` o `amount_paid ≥ total` (y `amount_paid` en Odoo 19 suma las transacciones `authorized`). Ahora solo cuentan las `payment.transaction` en `done` (`src/lib/payment-state.ts`): pagado = done ≥ total, total > 0 y firmado. Confirmado sin pago real → `confirmado_sin_pago`, «Confirmado sin pago: revisar» arriba en `/admin`. | ✅ 11 pruebas unitarias. Prueba 5 repetida en staging: S00204 (confirmado sin pagos; antes figuraba como «pago sin firma») y S00224 → `confirmado_sin_pago`; **S00225 firmado con pago solo autorizado** (Demo con captura manual, temporal) → `confirmado_sin_pago` aunque `amount_paid` = 220.000 y `state = sale`; S00226 autorizado → `confirmado_sin_pago` y, al capturarlo (asistente de captura de Odoo) → `pagado`; S00201 sigue `pagado`. | `e2c1cfc` |
+| 2 | **No se aprueba sin la pieza con precio.** `/approve` revisa antes de escribir nada que el presupuesto tenga una pieza física (no servicio) con precio y cantidad (`src/lib/quote-rules.ts`); si no, 409 `missing_piece` con un mensaje claro. La tarjeta de un pedido con pieza genérica en revisión lo avisa de antemano. | ✅ 7 pruebas unitarias. Staging, CS-0019 (AOPY): sin taza → 409 y no se agregó ninguna línea; taza en Gs. 0 → 409; «[233002] TAZA ENLOZADA» a Gs. 27.000 → aprobado, total 84.500. CS-0027 (pieza genérica) → 409 y aviso en la tarjeta. | `99b2b7b` |
+| 3 | **Desde la tienda, el paso final según el veredicto.** Sin tour del editor (embebido y `?odoo=`); paso «Comprar» / «Revisión»; botón de la barra fija y del resumen «Comprar y pagar» / «Enviar a revisión» (IMPOSIBLE: deshabilitado); sin «Enviar pedido por WhatsApp»; textos y vista de referencia según el veredicto. El precio de la barra ya no se corta. | ✅ 390 px en staging: OK → portal S00228 desde la barra; REVISION (texto con emoji) → CS-0029 «quedó en revisión», sin portal. WhatsApp queda solo como ayuda («Si tenés dudas…» y con IMPOSIBLE). | `f8301f0`, `88753a9` |
+| 4 | **`vaso-guarani-print.png`** de 166 KB a 98 KB (paleta de 256 colores sin tramado; PSNR 74 dB, ~69 píxeles distintos de 8,4 M; mismo nombre y tamaño). | ✅ `check-prod --local`: «Todo OK». | `094789a` |
+| 6 | **Desde la tienda, solo esa pieza.** Sin lista lateral de productos ni pestañas de marcas; tarjeta chica arriba sin acciones (escritorio) o tamaño y color en el encabezado (celular); «Volver a la tienda» en `?odoo=`, la ✕ en el panel; subtítulo de la sección según el origen. La landing propia no cambia. «Recomendados» sigue filtrado a la pieza (y apagado con `ARTIST_DESIGNS_ENABLED`). | ✅ Revisado a 390 y 1440 px, embebido y `?odoo=` (capturas abajo). | `88753a9` |
 
-### 7.3 Datos de prueba que quedan
+**Capturas** (`docs/odoo-tienda/`):
 
-- **Odoo staging:** presupuestos `S00201`–`S00223` con `client_order_ref` `CS-0001`…`CS-0023` (pagados: S00201, S00202, S00217, S00218, S00220; confirmado sin firma: S00204; duplicados de la prueba 7 antes del arreglo: S00205–S00212). Contactos «Prueba Staging/Embebida/Celu/Respaldo» (`@example.com`). Servicios `GRAB-*`, `IMP-COLOR-*`, `DISENO-ARTISTA-AOPY-NAVIDAD-TAZA`; proveedor Demo en test y publicado; 139 plantillas con `cs_personalizable`. `engine_url` restaurado.
-- **Postgres:** `creativa_test` con `CS-0001`…`CS-0023`. Se borra con `drop database creativa_test`.
+| Caso | 1440 px | 390 px |
+|---|---|---|
+| Embebido en la ficha | `pieza-fija-embed-1440.jpg` | `pieza-fija-embed-390.jpg` (diseño) · `pieza-fija-embed-390-paso1.jpg` (Tu pieza) |
+| Respaldo `?odoo=` | `pieza-fija-odoo-1440.jpg` | `pieza-fija-odoo-390.jpg` (diseño) · `pieza-fija-odoo-390-paso1.jpg` (Tu pieza, con «Volver a la tienda») |
+| Landing propia (sin cambios) | `pieza-fija-landing-1440.jpg` | — |
+| Paso final en el celular embebido | — | `celu-embebido-ok-3-abajo.jpg` (Comprar y pagar) · `celu-embebido-rev-3-abajo.jpg` (Enviar a revisión) |
+
+### 7.3 Hallazgos: resueltos y abiertos
+
+| Hallazgo de la primera tanda | Estado |
+|---|---|
+| `engine_url` del módulo en staging apunta a producción | **Abierto, lo cambia el negocio en Odoo** (Ajustes → Parámetros del sistema → `website_creativa_studio.engine_url`). Para estas pruebas se apuntó temporalmente a `https://<dev>.replit.dev:3000` y se restauró al valor original. Ojo: la URL de desarrollo **sin** `:3000` es el workflow de Replit, que usa los `ODOO_*` de producción (las escrituras las frena `odoo.ts`, así que «Comprar» terminaría en WhatsApp). |
+| Taza genérica de AOPY sin la pieza en el presupuesto | ✅ Resuelto (§7.2 punto 2) |
+| Tour del editor en el celular embebido | ✅ Resuelto (§7.2 punto 3; también en `?odoo=`) |
+| Texto de WhatsApp en el paso «Enviar» y precio cortado | ✅ Resuelto (§7.2 punto 3) |
+| Lista de productos visible embebido | ✅ Resuelto (§7.2 punto 6) |
+| `check-prod` por `vaso-guarani-print.png` | ✅ Resuelto (§7.2 punto 4) |
+| El respaldo tarda 8 s con el panel vacío | Abierto (módulo: `READY_TIMEOUT`) |
+| AR en el iframe (`xr-spatial-tracking`) | Abierto (módulo: `allow` del `<iframe>`) |
+| Secreto del webhook | Abierto, menor: el `webhook_secret` de staging tiene **espacios o salto de línea en los bordes**. El motor y el módulo los recortan, pero quien pruebe con `curl` tiene que recortarlo y codificarlo. Conviene limpiarlo en Odoo. |
+| Panel embebido con producto agotado | Nuevo, menor: si la variante se agota, el iframe manda `cs:close` al instante y el panel se cierra sin mensaje (pasó con el Vaso 900 ml Rosado Pastel, que se agotó por los pedidos de prueba). La ficha de Odoo sigue mostrando «Personalizar». |
+
+### 7.4 Datos de prueba que quedan y cómo borrarlos
+
+**Odoo staging** (`marketplace-staging-261109-41612773`):
+- **29 pedidos `S00201`–`S00229`** con `client_order_ref` `CS-0001`…`CS-0029` (S00205/206/207 comparten `CS-0005`: duplicados de la prueba 7, antes del arreglo).
+  - Confirmados (`sale`), 9: S00201, S00202, S00217, S00218, S00220 (pagados con Demo), S00226 (autorizado y capturado), S00204, S00224 (confirmados sin pago), S00225 (pago solo autorizado).
+  - Borrador o enviados, 19: S00203, S00205–S00216, S00219, S00221, S00223, S00227–S00229.
+  - Cancelado, 1: **S00222 / CS-0022, contacto «BI Marketplace»**, creado y cancelado por una persona durante las pruebas (no por los scripts).
+- **Transacciones Demo:** S00201, S00202, S00217, S00218, S00220, S00226 (`done`; pagos `PBNK1/2026/00008`–`00012` y el de S00226); S00225 (`authorized`).
+- **7 entregas** `WH/OUT` de los pedidos confirmados (reservan stock: el **Vaso 900 ml Rosado Pastel** quedó agotado). Sin facturas.
+- **Contactos:** «Prueba Staging», «Prueba Embebida», «Prueba Celu», «Prueba Respaldo» (todos `@example.com`). «BI Marketplace» **no** es de prueba: no borrarlo.
+- **Configuración:** servicios `GRAB-*`, `IMP-COLOR-*` (en 0) y `DISENO-ARTISTA-AOPY-NAVIDAD-TAZA`; módulo `payment_demo` instalado y Demo en modo test y publicado (`capture_manually` se activó un rato y se dejó en `false`); 139 plantillas con `cs_personalizable` (a revisar con el mapeo estricto pedido después de esta tanda). `engine_url` restaurado.
+
+**Cómo borrarlos en Odoo** (en este orden, con un usuario de Ventas/Contabilidad):
+1. **Transacción autorizada** (S00225): Facturación → Pagos en línea → Transacciones → filtrar `S00225` → «Anular».
+2. **Pagos** `PBNK1/2026/00008`–`00012` y el de S00226: Contabilidad → Pagos → seleccionar → «Restablecer a borrador» → «Cancelar» (o eliminar).
+3. **Entregas:** Inventario → Transferencias → filtrar por origen `S00201`…`S00229` → «Cancelar». Así vuelve el stock (Rosado Pastel incluido).
+4. **Pedidos:** Ventas → Pedidos → filtro «Referencia del cliente» empieza con `CS-` **y** número entre `S00201` y `S00229` → Acción «Cancelar» → Acción «Eliminar».
+5. **Contactos** de prueba (los 4 de `@example.com`): Contactos → buscar «Prueba » → Archivar o Eliminar.
+6. Opcional: despublicar Demo (Facturación → Proveedores de pago → Demo → Deshabilitado) y desmarcar `cs_personalizable` con `node scripts/odoo-personalizables.mjs --aplicar` cuando el mapeo final esté listo.
+
+> Cuidado: el filtro `CS-` **solo en staging**. En producción la misma referencia identifica pedidos reales.
+
+**Postgres:** la base `creativa_test` (en el servidor de desarrollo, no `heliumdb`) tiene `CS-0001`…`CS-0029`. Se borra con:
+
+```
+psql "$DATABASE_URL" -c 'drop database creativa_test'
+```
