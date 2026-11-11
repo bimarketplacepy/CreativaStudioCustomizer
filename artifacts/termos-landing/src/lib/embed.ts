@@ -10,9 +10,13 @@
  *
  * Mensajes con la ficha (`{ type, ... }`): cs:ready, cs:close,
  * cs:resize { height }, cs:checkout { portalUrl }. Se mandan y se aceptan SOLO
- * con los orígenes de la tienda (CS_SHOP_ORIGINS): el servidor los inyecta en
+ * con los orígenes de la tienda (CS_SHOP_ORIGINS, con patrones para los builds
+ * de staging: lib/shop-origins.ts): el servidor los inyecta en
  * <meta name="cs-shop-origins"> (server.mjs); en desarrollo salen del build.
+ * postMessage no acepta comodines: el destino es siempre el origen real de la
+ * ficha, validado contra esas reglas.
  */
+import { isShopOrigin, parseShopOrigins, type ShopOriginRule } from "./shop-origins";
 
 declare const __CS_SHOP_ORIGINS__: string;
 
@@ -36,13 +40,15 @@ function originOf(raw: string): string | null {
   }
 }
 
-/** Orígenes de la tienda permitidos (exactos, sin barra final). */
-export function shopOrigins(): string[] {
+let rulesCache: ShopOriginRule[] | null = null;
+/** Reglas de los orígenes de la tienda (exactos o patrones de staging). */
+export function shopOriginRules(): ShopOriginRule[] {
+  if (rulesCache) return rulesCache;
   const meta = typeof document !== "undefined"
     ? document.querySelector<HTMLMetaElement>('meta[name="cs-shop-origins"]')?.content ?? ""
     : "";
   const raw = meta || (typeof __CS_SHOP_ORIGINS__ === "string" ? __CS_SHOP_ORIGINS__ : "");
-  return [...new Set(raw.split(/[\s,]+/).map(originOf).filter((o): o is string => !!o))];
+  return (rulesCache = parseShopOrigins(raw));
 }
 
 /**
@@ -52,12 +58,12 @@ export function shopOrigins(): string[] {
  */
 export function parentShopOrigin(): string | null {
   if (!isOdooEmbed) return null;
-  const allowed = shopOrigins();
+  const rules = shopOriginRules();
   const candidates = [
     window.location.ancestorOrigins?.[0],
     document.referrer ? originOf(document.referrer) : null,
   ].filter((o): o is string => !!o);
-  return candidates.find(o => allowed.includes(o)) ?? null;
+  return candidates.find(o => isShopOrigin(rules, o)) ?? null;
 }
 
 export type ShopMessage =
@@ -127,7 +133,7 @@ export function startEmbedWatchdog(): void {
 export function onShopMessage(handler: (msg: { type: string } & Record<string, unknown>) => void): () => void {
   if (!isOdooEmbed) return () => {};
   const listener = (e: MessageEvent) => {
-    if (e.source !== window.parent || !shopOrigins().includes(e.origin)) return;
+    if (e.source !== window.parent || !isShopOrigin(shopOriginRules(), e.origin)) return;
     const d = e.data as unknown;
     if (!d || typeof d !== "object" || typeof (d as { type?: unknown }).type !== "string" || !(d as { type: string }).type.startsWith("cs:")) return;
     handler(d as { type: string } & Record<string, unknown>);
@@ -159,7 +165,7 @@ export function backToShopUrl(): string | null {
   if (!raw) return null;
   try {
     const u = new URL(raw);
-    return shopOrigins().includes(u.origin) ? u.toString() : null;
+    return isShopOrigin(shopOriginRules(), u.origin) ? u.toString() : null;
   } catch {
     return null;
   }

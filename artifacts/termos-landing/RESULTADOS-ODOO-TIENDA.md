@@ -72,7 +72,7 @@
 ## 4. Para correr las pruebas de staging
 
 1. Que esta sesión vea las credenciales de staging (reiniciar la sesión o el Repl después de cargar los Secrets). Falta además el **login** del usuario de API de staging (`ODOO_USER_STAGIGN`, si no es el mismo de producción).
-2. `ODOO_WEBHOOK_SECRET` igual a `website_creativa_studio.webhook_secret` del build, y `CS_SHOP_ORIGINS=https://marketplace-staging-261109-<n>.dev.odoo.com`.
+2. `ODOO_WEBHOOK_SECRET` igual a `website_creativa_studio.webhook_secret` del build, y `CS_SHOP_ORIGINS` con el patrón de staging (ver §10).
 3. El módulo instalado en el build, con `engine_url` apuntando a una URL pública del motor (la del preview de Replit sirve para probar).
 4. Se corren con las variables de staging mapeadas solo en el proceso de prueba (`ODOO_URL=$ODOO_URL_STAGIGN …`) y `DATABASE_URL` → `creativa_test`.
 
@@ -81,7 +81,7 @@
 1. **Base de la publicación, antes de publicar:** `pnpm --filter @workspace/db run push`. Agrega las columnas `odoo_*` (de `odoo-checkout`, que hoy tampoco están en la base de desarrollo) y las de veredicto y revisión. Sin ellas fallan también los pedidos por WhatsApp.
 2. **Servicios:** `node scripts/odoo-setup.mjs` crea `IMP-COLOR-*`, que quedan en 0 hasta que el taller les ponga precio, y `DISENO-ARTISTA-AOPY-NAVIDAD-TAZA` a Gs. 12.500.
 3. **Módulo:** instalar `website_creativa_studio`, cargar `webhook_secret` (= `ODOO_WEBHOOK_SECRET`) y correr `node scripts/odoo-personalizables.mjs` (informe) y después con `--aplicar`.
-4. **Incrustación:** `CS_SHOP_ORIGINS` con el dominio de producción de la tienda.
+4. **Incrustación:** `CS_SHOP_ORIGINS` con el patrón de staging y los dominios de producción de la tienda (valor completo en §10).
 5. **Escritura en producción:** habilitarla de forma explícita (`ODOO_ALLOW_PRODUCTION_WRITES=si`).
 6. **Prueba real:** un pedido de bajo monto de cada veredicto (`OK` y `REVISION`).
 
@@ -257,3 +257,33 @@ El JS total es parecido: lo que cambió es el **orden**. Antes, `cs:ready` esper
 **Pendientes:**
 - La textura de `vaso-guarani.glb` en WebP (`EXT_texture_webp`), cuando haya una herramienta para hacerlo.
 - Con CPU ×4, ~400 ms de `cs:ready` son de interpretar y ejecutar el JS (react-dom y el personalizador, 290 KB de `customizer.tsx` solo). Para bajar más habría que partir el propio `customizer.tsx`.
+
+## 10. Publicación y orígenes de la tienda (2026-11-11)
+
+**Por qué el motor publicado ignoraba `?embed=odoo`:** el Deployment estaba publicado desde `79dcaa2` («Published your App», rama `replit-agent`, 2026-11-09 16:47), anterior a todo el modo embebido (`45075ca`, 2026-11-10). Por eso tampoco mandaba ninguna CSP. Además, el Secret `CS_SHOP_ORIGINS` tenía el texto de ejemplo `https://marketplace-staging-261109-<n>.dev.odoo.com`: no es una URL válida, se descartaba y la respuesta embebida habría salido con `frame-ancestors 'none'` aunque se publicara.
+
+**Orígenes con patrón** (`src/lib/shop-origins.ts`, el mismo módulo en `server.mjs` y en el navegador; Node 24 ejecuta el `.ts` tal cual). Odoo.sh cambia la URL de staging en cada build, así que una entrada puede llevar un `*` en la primera etiqueta:
+
+```
+CS_SHOP_ORIGINS=https://marketplace-staging-261109-*.dev.odoo.com,https://www.marketplace.com.py,https://marketplace.odoo.com
+```
+
+- `www.marketplace.com.py` es el dominio del sitio «Marketplace» en Odoo (`website.domain`); `marketplace.odoo.com` es `web.base.url` y también sirve `/shop`. `marketplace.com.py` sin `www` da 404.
+- **CSP** (`?embed=odoo`): `frame-ancestors https://*.dev.odoo.com https://www.marketplace.com.py https://marketplace.odoo.com`. CSP solo acepta el comodín como etiqueta entera, así que el patrón de staging sale como `*.dev.odoo.com`: **cualquier** build de Odoo.sh puede mostrar el iframe. El resto de las rutas sigue con `frame-ancestors 'none'`.
+- **postMessage:** el destino es el origen real de la ficha (`location.ancestorOrigins[0]` o `document.referrer`), solo si cumple el patrón estricto (`marketplace-staging-261109-` + letras, números o guiones, sin cruzar subdominios ni puertos). Los mensajes entrantes se validan igual. Un build de Odoo.sh que no es el nuestro carga el iframe pero no recibe ningún mensaje, así que no hay `cs:checkout` hacia él.
+- Lo inválido o demasiado amplio se descarta (`https://*`, `https://*.com`, http, puertos con comodín, dos `*`) y `server.mjs` avisa en el log si no queda ningún origen. Pruebas: `pnpm --filter @workspace/termos-landing test`.
+
+**Carga que falla → `cs:close`** (`f1f8eec`): sin `/api/catalog` (red o 5xx, con el reintento) aviso «No pudimos cargar el producto de la tienda», `cs:ready` y `cs:close` a los 8 s; si no baja un chunk JS/CSS o falla un `import()`, `cs:close` enseguida; sin `cs:ready` a los 15 s, `cs:close`. Antes la pieza quedaba en espera sin mandar nada.
+
+**Medido** con el build de producción y `server.mjs`, desde una ficha servida en `https://marketplace-staging-261109-41700372.dev.odoo.com` (resuelta a local con certificado propio), iframe de 390 × 844, Termo Sleek Line Aqua 710 ml (`978276`), caché deshabilitada, mediana de 3:
+
+| | `cs:ready` |
+|---|---|
+| Fast 4G, CPU ×1 | 1012 ms |
+| Fast 4G, CPU ×4 | 1074 ms |
+| Sin limitar | 700 ms |
+
+Catálogo bloqueado: `cs:ready` 1,5 s y `cs:close` 9,5 s. Chunk del editor bloqueado: `cs:close` a 121 ms. Desde `https://otro-staging-1.dev.odoo.com`: ningún mensaje. Producto no personalizable (Matero Classic Verde): aviso corto, «Volver a la tienda» y `cs:close` a los 8 s.
+
+**Para publicar:** 1) cargar el `CS_SHOP_ORIGINS` de arriba en los Secrets (workspace y Deployment); 2) `pnpm --filter @workspace/db run push` (§5.1); 3) publicar desde `odoo-tienda`. Después: `curl -I` contra el dominio real, la medición en incógnito desde la ficha de staging y la captura del panel.
+

@@ -10,7 +10,8 @@
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check:prod": "node scripts/check-prod.mjs",
-    "check:local": "node scripts/check-prod.mjs --local"
+    "check:local": "node scripts/check-prod.mjs --local",
+    "test": "node --test src/lib/*.test.ts"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

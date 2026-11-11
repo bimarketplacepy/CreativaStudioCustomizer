@@ -19,9 +19,12 @@
 //   - Serves robots.txt / sitemap.xml / llms.txt as plain text when present.
 //   - Framing (PROMPT-ODOO-TIENDA §6): the page can be embedded ONLY by the
 //     Odoo shop and ONLY with ?embed=odoo — `Content-Security-Policy:
-//     frame-ancestors <CS_SHOP_ORIGINS>`. Every other HTML response sends
-//     `frame-ancestors 'none'`. In embed mode the shop origins are also
-//     injected as <meta name="cs-shop-origins"> for postMessage (src/lib/embed.ts).
+//     frame-ancestors <CS_SHOP_ORIGINS>` (staging patterns such as
+//     `https://marketplace-staging-261109-*.dev.odoo.com` go out as
+//     `https://*.dev.odoo.com`: CSP only takes a whole-label wildcard). Every
+//     other HTML response sends `frame-ancestors 'none'`. The rules are also
+//     injected as <meta name="cs-shop-origins"> for postMessage, which checks
+//     the real parent origin against the strict pattern (src/lib/embed.ts).
 //
 // Listens on $PORT (Replit autoscale sets this), defaulting to 3000.
 
@@ -34,6 +37,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { gzip, brotliCompress, constants as zlibConstants } from "node:zlib";
 import { promisify } from "node:util";
 import { handleServeRequest } from "./upload-store.mjs";
+// TypeScript sin tipos raros: Node 24 lo ejecuta tal cual (type stripping).
+import { cspSources, parseShopOrigins } from "./src/lib/shop-origins.ts";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = join(__dirname, "dist", "public");
@@ -43,26 +48,19 @@ const HAS_EMBED_HTML = existsSync(EMBED_HTML);
 const PORT = Number(process.env.PORT) || 3000;
 
 /**
- * Orígenes exactos de la tienda Odoo que pueden incrustar el personalizador
- * (CS_SHOP_ORIGINS, separados por coma o espacio). Solo https (o localhost).
+ * Orígenes de la tienda Odoo que pueden incrustar el personalizador
+ * (CS_SHOP_ORIGINS, separados por coma o espacio): exactos o con patrón para
+ * los builds de staging (`https://marketplace-staging-261109-*.dev.odoo.com`).
+ * Ver src/lib/shop-origins.ts (el mismo módulo que usa el navegador).
  */
-function parseShopOrigins(raw) {
-  const out = [];
-  for (const part of String(raw || "").split(/[\s,]+/)) {
-    if (!part) continue;
-    try {
-      const u = new URL(part);
-      const local = u.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/.test(u.hostname);
-      if ((u.protocol === "https:" || local) && !out.includes(u.origin)) out.push(u.origin);
-    } catch { /* se ignora lo que no es una URL */ }
-  }
-  return out;
-}
 const SHOP_ORIGINS = parseShopOrigins(process.env.CS_SHOP_ORIGINS);
+if (process.env.CS_SHOP_ORIGINS && !SHOP_ORIGINS.length) {
+  console.warn("[termos-landing] CS_SHOP_ORIGINS no tiene ningún origen válido: la tienda no podrá incrustar el personalizador");
+}
 
 /** CSP de incrustación: la tienda solo con ?embed=odoo; el resto, nadie. */
-function frameAncestors(embed, origins = SHOP_ORIGINS) {
-  return embed && origins.length ? `frame-ancestors ${origins.join(" ")}` : "frame-ancestors 'none'";
+function frameAncestors(embed, rules = SHOP_ORIGINS) {
+  return embed && rules.length ? `frame-ancestors ${cspSources(rules).join(" ")}` : "frame-ancestors 'none'";
 }
 
 /**
@@ -72,7 +70,7 @@ function frameAncestors(embed, origins = SHOP_ORIGINS) {
  * desde el primer pintado la portada pre-renderizada (main.tsx la quita).
  */
 function injectShopOrigins(html, hideHero, preloads = "") {
-  const meta = `<meta name="cs-shop-origins" content="${SHOP_ORIGINS.join(" ")}">` +
+  const meta = `<meta name="cs-shop-origins" content="${SHOP_ORIGINS.map(r => r.source).join(" ")}">` +
     (hideHero ? "<style>#hero-root{display:none!important}</style>" : "");
   // Las precargas van al principio del <head>: el navegador las pide antes de
   // leer el resto (GTM, JSON-LD, CSS).
