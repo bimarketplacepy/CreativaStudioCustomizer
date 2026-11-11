@@ -16,6 +16,7 @@
  * postMessage no acepta comodines: el destino es siempre el origen real de la
  * ficha, validado contra esas reglas.
  */
+import * as React from "react";
 import { isShopOrigin, parseShopOrigins, type ShopOriginRule } from "./shop-origins";
 
 declare const __CS_SHOP_ORIGINS__: string;
@@ -169,4 +170,74 @@ export function backToShopUrl(): string | null {
   } catch {
     return null;
   }
+}
+
+// ── Parte visible del iframe ─────────────────────────────────────────────────
+// La ficha estira el iframe al alto del contenido (cs:resize), así que un
+// `position: fixed` centrado queda en la mitad del documento, no donde mira el
+// cliente. IntersectionObserver, dentro de un iframe de otro origen, recorta
+// contra la ventana de la ficha: con franjas invisibles de 50 px (umbrales
+// cada 10 px) se sabe qué banda del iframe se ve, sin mensajes nuevos.
+
+/** Banda visible del iframe, en coordenadas del documento (px). */
+export interface VisibleBand { top: number; bottom: number }
+
+const STRIP_PX = 50;
+let band: VisibleBand | null = null;
+const bandListeners = new Set<() => void>();
+let bandStarted = false;
+
+function startVisibleBand(): void {
+  if (bandStarted || !isOdooEmbed || typeof IntersectionObserver === "undefined") return;
+  bandStarted = true;
+  const host = document.createElement("div");
+  host.setAttribute("aria-hidden", "true");
+  host.style.cssText = "position:absolute;top:0;left:0;width:1px;pointer-events:none;opacity:0;z-index:-1";
+  document.body.appendChild(host);
+  const seen = new Map<Element, VisibleBand | null>();
+  const io = new IntersectionObserver(entries => {
+    for (const e of entries) {
+      const r = e.intersectionRect;
+      seen.set(e.target, e.isIntersecting && r.height > 0 ? { top: r.top + window.scrollY, bottom: r.bottom + window.scrollY } : null);
+    }
+    let top = Infinity, bottom = -Infinity;
+    for (const b of seen.values()) if (b) { top = Math.min(top, b.top); bottom = Math.max(bottom, b.bottom); }
+    const next = bottom > top ? { top, bottom } : null;
+    if (next?.top === band?.top && next?.bottom === band?.bottom) return;
+    band = next;
+    bandListeners.forEach(l => l());
+  }, { threshold: [0, 0.2, 0.4, 0.6, 0.8, 1] });
+  // Una franja cada 50 px de alto; se rehacen cuando cambia el alto.
+  let built = 0;
+  const build = () => {
+    const h = Math.ceil(document.documentElement.scrollHeight);
+    if (Math.abs(h - built) < STRIP_PX) return;
+    built = h;
+    io.disconnect();
+    seen.clear();
+    host.replaceChildren();
+    host.style.height = `${h}px`;
+    for (let y = 0; y < h; y += STRIP_PX) {
+      const s = document.createElement("div");
+      s.style.cssText = `position:absolute;left:0;width:1px;top:${y}px;height:${Math.min(STRIP_PX, h - y)}px`;
+      host.appendChild(s);
+      io.observe(s);
+    }
+  };
+  build();
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(build).observe(document.body);
+}
+
+/**
+ * Embebido: la banda del iframe que el cliente tiene en pantalla (null fuera
+ * del embebido o mientras no se sabe). Para centrar modales donde se ven.
+ */
+export function useVisibleBand(): VisibleBand | null {
+  const subscribe = React.useCallback((cb: () => void) => {
+    startVisibleBand();
+    bandListeners.add(cb);
+    window.addEventListener("scroll", cb, { passive: true });
+    return () => { bandListeners.delete(cb); window.removeEventListener("scroll", cb); };
+  }, []);
+  return React.useSyncExternalStore(subscribe, () => band, () => null);
 }
