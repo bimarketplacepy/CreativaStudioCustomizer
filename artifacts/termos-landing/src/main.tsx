@@ -2,6 +2,7 @@ import { createRoot, hydrateRoot } from "react-dom/client";
 import Hero from "@/components/hero";
 import "./index.css";
 import { initWhatsAppLinkTracking } from "./lib/analytics";
+import { closeIfNotReady, startEmbedWatchdog } from "./lib/embed";
 
 // /admin → /api/admin. Con hosting estático (deployment de Replit) el edge
 // manda toda ruta que no sea /api/* a esta SPA, así que /admin nunca llega al
@@ -31,11 +32,18 @@ if (/^\/admin\/?$/.test(window.location.pathname)) {
 
   // Embebido, lo único que se muestra es el personalizador: se pide ya, en
   // paralelo con App, en vez de esperar a que App y Home lo pidan.
-  if (embedded) import("@/components/customizer");
+  if (embedded) {
+    startEmbedWatchdog();
+    import("@/components/customizer").catch(closeIfNotReady);
+  }
 
   // Router, providers y secciones bajo el fold van en un chunk aparte: no
   // compiten con el primer render ni con la hidratación del hero.
   import("./App").then(({ default: App }) => {
     createRoot(document.getElementById("root")!).render(<App />);
+  }).catch(err => {
+    // Embebido: sin App no hay editor; la ficha cierra el panel (cs:close).
+    if (embedded) closeIfNotReady();
+    else throw err;
   });
 }

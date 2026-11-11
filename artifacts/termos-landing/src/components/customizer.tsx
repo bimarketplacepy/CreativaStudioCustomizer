@@ -106,7 +106,7 @@ import {
   colorOptions, defaultVariant, engravingPrice, findVariant, formatGs, GENERIC_BRAND,
   matchingProducts, odooShopItems, priceFrom, sectionTitles, shopBrands, shopSections, sizeOptions,
   editionOptions, effectiveEdition, productForEdition, editionModelType,
-  useCatalog, viewSizeId, type CatalogSection, type ShopItem,
+  useCatalog, useCatalogFailed, viewSizeId, type CatalogSection, type ShopItem,
 } from "@/lib/odoo-catalog";
 import { track } from "@/lib/analytics";
 import { submitOrder } from "@/lib/submit-order";
@@ -1882,6 +1882,7 @@ export default function Customizer() {
   // precio y stock salen de ahí (variantes reales) y la paleta inventada se
   // oculta. Sin datos de Odoo, todo sigue con el catálogo propio.
   const catalog = useCatalog();
+  const catalogFailed = useCatalogFailed();
   // Forma genérica elegida a propósito (sin producto de la tienda detrás):
   // vuelve al catálogo propio (paleta, tamaños, "se cotiza aparte").
   const [genericPick, setGenericPick] = useState(false);
@@ -2007,7 +2008,16 @@ export default function Customizer() {
   const [storeLockReason, setStoreLockReason] = useState<string | null>(null);
   const pieceLocked = storeLock === "locked";
   React.useEffect(() => {
-    if (storeLock !== "pending" || !catalog) return;
+    if (storeLock !== "pending") return;
+    if (!catalog) {
+      // Sin catálogo no hay pieza que fijar: aviso y, embebido, cs:ready + cs:close.
+      if (catalogFailed) {
+        setStoreLock("unavailable");
+        setStoreLockReason("No pudimos cargar el producto de la tienda. Probá de nuevo en un rato o escribinos por WhatsApp.");
+        track("store_piece_unavailable", { variant: storeVariantId, reason: "catalogo_fallo" });
+      }
+      return;
+    }
     let found: { p: (typeof catalog.products)[number]; v: (typeof catalog.products)[number]["variants"][number] } | null = null;
     for (const p of catalog.products) {
       const v = p.variants.find(x => x.id === storeVariantId);
@@ -2054,7 +2064,7 @@ export default function Customizer() {
     setStoreLock("locked");
     track("store_piece_locked", { variant: storeVariantId, product: found.p.name, embed: isOdooEmbed });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog, storeLock]);
+  }, [catalog, catalogFailed, storeLock]);
   // Embebido: avisar a la ficha cuando el editor está listo (o que no hay nada que personalizar).
   React.useEffect(() => {
     if (!isOdooEmbed || storeLock === "pending") return;

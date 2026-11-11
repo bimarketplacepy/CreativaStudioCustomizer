@@ -66,13 +66,58 @@ export type ShopMessage =
   | { type: "cs:resize"; height: number }
   | { type: "cs:checkout"; portalUrl: string };
 
+let readySent = false;
+let closeSent = false;
+
 /** Manda un mensaje a la ficha, con su origen exacto como destino. Devuelve si se mandó. */
 export function postToShop(msg: ShopMessage): boolean {
   const target = parentShopOrigin();
   if (!target) return false;
   if (msg.type === "cs:checkout" && !/^\/my\/orders\/\d+\?access_token=[\w-]+/.test(msg.portalUrl)) return false;
+  if (msg.type === "cs:ready") readySent = true;
+  if (msg.type === "cs:close") closeSent = true;
   window.parent.postMessage(msg, target);
   return true;
+}
+
+/** Fallo de carga antes de cs:ready: cerrar el panel en lugar de dejar la ficha esperando. */
+export function closeIfNotReady(): void {
+  if (isOdooEmbed && !readySent && !closeSent) postToShop({ type: "cs:close" });
+}
+
+/** Sin cs:ready a los 15 s (la ficha corta a los 25 s): algo quedó trabado. */
+const EMBED_READY_TIMEOUT_MS = 15_000;
+const CHUNK_ERROR = /dynamically imported module|importing a module script failed|loading chunk/i;
+
+/**
+ * Vigía del embebido (desde main.tsx, antes de pedir App): cs:close si un
+ * chunk JS o CSS no baja, si falla un import() dinámico o si cs:ready no
+ * llega a tiempo. Después de cs:ready no hace nada: el editor ya se usa.
+ */
+export function startEmbedWatchdog(): void {
+  if (!isOdooEmbed) return;
+  const timer = window.setTimeout(closeIfNotReady, EMBED_READY_TIMEOUT_MS);
+  const onResourceError = (e: Event) => {
+    const t = e.target;
+    if (t instanceof HTMLScriptElement || (t instanceof HTMLLinkElement && /stylesheet|modulepreload/.test(t.rel))) closeIfNotReady();
+  };
+  const onRejection = (e: PromiseRejectionEvent) => {
+    const r = e.reason as { message?: unknown } | undefined;
+    if (CHUNK_ERROR.test(String(r?.message ?? r ?? ""))) closeIfNotReady();
+  };
+  window.addEventListener("error", onResourceError, true);
+  window.addEventListener("unhandledrejection", onRejection);
+  // Vite avisa así cuando un chunk precargado no baja.
+  window.addEventListener("vite:preloadError", closeIfNotReady);
+  const stop = () => {
+    if (!readySent && !closeSent) return;
+    window.clearTimeout(timer);
+    window.removeEventListener("error", onResourceError, true);
+    window.removeEventListener("unhandledrejection", onRejection);
+    window.removeEventListener("vite:preloadError", closeIfNotReady);
+    window.clearInterval(poll);
+  };
+  const poll = window.setInterval(stop, 500);
 }
 
 /**

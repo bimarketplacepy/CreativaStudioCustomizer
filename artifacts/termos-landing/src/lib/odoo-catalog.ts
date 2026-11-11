@@ -32,6 +32,18 @@ export function useCatalog(): Catalog | undefined {
   return ODOO_CATALOG_ENABLED ? data : undefined;
 }
 
+/** El catálogo no se pudo pedir (red o error del servidor, ya con el reintento). */
+export function useCatalogFailed(): boolean {
+  const { isError, data } = useGetCatalog({
+    query: {
+      queryKey: getGetCatalogQueryKey(),
+      enabled: ODOO_CATALOG_ENABLED,
+      staleTime: 5 * 60_000, retry: 1, refetchOnWindowFocus: false,
+    },
+  });
+  return ODOO_CATALOG_ENABLED && isError && !data;
+}
+
 /**
  * Productos de Odoo que corresponden al perfil 3D + material elegidos. Incluye
  * los que tienen una edición con ese perfil propio (el Vaso, cuando se ve la
