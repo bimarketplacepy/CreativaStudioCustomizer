@@ -274,6 +274,21 @@ export const PIECES: Record<string, PieceInfo> = {
       "guampa-lg"
     ]
   },
+  "matero-messi": {
+    "hasModel": true,
+    "exactFor": [
+      "Matero Classic · Messi"
+    ],
+    "engraveFaces": [
+      "front",
+      "back"
+    ],
+    "uCenter": 0.5,
+    "logoBack": false,
+    "sizeIds": [
+      "matero-messi-236"
+    ]
+  },
   "guampa-terere": {
     "hasModel": true,
     "exactFor": [],
@@ -403,6 +418,22 @@ export const PIECES: Record<string, PieceInfo> = {
     "logoBack": true,
     "sizeIds": [
       "vaso-flip-887"
+    ]
+  },
+  "vaso-pint": {
+    "hasModel": true,
+    "exactFor": [
+      "Vaso Everyday Pint"
+    ],
+    "engraveFaces": [
+      "front",
+      "left",
+      "right"
+    ],
+    "uCenter": 0.5,
+    "logoBack": false,
+    "sizeIds": [
+      "vaso-pint-470"
     ]
   },
   "vaso-protour": {

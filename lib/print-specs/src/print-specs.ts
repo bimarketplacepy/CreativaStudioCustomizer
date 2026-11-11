@@ -76,6 +76,8 @@ export const PRINT_SPECS: Record<string, PrintSpecEntry> = {
   "vaso-manija": steel({ dacen: false, consult: "handle" }),
   "vaso-quencher": steel({ dacen: false, consult: "handle" }),
   "vaso-flip": steel(),
+  // Cónico (57 mm abajo, 86 mm arriba) y con franjas de fábrica de arriba a abajo.
+  "vaso-pint": steel({ dacen: false, consult: "shape" }),
   "vaso-protour": steel({ dacen: false, consult: "handle" }),
   "taza-manija": steel({ dacen: false, consult: "handle" }),
   "mini-coffee": steel({ dacen: false, consult: "handle" }),
@@ -108,6 +110,8 @@ export const PRINT_SPECS: Record<string, PrintSpecEntry> = {
   "copa-hydrate": steel({ dacen: false, consult: "shape" }),
   // Base redondeada y paredes que se abren.
   "guampa": steel({ dacen: false, consult: "shape" }),
+  // Cuerpo cónico y logos grabados de fábrica: como la guampa.
+  "matero-messi": steel({ dacen: false, consult: "shape" }),
   "food-flask": steel(),
   // 140 mm de diámetro arriba (medido en el .glb): no entra en la Dacen (máx. 125 mm).
   "ice-bucket": steel({ dacen: false, consult: "shape" }),

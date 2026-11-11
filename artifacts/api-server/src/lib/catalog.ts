@@ -60,7 +60,7 @@ const TYPE_LABEL: Record<string, string> = {
   copa: "Copa", vaso: "Vaso", termo: "Termo", botella: "Botella",
   "food-flask": "Food Flask", "ice-bucket": "Ice Bucket", bowl: "Bowl",
   "vaso-manija": "Vaso", "botella-ancha": "Botella", "vaso-hydrate": "Vaso", "vaso-sunbeam": "Vaso",
-  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso", "vaso-whisky": "Vaso", "vaso-cafe": "Vaso", growler: "Growler", "termo-sleek": "Termo", "hoppie-kids": "Hoppie", "vaso-guarani": "Vaso", "vaso-quencher": "Vaso", "vaso-flip": "Vaso", "vaso-protour": "Vaso", "taza-manija-palmeiras": "Vaso", "vaso-luqueno": "Vaso", "vaso-olimpia": "Vaso", "vaso-manija-cerro": "Vaso", "vaso-manija-luqueno": "Vaso", "vaso-taza-river": "Vaso", "vaso-taza-palmeiras": "Vaso", "termo-hydrate-palmeiras": "Termo",
+  "termo-mate": "Termo", "termo-mate-forge": "Termo", "termo-kids": "Termo", "hoppie-hydrate": "Hoppie", "copa-hydrate": "Copa", "vaso-espresso": "Vaso", "taza-manija": "Vaso", "mini-coffee": "Vaso", "vaso-taza": "Vaso", "coffee-cup": "Vaso", "vaso-shaker": "Vaso", "vaso-whisky": "Vaso", "vaso-cafe": "Vaso", growler: "Growler", "termo-sleek": "Termo", "hoppie-kids": "Hoppie", "vaso-guarani": "Vaso", "vaso-quencher": "Vaso", "vaso-flip": "Vaso", "vaso-pint": "Vaso", "vaso-protour": "Vaso", "taza-manija-palmeiras": "Vaso", "vaso-luqueno": "Vaso", "vaso-olimpia": "Vaso", "vaso-manija-cerro": "Vaso", "vaso-manija-luqueno": "Vaso", "vaso-taza-river": "Vaso", "vaso-taza-palmeiras": "Vaso", "termo-hydrate-palmeiras": "Termo", "matero-messi": "Guampa",
 };
 
 /**
@@ -164,10 +164,14 @@ const ACCESSORY_CATEGORY = /accesorios de termos \/ (tapas|strap|gomas|fundas)/i
  * Ediciones de clubes: entran como MODELO propio ("Termo Mate · Cerro
  * Porteño"), no como colores del modelo liso. Clave: palabra en el nombre.
  */
-const CLUBS: [RegExp, string][] = [
+const CLUBS: [RegExp, string, RegExp?][] = [
   [/\bcerro\b/i, "Cerro Porteño"], [/\bolimpia\b/i, "Olimpia"], [/\bluque\b/i, "Sportivo Luqueño"],
   [/\bguarani\b/i, "Guaraní"], [/\briver\b/i, "River Plate"], [/\bpalmeir(?:as?)?\b/i, "Palmeiras"],
   [/\balbirroja\b/i, "Albirroja"],
+  // Stanley Matero Classic "GOAT" de Messi (Rosa / Blue / Black Messi): edición
+  // del Matero Classic liso, con modelo propio. Solo en el matero: el Quencher
+  // ProTour Messi es el único ProTour y sigue con su nombre.
+  [/\bmessi\b/i, "Messi", /\bmatero\b/i],
 ];
 
 /**
@@ -186,6 +190,7 @@ const CLUB_MODELS: Record<string, string> = {
   "vaso taza|river plate": "vaso-taza-river",
   "vaso taza|palmeiras": "vaso-taza-palmeiras",
   "termo hydrate|palmeiras": "termo-hydrate-palmeiras",
+  "matero classic|messi": "matero-messi",
 };
 
 /**
@@ -206,7 +211,7 @@ const STANLEY_TYPE: Record<string, string> = {
   "quencher h2.0": "vaso-quencher", "quencher protour": "vaso-protour",
   "matero classic": "guampa", "matero terere": "guampa",
   "termo classic": "termo", "botella aerolight": "botella-ancha",
-  "tumbler flip": "vaso-flip", "go everyday tumbler": "vaso", "vaso classic": "vaso", "vaso everyday pint": "vaso",
+  "tumbler flip": "vaso-flip", "go everyday tumbler": "vaso", "vaso classic": "vaso", "vaso everyday pint": "vaso-pint",
 };
 
 /**
@@ -326,7 +331,8 @@ export function parseProductName(name: string): ParsedName {
   // Club + número de edición pegado ("Blanco Olimpia 2").
   let club: string | null = null;
   let edition: string | null = null;
-  for (const [re, label] of CLUBS) {
+  for (const [re, label, only] of CLUBS) {
+    if (only && !only.test(rest)) continue;
     const m = rest.match(new RegExp(`${re.source}(?:\\s+(\\d))?(?=\\s|$)`, "i"));
     if (m) { club = label; if (m[1]) edition = m[1]; rest = rest.replace(m[0], " "); break; }
   }

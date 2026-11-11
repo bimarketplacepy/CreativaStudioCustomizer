@@ -1,7 +1,7 @@
 import type { FaceId } from "./placement";
 import type { KeepOutZone } from "./keep-out";
 
-export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids" | "termo-terere" | "vaso-guarani" | "guampa-terere" | "vaso-quencher" | "vaso-flip" | "vaso-protour" | "taza-manija-palmeiras" | "termo-hydrate-palmeiras" | "vaso-luqueno" | "vaso-olimpia" | "vaso-manija-cerro" | "vaso-manija-luqueno" | "vaso-taza-river" | "vaso-taza-palmeiras" | "taza-enlozada";
+export type ProductId = "vaso" | "termo" | "hoppie" | "guampa" | "copa" | "botella" | "chopera" | "vaso-manija" | "botella-ancha" | "vaso-hydrate" | "vaso-sunbeam" | "termo-mate" | "termo-mate-forge" | "termo-kids" | "hoppie-hydrate" | "copa-hydrate" | "vaso-espresso" | "taza-manija" | "mini-coffee" | "vaso-taza" | "coffee-cup" | "vaso-shaker" | "food-flask" | "ice-bucket" | "vaso-whisky" | "growler" | "vaso-cafe" | "termo-sleek" | "hoppie-kids" | "termo-terere" | "vaso-guarani" | "guampa-terere" | "vaso-quencher" | "vaso-flip" | "vaso-pint" | "vaso-protour" | "taza-manija-palmeiras" | "termo-hydrate-palmeiras" | "matero-messi" | "vaso-luqueno" | "vaso-olimpia" | "vaso-manija-cerro" | "vaso-manija-luqueno" | "vaso-taza-river" | "vaso-taza-palmeiras" | "taza-enlozada";
 
 export type CapStyle = "screw" | "lid" | "flip" | "none";
 export type HandleStyle = "cap-d" | "cap-arch" | "body" | "body-d" | "body-square" | "none";
@@ -376,6 +376,10 @@ export const PRODUCTS: ProductDef[] = [
     // franjas. Perfil = radio del cuerpo medido sobre el .glb (m × 10, centrado
     // en 0,1364 m: la correa lo hace más alto). El .glb tiene la proporción del
     // termito; el Litro (946 ml) se escala como el Termo Hydrate liso: 1,21.
+    // Edición 1 (258910, "Verde Militar · Ed. 1"): termo-palmeiras-edicion1.glb,
+    // el mismo cuerpo, tapa y correa; logo arriba y escudo abajo en +Z, leyenda
+    // de licencia y nombre del club abajo en −Z (hasta 29 mm), sin franjas.
+    // Edición 2 (258911): el H1 de arriba.
     desc: "Botella térmica de 1 litro de la edición oficial de Palmeiras.",
     cap: "none",
     handle: "none",
@@ -387,6 +391,10 @@ export const PRODUCTS: ProductDef[] = [
     frontFace: { uHalfWidth: 0.12 },
     model: {
       url: "/models/botella-hydrate-palmeiras-h1.glb?v=1",
+      colorModels: [
+        { match: "ed. 1", url: "/models/termo-palmeiras-edicion1.glb?v=1" },
+        { match: "ed. 2", url: "/models/botella-hydrate-palmeiras-h1.glb?v=1" },
+      ],
       exactFor: ["Termo Hydrate · Palmeiras"],
       unitsPerMeter: 10,
       centerYm: 0.1364,
@@ -717,6 +725,47 @@ export const PRODUCTS: ProductDef[] = [
     ],
   },
   {
+    id: "matero-messi",
+    name: "Materos Classic Messi",
+    singular: "Matero Classic Messi",
+    // Stanley Matero Classic 236 ml, edición "GOAT" de Messi (Odoo: "MATERO/
+    // GUAMPA CLASSIC 236 ML ROSA MESSI", artifacts/3D/STANLEY/mate-stanley-goat-
+    // rosa-v2.glb): cuerpo de 101 mm que se angosta hacia arriba (Ø 79 mm a
+    // 22 mm del piso, Ø 69 mm a 87 mm) y abre en el labio, con aro de acero y
+    // leyenda arriba. Logo Stanley y "logo_since" adelante (+Z); "GOAT" vertical
+    // y la "M" atrás (−Z). Con yawDeg 90 los logos quedan a los costados y
+    // adelante y atrás, las caras libres. Perfil = radio del cuerpo medido sobre
+    // el .glb (m × 14, centrado en 0,0535 m, la mitad del alto con el aro).
+    desc: "Matero térmico Stanley de 236 ml, edición GOAT de Messi.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.454, -0.749], [0.476, -0.679], [0.510, -0.609], [0.533, -0.539],
+      [0.549, -0.469], [0.552, -0.399], [0.547, -0.329], [0.540, -0.231],
+      [0.533, -0.147], [0.526, -0.049], [0.518,  0.021], [0.511,  0.133],
+      [0.504,  0.203], [0.497,  0.301], [0.490,  0.371], [0.484,  0.469],
+      [0.497,  0.539], [0.517,  0.581], [0.540,  0.623], [0.552,  0.651],
+    ],
+    // Zona grabable: el tramo cónico del cuerpo (18–83 mm), sin la base ni el labio.
+    band: [-0.497, 0.413],
+    frontFace: { uHalfWidth: 0.14 },
+    model: {
+      url: "/models/mate-stanley-goat-rosa.glb?v=1",
+      exactFor: ["Matero Classic · Messi"],
+      brand: "Stanley",
+      unitsPerMeter: 14,
+      centerYm: 0.0535,
+      heightM: 0.107,
+      reachM: 0.0401,
+      yawDeg: 90,
+    },
+    // A los costados van los logos de fábrica: se graba adelante y atrás.
+    engraveFaces: ["front", "back"],
+    sizes: [
+      { id: "matero-messi-236", name: "236ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
     id: "guampa-terere",
     name: "Guampas forradas",
     singular: "Guampa forrada",
@@ -1043,6 +1092,57 @@ export const PRODUCTS: ProductDef[] = [
     logoBack: true,
     sizes: [
       { id: "vaso-flip-887", name: "887ml", label: "Único", scale: 1.00 },
+    ],
+  },
+  {
+    id: "vaso-pint",
+    name: "Vasos Everyday Pint",
+    singular: "Vaso Everyday Pint",
+    // Stanley Everyday Pint 470 ml (Odoo: "VASO EVERYDAY PINT 470ML PARAGUAY
+    // 1", artifacts/3D/STANLEY/vaso-stanley-pinta-blanco.glb): vaso cónico tipo
+    // pinta de 146 mm, sin tapa, Ø 57 mm abajo y Ø 86 mm arriba, con aro de
+    // acero. Al frente del .glb (+Z) van las franjas azul y roja de arriba a
+    // abajo ("rayas_*"), el logo Stanley vertical y el oso; con yawDeg 180
+    // quedan atrás y la cara libre adelante. El cuerpo se pinta con el color
+    // de la variante (blanco en "Paraguay 1"); franjas y logos traen el suyo.
+    // El azul (vaso-stanley-pinta-azul.glb, "Paraguay 2"): misma forma, cuerpo
+    // azul marino con franjas roja y blanca y logos en rojo.
+    // Perfil = radio del cuerpo medido sobre el .glb (m × 12, centrado en
+    // 0,073 m, la mitad del alto con el aro).
+    desc: "Vaso térmico Stanley de 470 ml tipo pinta, sin tapa.",
+    cap: "none",
+    handle: "none",
+    profile: [
+      [0.340, -0.876], [0.349, -0.840], [0.354, -0.805], [0.384, -0.516],
+      [0.422, -0.156], [0.459,  0.204], [0.497,  0.564], [0.514,  0.727],
+    ],
+    // Zona grabable: de 10 a 124 mm, sin el borde de la base ni el labio.
+    band: [-0.756, 0.612],
+    frontFace: { uHalfWidth: 0.2 },
+    // Las franjas no cuentan como logo por nombre: todo el alto del dorso es
+    // zona sin grabado (±17° del eje, más margen).
+    keepOut: [{ kind: "logo", u: 0, halfU: 0.06, v0: 0, v1: 1 }],
+    model: {
+      url: "/models/vaso-stanley-pint.glb?v=1",
+      colorModels: [
+        { match: "paraguay 1", url: "/models/vaso-stanley-pint.glb?v=1" },
+        { match: "paraguay 2", url: "/models/vaso-stanley-pint-azul.glb?v=1" },
+        { match: "azul", url: "/models/vaso-stanley-pint-azul.glb?v=1" },
+        { match: "blue", url: "/models/vaso-stanley-pint-azul.glb?v=1" },
+        { match: "navy", url: "/models/vaso-stanley-pint-azul.glb?v=1" },
+      ],
+      exactFor: ["Vaso Everyday Pint"],
+      brand: "Stanley",
+      unitsPerMeter: 12,
+      centerYm: 0.073,
+      heightM: 0.146,
+      reachM: 0.0437,
+      yawDeg: 180,
+    },
+    // Atrás van las franjas y los logos de fábrica: se graba adelante y a los costados.
+    engraveFaces: ["front", "left", "right"],
+    sizes: [
+      { id: "vaso-pint-470", name: "470ml", label: "Único", scale: 1.00 },
     ],
   },
   {

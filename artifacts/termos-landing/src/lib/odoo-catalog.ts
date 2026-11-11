@@ -94,7 +94,10 @@ const NAMED: [RegExp, string][] = [
   // Paleta Stanley (nombres en inglés): antes que las reglas genéricas.
   [/cherry blossom/, "#f2b8c6"], [/plum/, "#6b3b5a"], [/guava/, "#ee6d74"], [/petrol/, "#1f4e5a"],
   [/lake/, "#6f9fb5"], [/dried pine|pine/, "#5c6b4e"], [/hammertone/, "#9ea3a6"], [/azul noche/, "#1c2a48"],
-  [/striker blue/, "#2c5fa8"], [/paraguay/, "#c62828"],
+  [/striker blue/, "#2c5fa8"],
+  // Everyday Pint "Paraguay 1": cuerpo blanco con las franjas roja y azul de fábrica.
+  // "Paraguay 2": el azul marino, con franjas roja y blanca.
+  [/paraguay 1\b/, "#f2f2f0"], [/paraguay 2\b/, "#2a3150"], [/paraguay/, "#c62828"],
   [/verde militar/, "#4b5320"], [/verde salvia|salvia/, "#9caf88"], [/verde menta|menta|mint/, "#98d7c2"],
   [/verde pastel/, "#b8e0b0"], [/verde oliva|oliva|olive/, "#6b7a3a"], [/jade/, "#4f8f7a"], [/lima|lime/, "#c5d94a"],
   [/amarillo pastel/, "#f6e3a1"], [/amarillo sol|amarill|yellow/, "#f2c230"],
@@ -192,8 +195,8 @@ export function engravingPrice(catalog: Catalog | undefined, plan: EngravingPlan
 const CATALOG_SECTIONS: { title: string; types: string[] }[] = [
   { title: "Termos", types: ["termo-mate", "termo-mate-forge", "termo"] },
   { title: "Botellas", types: ["hoppie-hydrate", "termo-hydrate-palmeiras", "hoppie", "termo-kids", "hoppie-kids", "termo-sleek", "botella-ancha", "growler"] },
-  { title: "Vasos", types: ["vaso-hydrate", "vaso-sunbeam", "vaso-espresso", "taza-manija", "taza-enlozada", "mini-coffee", "vaso-taza", "coffee-cup", "vaso-shaker", "vaso-whisky", "vaso-cafe", "vaso-guarani", "taza-manija-palmeiras", "vaso-luqueno", "vaso-olimpia", "vaso-manija-cerro", "vaso-manija-luqueno", "vaso-taza-river", "vaso-taza-palmeiras", "vaso-quencher", "vaso-protour", "vaso-flip", "vaso-manija", "vaso", "chopera"] },
-  { title: "Guampas y copas", types: ["guampa", "guampa-terere", "copa-hydrate"] },
+  { title: "Vasos", types: ["vaso-hydrate", "vaso-sunbeam", "vaso-espresso", "taza-manija", "taza-enlozada", "mini-coffee", "vaso-taza", "coffee-cup", "vaso-shaker", "vaso-whisky", "vaso-cafe", "vaso-guarani", "taza-manija-palmeiras", "vaso-luqueno", "vaso-olimpia", "vaso-manija-cerro", "vaso-manija-luqueno", "vaso-taza-river", "vaso-taza-palmeiras", "vaso-quencher", "vaso-protour", "vaso-flip", "vaso-pint", "vaso-manija", "vaso", "chopera"] },
+  { title: "Guampas y copas", types: ["guampa", "matero-messi", "guampa-terere", "copa-hydrate"] },
   { title: "Comida y bar", types: ["food-flask", "ice-bucket"] },
 ];
 
