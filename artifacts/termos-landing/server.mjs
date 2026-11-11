@@ -202,7 +202,8 @@ function loadCatalog() {
   if (!catalogCache.job) {
     catalogCache.job = fetch(CATALOG_URL, { signal: AbortSignal.timeout(10_000) })
       .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (d && Array.isArray(d.products)) catalogCache = { ...catalogCache, at: Date.now(), data: d }; })
+      // Un catálogo vacío (Odoo todavía no respondió) no se guarda: se vuelve a pedir.
+      .then(d => { if (d && Array.isArray(d.products) && d.products.length) catalogCache = { ...catalogCache, at: Date.now(), data: d }; })
       .catch(() => {})
       .finally(() => { catalogCache.job = null; });
   }

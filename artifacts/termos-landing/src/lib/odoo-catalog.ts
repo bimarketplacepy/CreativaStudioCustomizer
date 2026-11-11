@@ -20,6 +20,16 @@ export type { Catalog, CatalogProduct, CatalogVariant };
  */
 export const ODOO_CATALOG_ENABLED = true;
 
+/**
+ * Si el server respondió el catálogo vacío o viejo (Odoo no respondió, o el
+ * server recién arrancaba), se vuelve a pedir cada 15 s hasta que llegue
+ * completo: la página abierta se llena sola, sin recargar.
+ */
+function catalogRefetchInterval(query: { state: { data?: Catalog } }): number | false {
+  const d = query.state.data;
+  return d && d.source === "odoo" && (d.stale || d.products.length === 0) ? 15_000 : false;
+}
+
 /** Catálogo compartido por el personalizador y Tarifas (una sola request, 5 min de vida). */
 export function useCatalog(): Catalog | undefined {
   const { data } = useGetCatalog({
@@ -27,6 +37,7 @@ export function useCatalog(): Catalog | undefined {
       queryKey: getGetCatalogQueryKey(),
       enabled: ODOO_CATALOG_ENABLED,
       staleTime: 5 * 60_000, retry: 1, refetchOnWindowFocus: false,
+      refetchInterval: catalogRefetchInterval,
     },
   });
   return ODOO_CATALOG_ENABLED ? data : undefined;
@@ -39,6 +50,7 @@ export function useCatalogFailed(): boolean {
       queryKey: getGetCatalogQueryKey(),
       enabled: ODOO_CATALOG_ENABLED,
       staleTime: 5 * 60_000, retry: 1, refetchOnWindowFocus: false,
+      refetchInterval: catalogRefetchInterval,
     },
   });
   return ODOO_CATALOG_ENABLED && isError && !data;

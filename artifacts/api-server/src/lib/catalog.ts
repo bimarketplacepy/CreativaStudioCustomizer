@@ -629,6 +629,13 @@ let lastAttempt = 0;
 let inflight: Promise<Catalog> | null = null;
 let client: OdooClient | null = null;
 
+/**
+ * Sin copia buena todavía (recién arrancado, Odoo caído) se reintenta a los
+ * 10 s; con copia buena, a los 60 s (se sigue sirviendo la vieja como stale).
+ */
+const RETRY_EMPTY_MS = 10_000;
+const RETRY_STALE_MS = 60_000;
+
 export async function getCatalog(): Promise<Catalog> {
   const cfg = odooConfig();
   if (!cfg) {
@@ -636,8 +643,25 @@ export async function getCatalog(): Promise<Catalog> {
   }
   if (lastGood && Date.now() - lastAttempt < CACHE_MS) return lastGood;
   if (inflight) return inflight;
+  // Venció la copia buena: se sirve ya y se refresca por detrás (la request
+  // no espera a Odoo). Sin copia buena no hay nada que servir: se espera.
+  if (lastGood) {
+    void refreshCatalog();
+    return lastGood;
+  }
+  // Sin copia buena y Odoo acaba de fallar: no se le pega en cada visita (el
+  // warmup ya reintenta; la landing vuelve a pedir cada 15 s).
+  if (Date.now() - lastAttempt < CACHE_MS) return emptyStale();
+  return refreshCatalog();
+}
 
-  client ??= new OdooClient(cfg);
+const emptyStale = (): Catalog =>
+  ({ source: "odoo", updatedAt: null, stale: true, currency: CURRENCY, products: [], engraving: EMPTY_ENGRAVING });
+
+/** Lee Odoo (una sola lectura a la vez) y actualiza la copia en memoria. */
+function refreshCatalog(): Promise<Catalog> {
+  if (inflight) return inflight;
+  client ??= new OdooClient(odooConfig()!);
   lastAttempt = Date.now();
   inflight = (async () => {
     try {
@@ -654,15 +678,34 @@ export async function getCatalog(): Promise<Catalog> {
     } catch (err) {
       logger.error({ err: String(err) }, "catalog: falló la sincronización con Odoo");
       // Reintentar antes que el TTL completo, pero sin martillar a Odoo.
-      lastAttempt = Date.now() - CACHE_MS + 60_000;
-      return lastGood
-        ? { ...lastGood, stale: true }
-        : { source: "odoo", updatedAt: null, stale: true, currency: CURRENCY, products: [], engraving: EMPTY_ENGRAVING };
+      lastAttempt = Date.now() - CACHE_MS + (lastGood ? RETRY_STALE_MS : RETRY_EMPTY_MS);
+      return lastGood ? { ...lastGood, stale: true } : emptyStale();
     } finally {
       inflight = null;
     }
   })();
   return inflight;
+}
+
+/**
+ * Carga el catálogo al arrancar el servidor y lo mantiene fresco por detrás,
+ * para que un publish (o el arranque en frío del autoscale) nunca deje la
+ * tienda sin productos hasta que alguien pida /api/catalog. Si Odoo falla,
+ * reintenta cada 10 s, 20 s… hasta 2 min; con copia buena, la renueva antes de
+ * que venza (cada CACHE_MS). Los timers no retienen el proceso.
+ */
+export function startCatalogWarmup(): void {
+  if (!odooConfig()) return;
+  let failures = 0;
+  const tick = async () => {
+    const before = lastGood;
+    await refreshCatalog().catch(() => null);
+    const ok = lastGood !== null && lastGood !== before;
+    failures = ok ? 0 : failures + 1;
+    const delay = ok ? CACHE_MS - 30_000 : Math.min(RETRY_EMPTY_MS * 2 ** (failures - 1), 120_000);
+    setTimeout(tick, delay).unref();
+  };
+  void tick();
 }
 
 // ── Fotos de producto ────────────────────────────────────────────────────────

@@ -17,7 +17,10 @@ router.get("/catalog", compressJson, async (_req, res) => {
     return new Set<string>();
   });
   // Caché corta en el navegador/CDN; el server ya cachea 10 min contra Odoo.
-  res.setHeader("Cache-Control", "public, max-age=120");
+  // Un catálogo vacío o viejo (Odoo no respondió) NO se cachea: si no, el
+  // edge sigue entregando la tienda vacía 2 min después de que Odoo volvió.
+  const usable = catalog.products.length > 0 && !catalog.stale;
+  res.setHeader("Cache-Control", usable ? "public, max-age=120" : "no-store");
   res.json(disabled.size ? { ...catalog, products: catalog.products.filter(p => !disabled.has(p.name)) } : catalog);
 });
 

@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { startCatalogWarmup } from "./lib/catalog";
 
 const rawPort = process.env["PORT"];
 
@@ -22,4 +23,6 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+  // Catálogo de Odoo en memoria desde el arranque (no al primer visitante).
+  startCatalogWarmup();
 });
