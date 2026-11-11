@@ -21,6 +21,7 @@ import { db, ordersTable } from "@workspace/db";
 import { OdooClient, odooConfig } from "../lib/odoo";
 import { readOrder, readSignature, type OdooOrderInfo } from "../lib/odoo-checkout";
 import { designHash } from "../lib/design-hash";
+import { claimOf, isOwnOrder } from "../lib/order-claim";
 import { logger } from "../lib/logger";
 import { paymentStateOf } from "../lib/payment-state";
 
@@ -52,6 +53,16 @@ export async function applyOdooPayment(info: OdooOrderInfo, signed: boolean): Pr
     columns: { id: true, odooPaymentState: true, odooOrderId: true, approvedHash: true, designState: true },
   });
   if (!row) return { changed: false, orderNumber: ref, state };
+  // El mismo CS puede existir en Odoo para un pedido de otra base (pruebas,
+  // otro Deployment): solo cuenta el presupuesto de ESTA fila (su id guardado
+  // o, si todavía no se guardó, su marca en `origin`). Otro → se ignora.
+  const own = row.odooOrderId != null
+    ? row.odooOrderId === info.id
+    : isOwnOrder(info, ref, claimOf(row.designState), null);
+  if (!own) {
+    logger.warn({ ref, odooOrder: info.name, rowOdooOrderId: row.odooOrderId }, "odoo webhook: el presupuesto no es de este pedido (mismo CS en otra base), se ignora");
+    return { changed: false, orderNumber: ref, state: "ajeno" };
+  }
   // Idempotente: un aviso repetido con el mismo resultado no toca la fila.
   // Y un pedido ya pagado nunca vuelve atrás por un aviso rezagado.
   if (row.odooPaymentState === state || (row.odooPaymentState === "pagado" && state !== "pagado")) {

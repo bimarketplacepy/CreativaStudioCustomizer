@@ -15,6 +15,9 @@ import { CreateOrderBody } from "@workspace/api-zod";
 import { rateLimit } from "../middlewares/rate-limit";
 import { OdooClient, OdooError, OdooProductionWriteBlocked, odooConfig } from "../lib/odoo";
 import { OdooAlreadyPaid, OdooCheckoutError, absolutePortal, checkout as odooCheckout, portalPath, stampApprovedVersion } from "../lib/odoo-checkout";
+import { OrderRefCollision } from "../lib/order-claim";
+import { ensureClaim, renumberOrder, syncOrderSequence } from "../lib/order-number";
+import type { Order } from "@workspace/db";
 import { extraLabels, serverVerdict, verdictNote } from "../lib/checkout-verdict";
 import { designHash } from "../lib/design-hash";
 import { normalizeEmail, normalizePhonePy } from "../lib/phone-py";
@@ -93,27 +96,46 @@ router.post("/checkout", rateLimit({ max: 30, windowMs: 60 * 60 * 1000 }), async
     }
     const verdict = result.verdict;
 
-    // 2. Pedido CS-XXXX de la landing (mismo requestId → mismo pedido).
+    // 2. Pedido CS-XXXX de la landing (mismo requestId → mismo pedido). La
+    // numeración local salta antes por encima de los CS que ya tiene Odoo:
+    // otra base (pruebas, otro Deployment) puede haber usado el mismo número.
+    await syncOrderSequence(odooClient);
     const created = await createOrReuseOrder(body);
     if (!created.ok) {
       res.status(created.status).json({ message: created.message });
       return;
     }
-    const order = created.order;
     const origin = originFrom(req);
-    const previewImageUrl = imageUrlFor(req, order);
-    const adminUrl = `${origin}/admin?pedido=${order.orderNumber}`;
-    const designSummary = [order.product, order.color, order.technique, order.customText ? `«${order.customText}»` : null, order.iconName ? `ícono ${order.iconName}` : null, ...extraLabels(ds)]
-      .filter(Boolean).join(" · ");
 
     // 3. Presupuesto en Odoo (firma + pago, 48 h, prueba adjunta).
-    // Con candado: `checkout` busca por client_order_ref y después crea, así
-    // que dos «Comprar» simultáneos del mismo pedido creaban dos presupuestos.
-    const r = await withPgLock(`checkout:${order.orderNumber}`, () => odooCheckout(odooClient, {
-      ref: order.orderNumber, customer, plan, verdict,
-      previewImageUrl, proof: proofFrom(body.previewImage, order.orderNumber), adminUrl, designSummary,
-      verdictNote: verdictNote(result),
-    }));
+    // Con candado: `checkout` busca y después crea, así que dos «Comprar»
+    // simultáneos del mismo pedido creaban dos presupuestos. Solo se reutiliza
+    // el presupuesto de ESTE pedido (odoo_order_id o su marca en `origin`); si
+    // el CS es de otro pedido en Odoo, se renumera una vez y si no, se falla.
+    const toOdoo = (o: Order) => withPgLock(`checkout:${o.orderNumber}`, async () => {
+      const { order: marked, claim } = await ensureClaim(o);
+      const r = await odooCheckout(odooClient, {
+        ref: marked.orderNumber, claim, odooOrderId: marked.odooOrderId ?? null,
+        customer, plan, verdict,
+        previewImageUrl: imageUrlFor(req, marked),
+        proof: proofFrom(body.previewImage, marked.orderNumber),
+        adminUrl: `${origin}/admin?pedido=${marked.orderNumber}`,
+        designSummary: [marked.product, marked.color, marked.technique, marked.customText ? `«${marked.customText}»` : null, marked.iconName ? `ícono ${marked.iconName}` : null, ...extraLabels(ds)]
+          .filter(Boolean).join(" · "),
+        verdictNote: verdictNote(result),
+      });
+      return { order: marked, r };
+    });
+    let attempt: Awaited<ReturnType<typeof toOdoo>>;
+    try {
+      attempt = await toOdoo(created.order);
+    } catch (err) {
+      if (!(err instanceof OrderRefCollision) || created.order.odooOrderId != null) throw err;
+      logger.error({ ref: err.ref, foreign: err.foreign }, "checkout: el CS ya es de otro presupuesto en Odoo");
+      attempt = await toOdoo(await renumberOrder(odooClient, created.order));
+    }
+    const { order, r } = attempt;
+    const previewImageUrl = imageUrlFor(req, order);
 
     // OK: la versión que vio es la aprobada (automático). REVISION: la aprueba el taller.
     const hash = designHash(order.designState);
@@ -158,6 +180,12 @@ router.post("/checkout", rateLimit({ max: 30, windowMs: 60 * 60 * 1000 }), async
         message: "Ya pagaste este pedido. Podés verlo en el link.",
         odoo: { orderId: err.order.id, orderName: err.order.name, total: err.order.amountTotal, paymentUrl: viewUrl && absolutePortal(odooClient, viewUrl), paid: true },
       });
+      return;
+    }
+    if (err instanceof OrderRefCollision) {
+      // Nunca el portal de otro pedido: mejor que reintente (o siga por WhatsApp).
+      logger.error({ ref: err.ref, foreign: err.foreign }, "checkout: choque de número con otro presupuesto, sin resolver");
+      res.status(409).json({ message: "No pudimos reservar el número de tu pedido. Probá de nuevo en unos segundos.", whatsapp: true });
       return;
     }
     if (err instanceof OdooProductionWriteBlocked) {

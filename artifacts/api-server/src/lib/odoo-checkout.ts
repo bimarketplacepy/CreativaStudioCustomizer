@@ -11,6 +11,8 @@
  *  - get_portal_url genera el access_token (portal/models/portal_mixin.py:116)
  *  - res.partner en 19 NO tiene `mobile`: solo `phone` (confirmado en staging)
  */
+import { OrderRefCollision, originFor, resolveOrder, type ClaimOrder } from "./order-claim";
+export { OrderRefCollision };
 import { OdooClient, OdooError } from "./odoo";
 import { normalizeEmail, normalizePhonePy, phoneSearchPattern } from "./phone-py";
 import { logger } from "./logger";
@@ -58,6 +60,8 @@ export interface OdooOrderInfo {
   name: string;
   state: "draft" | "sent" | "sale" | "cancel";
   clientOrderRef: string | null;
+  /** «Documento origen»: lleva la marca del pedido de la landing (order-claim.ts). */
+  origin: string | null;
   amountTotal: number;
   /** Capturado: solo transacciones de pago en estado "done" (payment-state.ts). */
   amountDone: number;
@@ -106,7 +110,7 @@ type M2O = [number, string] | false;
 
 const ctx = { allowed_company_ids: [COMPANY_ID], lang: "es_PY" };
 
-type OrderRow = { id: number; name: string; state: OdooOrderInfo["state"]; client_order_ref: string | false; amount_total: number; transaction_ids: number[] };
+type OrderRow = { id: number; name: string; state: OdooOrderInfo["state"]; client_order_ref: string | false; origin: string | false; amount_total: number; transaction_ids: number[] };
 
 /** Arma la info del pedido sumando solo lo capturado (transacciones done). Solo lectura. */
 async function toInfo(client: OdooClient, r: OrderRow): Promise<OdooOrderInfo> {
@@ -118,12 +122,13 @@ async function toInfo(client: OdooClient, r: OrderRow): Promise<OdooOrderInfo> {
   return {
     id: r.id, name: r.name, state: r.state,
     clientOrderRef: r.client_order_ref || null,
+    origin: r.origin || null,
     amountTotal: r.amount_total, amountDone,
     paid: isPaid({ amountTotal: r.amount_total, amountDone }),
   };
 }
 
-const ORDER_FIELDS = ["name", "state", "client_order_ref", "amount_total", "transaction_ids"];
+const ORDER_FIELDS = ["name", "state", "client_order_ref", "origin", "amount_total", "transaction_ids"];
 
 /** Lee el pedido de Odoo por id (null si no existe). Solo lectura. */
 export async function readOrder(client: OdooClient, id: number): Promise<OdooOrderInfo | null> {
@@ -132,13 +137,26 @@ export async function readOrder(client: OdooClient, id: number): Promise<OdooOrd
   return rows[0] ? toInfo(client, rows[0]) : null;
 }
 
-/** Pedido de un diseño (client_order_ref = CS-XXXX), el más reciente no cancelado. */
-export async function findOrderByRef(client: OdooClient, ref: string): Promise<OdooOrderInfo | null> {
+/**
+ * Presupuestos con ese client_order_ref, en cualquier estado, el más nuevo
+ * primero (sin leer transacciones). Solo lectura. OJO: el ref solo NO
+ * identifica al pedido (otro entorno puede tener el mismo CS): ver order-claim.ts.
+ */
+async function ordersByRef(client: OdooClient, ref: string): Promise<ClaimOrder[]> {
   const rows = await client.call<OrderRow[]>(
-    "sale.order", "search_read",
-    [[["client_order_ref", "=", ref], ["state", "!=", "cancel"]]],
-    { fields: ORDER_FIELDS, limit: 1, order: "id desc", context: ctx });
-  return rows[0] ? toInfo(client, rows[0]) : null;
+    "sale.order", "search_read", [[["client_order_ref", "=", ref]]],
+    { fields: ["name", "state", "client_order_ref", "origin"], limit: 20, order: "id desc", context: ctx });
+  return rows.map(r => ({ id: r.id, name: r.name, state: r.state, clientOrderRef: r.client_order_ref || null, origin: r.origin || null }));
+}
+
+/** CS más altos de Odoo (para que la numeración local salte por encima). Solo lectura. */
+export async function recentCsRefs(client: OdooClient): Promise<string[]> {
+  const read = (order: string) => client.call<Array<{ client_order_ref: string | false }>>(
+    "sale.order", "search_read", [[["client_order_ref", "=like", "CS-%"]]],
+    { fields: ["client_order_ref"], limit: 50, order, context: ctx });
+  // Por ref (los de 4 dígitos ordenan bien como texto) y por id (los de 5+).
+  const [byRef, byId] = await Promise.all([read("client_order_ref desc"), read("id desc")]);
+  return [...byRef, ...byId].map(r => r.client_order_ref).filter((r): r is string => !!r);
 }
 
 /** Stock y precio actuales de la variante (PLAN-ODOO §4: se vuelve a consultar al comprar). */
@@ -281,6 +299,8 @@ const esc = (s: string) => s.replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt
 
 export interface CreateOrderInput {
   ref: string;
+  /** Marca del pedido (order-claim.ts): va en `origin` para reconocerlo después. */
+  claim: string;
   partnerId: number;
   plan: PlannedOrder;
   previewImageUrl: string | null;
@@ -341,7 +361,7 @@ export async function createOrder(client: OdooClient, input: CreateOrderInput): 
     // Firma obligatoria: el cliente acepta la prueba («Acepto que mi pieza se
     // produzca así») antes de pagar (PROMPT-ODOO-TIENDA §1.3).
     require_signature: true,
-    origin: "Creativa Studio",
+    origin: originFor(input.claim),
     note,
     order_line: orderLines,
   };
@@ -464,15 +484,25 @@ export async function cancelQuotation(client: OdooClient, orderId: number, reaso
  * Presupuesto de un diseño (PROMPT-ODOO-TIENDA §3): contacto, un diseño = un
  * pedido (client_order_ref) y, con veredicto OK, la ruta del portal para
  * firmar y pagar. Con REVISION el presupuesto queda sin enviar. Lanza
- * OdooAlreadyPaid u OdooError. Idempotente por `ref`.
+ * OdooAlreadyPaid, OrderRefCollision (el ref es de un presupuesto AJENO: nunca
+ * se devuelve) u OdooError. Idempotente por pedido: reutiliza solo el
+ * presupuesto con el `odooOrderId` guardado o con la marca `claim`.
  */
 export async function checkout(client: OdooClient, args: {
-  ref: string; customer: Customer; plan: PlannedOrder; verdict: "OK" | "REVISION";
+  ref: string; claim: string; odooOrderId: number | null;
+  customer: Customer; plan: PlannedOrder; verdict: "OK" | "REVISION";
   previewImageUrl: string | null; proof: CreateOrderInput["proof"]; adminUrl: string; designSummary: string;
   verdictNote: string | null;
 }): Promise<{ order: OdooOrderInfo; portalPath: string | null; partnerId: number; partnerCreated: boolean; created: boolean }> {
+  // Primero qué presupuesto corresponde (solo lectura): si el ref es de otro
+  // pedido, se corta acá, antes de crear el contacto o escribir nada.
+  const found = await resolveOrder(
+    { byId: async id => readOrder(client, id), byRef: ref => ordersByRef(client, ref) },
+    { ref: args.ref, odooOrderId: args.odooOrderId, claim: args.claim },
+  );
   const partner = await findOrCreatePartner(client, args.customer);
-  let order = await findOrderByRef(client, args.ref);
+  let order = found.kind === "reuse" ? await readOrder(client, found.order.id) : null;
+  if (found.kind === "reuse" && !order) throw new OdooCheckoutError(`El presupuesto ${found.order.name} no se pudo releer`);
   if (order?.paid) throw new OdooAlreadyPaid(order);
   const created = !order;
   if (!order) {
