@@ -54,6 +54,16 @@ export function isOwnOrder(o: ClaimOrder, ref: string, claim: string | null, odo
   return !!claim && o.origin === originFor(claim);
 }
 
+/**
+ * Aviso de pago: ¿el presupuesto `o` es el de la fila? Con id guardado, solo
+ * ese id (nunca se adopta otro presupuesto con el mismo ref). Sin id guardado,
+ * solo el que lleva la marca de la fila; sin marca, ninguno.
+ */
+export function webhookOwns(row: { odooOrderId: number | null; designState: unknown }, o: ClaimOrder, ref: string): boolean {
+  if (row.odooOrderId != null) return row.odooOrderId === o.id && o.clientOrderRef === ref;
+  return isOwnOrder(o, ref, claimOf(row.designState), null);
+}
+
 export class OrderRefCollision extends Error {
   constructor(readonly ref: string, readonly foreign: Array<Pick<ClaimOrder, "id" | "name">>) {
     super(`${ref} ya existe en Odoo para otro pedido (${foreign.map(f => f.name).join(", ")})`);

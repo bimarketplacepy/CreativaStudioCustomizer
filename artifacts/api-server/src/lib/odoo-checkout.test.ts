@@ -5,13 +5,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkout, type PlannedOrder } from "./odoo-checkout";
-import { OrderRefCollision, claimOf, isOwnOrder, maxCsNumber, newClaim, originFor, resolveOrder, type ClaimOrder } from "./order-claim";
+import { OrderRefCollision, claimOf, isOwnOrder, maxCsNumber, newClaim, originFor, resolveOrder, webhookOwns, type ClaimOrder } from "./order-claim";
 import type { OdooClient } from "./odoo";
 
 type Row = { id: number; name: string; state: string; client_order_ref: string | false; origin: string | false; amount_total: number; transaction_ids: number[]; partner_id: number };
 
 /** Odoo en memoria: lo justo para checkout() (contactos, presupuestos, portal). */
-function fakeOdoo(orders: Row[]) {
+function fakeOdoo(orders: Row[], txs: Array<{ state: string; amount: number }> = []) {
   const calls: string[] = [];
   let nextId = 900;
   const match = (r: Row, [f, op, v]: [string, string, unknown]) => {
@@ -26,7 +26,7 @@ function fakeOdoo(orders: Row[]) {
       calls.push(`${model}.${method}`);
       if (model === "res.partner" && method === "search_read") return [];
       if (model === "res.partner" && method === "create") return 500;
-      if (model === "payment.transaction") return [];
+      if (model === "payment.transaction") return txs;
       if (model === "ir.attachment" && method === "create") return 1;
       if (model === "sale.order" && method === "search_read") {
         const domain = args[0] as [string, string, unknown][];
@@ -105,11 +105,53 @@ test("mismo diseño de OTRO cliente (mismo hash) en otra base: la marca es otra 
   await assert.rejects(checkout(odoo.client, args({ ref: "CS-0030" })), OrderRefCollision);
 });
 
-test("con odoo_order_id guardado (pedido de antes de la marca) → reutiliza ese", async () => {
-  const odoo = fakeOdoo([foreignS00221()]);
+/** El contacto del cliente actual en el Odoo falso (res.partner.create → 500). */
+const OWN_PARTNER = 500;
+
+test("con odoo_order_id guardado y del mismo contacto (pedido de antes de la marca) → reutiliza ese", async () => {
+  const odoo = fakeOdoo([{ ...foreignS00221(), partner_id: OWN_PARTNER }]);
   const r = await checkout(odoo.client, args({ odooOrderId: 221 }));
   assert.equal(r.order.id, 221);
   assert.equal(r.created, false);
+  assert.equal(r.portalPath, "/my/orders/221?access_token=tok");
+  assert.ok(!odoo.calls.includes("sale.order.create"));
+});
+
+test("odoo_order_id guardado pero de OTRO contacto (fila pisada antes del arreglo) → crea uno nuevo, nunca el portal ajeno", async () => {
+  const odoo = fakeOdoo([foreignS00221()]);
+  const r = await checkout(odoo.client, args({ odooOrderId: 221 }));
+  assert.equal(r.created, true);
+  assert.notEqual(r.order.id, 221);
+  assert.equal(r.order.partnerId, OWN_PARTNER);
+  assert.equal(r.portalPath, `/my/orders/${r.order.id}?access_token=tok`);
+  assert.ok(!odoo.calls.some((c, i) => c === "sale.order.get_portal_url" && i < odoo.calls.indexOf("sale.order.create")), "no pide el portal de S00221");
+});
+
+test("odoo_order_id guardado de otro contacto y ya PAGADO → no dice «ya pagaste» con el pedido ajeno", async () => {
+  const odoo = fakeOdoo([{ ...foreignS00221(), state: "sale", transaction_ids: [1] }], [{ state: "done", amount: 220_000 }]);
+  const r = await checkout(odoo.client, args({ odooOrderId: 221 }));
+  assert.equal(r.created, true);
+  assert.notEqual(r.order.id, 221);
+});
+
+test("odoo_order_id guardado y propio, pero cancelado → crea uno nuevo", async () => {
+  const claim = newClaim();
+  const odoo = fakeOdoo([{ ...foreignS00221(), state: "cancel", partner_id: OWN_PARTNER, origin: originFor(claim) }]);
+  const r = await checkout(odoo.client, args({ odooOrderId: 221, claim }));
+  assert.equal(r.created, true);
+  assert.notEqual(r.order.id, 221);
+  assert.equal(r.portalPath, `/my/orders/${r.order.id}?access_token=tok`);
+});
+
+test("webhook: con id guardado solo vale ese presupuesto; sin id, solo el de la marca de la fila", () => {
+  const claim = newClaim();
+  const o = (over: Partial<ClaimOrder> = {}): ClaimOrder => ({ id: 221, name: "S00221", state: "sale", clientOrderRef: "CS-0021", origin: "Creativa Studio", ...over });
+  assert.equal(webhookOwns({ odooOrderId: 900, designState: { __odooClaim: claim } }, o(), "CS-0021"), false, "info.id distinto del guardado → se ignora");
+  assert.equal(webhookOwns({ odooOrderId: 900, designState: { __odooClaim: claim } }, o({ origin: originFor(claim) }), "CS-0021"), false, "ni con la marca: el id guardado manda");
+  assert.equal(webhookOwns({ odooOrderId: 221, designState: {} }, o(), "CS-0021"), true, "el id guardado");
+  assert.equal(webhookOwns({ odooOrderId: null, designState: {} }, o(), "CS-0021"), false, "fila sin id ni marca → se ignora");
+  assert.equal(webhookOwns({ odooOrderId: null, designState: { __odooClaim: claim } }, o(), "CS-0021"), false, "fila sin id, presupuesto ajeno → se ignora");
+  assert.equal(webhookOwns({ odooOrderId: null, designState: { __odooClaim: claim } }, o({ origin: originFor(claim) }), "CS-0021"), true, "fila sin id, presupuesto con su marca");
 });
 
 test("webhook: solo es propio el presupuesto con el id guardado o la marca", () => {

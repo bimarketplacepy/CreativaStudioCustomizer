@@ -62,6 +62,8 @@ export interface OdooOrderInfo {
   clientOrderRef: string | null;
   /** «Documento origen»: lleva la marca del pedido de la landing (order-claim.ts). */
   origin: string | null;
+  /** Contacto del presupuesto (res.partner); un presupuesto de otro contacto nunca se reutiliza. */
+  partnerId: number | null;
   amountTotal: number;
   /** Capturado: solo transacciones de pago en estado "done" (payment-state.ts). */
   amountDone: number;
@@ -110,7 +112,7 @@ type M2O = [number, string] | false;
 
 const ctx = { allowed_company_ids: [COMPANY_ID], lang: "es_PY" };
 
-type OrderRow = { id: number; name: string; state: OdooOrderInfo["state"]; client_order_ref: string | false; origin: string | false; amount_total: number; transaction_ids: number[] };
+type OrderRow = { id: number; name: string; state: OdooOrderInfo["state"]; client_order_ref: string | false; origin: string | false; partner_id?: M2O | number; amount_total: number; transaction_ids: number[] };
 
 /** Arma la info del pedido sumando solo lo capturado (transacciones done). Solo lectura. */
 async function toInfo(client: OdooClient, r: OrderRow): Promise<OdooOrderInfo> {
@@ -123,12 +125,13 @@ async function toInfo(client: OdooClient, r: OrderRow): Promise<OdooOrderInfo> {
     id: r.id, name: r.name, state: r.state,
     clientOrderRef: r.client_order_ref || null,
     origin: r.origin || null,
+    partnerId: Array.isArray(r.partner_id) ? r.partner_id[0] : typeof r.partner_id === "number" ? r.partner_id : null,
     amountTotal: r.amount_total, amountDone,
     paid: isPaid({ amountTotal: r.amount_total, amountDone }),
   };
 }
 
-const ORDER_FIELDS = ["name", "state", "client_order_ref", "origin", "amount_total", "transaction_ids"];
+const ORDER_FIELDS = ["name", "state", "client_order_ref", "origin", "partner_id", "amount_total", "transaction_ids"];
 
 /** Lee el pedido de Odoo por id (null si no existe). Solo lectura. */
 export async function readOrder(client: OdooClient, id: number): Promise<OdooOrderInfo | null> {
@@ -486,7 +489,8 @@ export async function cancelQuotation(client: OdooClient, orderId: number, reaso
  * firmar y pagar. Con REVISION el presupuesto queda sin enviar. Lanza
  * OdooAlreadyPaid, OrderRefCollision (el ref es de un presupuesto AJENO: nunca
  * se devuelve) u OdooError. Idempotente por pedido: reutiliza solo el
- * presupuesto con el `odooOrderId` guardado o con la marca `claim`.
+ * presupuesto con el `odooOrderId` guardado o con la marca `claim`, y solo si
+ * es del mismo contacto (partner_id) que el cliente actual.
  */
 export async function checkout(client: OdooClient, args: {
   ref: string; claim: string; odooOrderId: number | null;
@@ -503,6 +507,14 @@ export async function checkout(client: OdooClient, args: {
   const partner = await findOrCreatePartner(client, args.customer);
   let order = found.kind === "reuse" ? await readOrder(client, found.order.id) : null;
   if (found.kind === "reuse" && !order) throw new OdooCheckoutError(`El presupuesto ${found.order.name} no se pudo releer`);
+  // Aunque el id esté guardado en la fila (pudo guardarlo el checkout o el
+  // webhook de antes del arreglo del 11/11), un presupuesto de OTRO contacto
+  // no es de este cliente: ni su portal ni su «ya pagaste». Se crea uno nuevo.
+  if (order && order.partnerId !== partner.id) {
+    logger.warn({ ref: args.ref, odooOrderId: order.id, odooOrder: order.name, orderPartner: order.partnerId, partner: partner.id },
+      "checkout: el presupuesto guardado es de otro contacto, no se reutiliza; se crea uno nuevo");
+    order = null;
+  }
   if (order?.paid) throw new OdooAlreadyPaid(order);
   const created = !order;
   if (!order) {
