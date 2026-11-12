@@ -2144,9 +2144,10 @@ export default function Customizer() {
   const doneTipRef = useRef<HTMLButtonElement>(null);
   const tourSteps = useMemo<TourStep[]>(() => [
     { target: addTipRef, title: "Agregá tu diseño", body: "Texto, un dibujo o tu logo.", placement: "top", pad: 8, radius: 999 },
-    { target: colorTipRef, title: "Elegí el color", body: "Cuatro acabados mate.", placement: "top", pad: 9, radius: 12 },
+    // Pieza fija desde la tienda: el color ya se eligió allá, no hay tira de colores.
+    ...(pieceLocked ? [] : [{ target: colorTipRef, title: "Elegí el color", body: "Cuatro acabados mate.", placement: "top", pad: 9, radius: 12 } satisfies TourStep]),
     { target: productTipRef, title: "Girá el termo", body: "Arrastrá para ver todos los lados.", placement: "bottom", pad: 10, radius: 18, getRect: () => thermosBoundsRef.current?.() ?? null },
-  ], []);
+  ], [pieceLocked]);
   const [tourOpen, setTourOpen] = useState(false);
   const [tourRun, setTourRun] = useState(0);
   const [arHint, setArHint] = useState(false);
@@ -2402,9 +2403,11 @@ export default function Customizer() {
   }, [isMobile, customizerInView]);
 
   // "Color" is not a tab on mobile (it's Step 2), so never leave it selected.
+  // Tampoco con la pieza fija desde la tienda: el color se eligió allá (se ve
+  // en la tarjeta «Tu producto»), así que la pestaña no existe y se abre en Texto.
   React.useEffect(() => {
-    if (isMobile && drinkTab === "color") setDrinkTab("text");
-  }, [isMobile, drinkTab]);
+    if ((isMobile || pieceLocked) && drinkTab === "color") setDrinkTab("text");
+  }, [isMobile, pieceLocked, drinkTab]);
 
   // ── Progressive plan inference ─────────────────────────────────────────────
   // Infer the plan from what was designed (logo/photo ⇒ logo, icon ⇒ drawing,
@@ -4243,7 +4246,7 @@ export default function Customizer() {
     </div>
   );
 
-  const renderDrinkColor = () => pieceLocked ? renderLockedColor() : isGlass ? (
+  const renderDrinkColor = () => isGlass ? (
     // Glass comes in one finish only: clear. No colour picker, no finish grid.
     <div>
       <Label className="text-sm font-medium text-foreground mb-3 block">Material</Label>
@@ -4646,17 +4649,6 @@ export default function Customizer() {
 
   // Bloque de acciones compartido por TODOS los productos: precio estimado,
   // CTA de WhatsApp, señales de confianza y acciones secundarias.
-  /** Color fijo de la pieza elegida en la tienda (sin selector). */
-  function renderLockedColor() {
-    return (
-      <div className="flex items-center gap-2 text-sm">
-        <span className="text-foreground shrink-0">Color</span>
-        <span className="w-5 h-5 rounded-full border border-border shrink-0" style={{ background: activeColorHex }} aria-hidden />
-        <span className="text-muted-foreground">{activeColorName}</span>
-      </div>
-    );
-  }
-
   /** La pieza que llegó fija desde la ficha de la tienda (reemplaza los selectores). */
   const renderLockedPiece = () => (
     <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3" data-testid="locked-piece">
@@ -5083,8 +5075,8 @@ export default function Customizer() {
 
   /** Colores del producto en una tira (pantalla de Diseño del celular). */
   const renderColorDots = () => {
-    if (isGlass || isInox) return null;
-    if (pieceLocked) return renderLockedColor();
+    // Pieza fija desde la tienda: el color va en la tarjeta «Tu producto», no acá.
+    if (isGlass || isInox || pieceLocked) return null;
     const items = odooMode && odooColors.length
       ? odooColors.map(c => ({ key: c.name, hex: c.hex, name: c.name, on: odooColor === c.name, disabled: !odooColorInStock(c.name), pick: () => selectOdooColor(c.name) }))
       : COLORS.map(c => ({ key: c.id, hex: c.hex, name: c.name, on: color === c.id && !customHex, disabled: false, pick: () => handleSelectColor(c.id) }));
@@ -5413,8 +5405,8 @@ export default function Customizer() {
 
         {!vp.keyboard && (
           <div className="shrink-0 bg-white border-t border-border px-4 pt-2.5 space-y-2.5" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
-            <div ref={colorTipRef}>{renderColorDots()}</div>
-            <div className={`flex items-center justify-between gap-3 ${isGlass || isInox ? "" : "pt-2.5 border-t border-border"}`}>
+            {!pieceLocked && <div ref={colorTipRef}>{renderColorDots()}</div>}
+            <div className={`flex items-center justify-between gap-3 ${isGlass || isInox || pieceLocked ? "" : "pt-2.5 border-t border-border"}`}>
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground truncate">
                   {[sizeName, priceNote].filter(Boolean).join(" · ") || estimate.note}
@@ -5911,7 +5903,7 @@ export default function Customizer() {
                   <TabsList className="w-full flex gap-1 bg-secondary/50 rounded-xl p-1 h-auto">
                     {/* On mobile "Color" moves to the Estilo step. All segments are
                         equal-width and always visible — no arrows, no scroll. */}
-                    {!isMobile && (
+                    {!isMobile && !pieceLocked && (
                     <TabsTrigger value="color" className={SEG_TAB}>
                       <Palette className="w-4 h-4 shrink-0" /> <span className="truncate">Color</span>
                     </TabsTrigger>
@@ -5934,7 +5926,7 @@ export default function Customizer() {
                   {/* Diseño de artista copiado: visible en todas las pestañas. */}
                   {renderArtistBanner()}
                   {/* COLOR TAB (desktop editor; on mobile colour lives in Step 2 "Estilo") */}
-                  {!isMobile && (
+                  {!isMobile && !pieceLocked && (
                   <TabsContent value="color" className="mt-0 space-y-5">
                     {renderDrinkSize()}
                     {renderDrinkColor()}
