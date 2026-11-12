@@ -51,3 +51,7 @@ artifacts/api-server/scripts/.catalog-preview-*.mjs
 
 # Compilación temporal de scripts de Odoo (odoo-personalizables.mjs)
 artifacts/api-server/scripts/.build/
+
+# Archivos de depuración (prefijo __): nunca al repo
+__*.mjs
+__*.ts
